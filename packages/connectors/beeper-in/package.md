@@ -30,6 +30,15 @@ list, shapes, cursor semantics, and the chat-ID URL-encoding caveat.
   (source form `beeper-in/<network>`, `occurred_at` set to the newest message's
   timestamp in the batch).
 
+## Scheduling
+
+This lane's sweep (`scripts/beeper-sweep.sh`) is scheduled by the shared sync
+scheduler (`packages/connectors/scripts/sync-scheduler.sh`), config per core
+contract `sync-lanes.md` (lane row `beeper`) — not a bespoke installer local
+to this package. Plan 13's original hand-rolled launchd installer was
+retired in plan 19; the scheduler's `install`/`uninstall`/`status`
+subcommands now own this lane's launchd lifecycle.
+
 ## Provides
 
 - Raw capture events in `inbox/` for the beeper personal-chat lane (subject to the

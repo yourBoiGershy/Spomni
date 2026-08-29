@@ -1,0 +1,28 @@
+# sync-lanes.tsv — template for <data-dir>/connectors/sync-scheduler/lanes.tsv
+#
+# Contract: packages/core/contracts/sync-lanes.md (schema_version 1.0.0).
+# Copy this file into your private data dir at
+# connectors/sync-scheduler/lanes.tsv and edit — this template is not read
+# directly by the scheduler.
+#
+# Columns (tab-separated; command is the remainder of the line, spaces ok,
+# tabs forbidden):
+#   lane               [a-z0-9-]+, unique within the file
+#   interval_seconds   integer >= 60
+#   enabled             true | false
+#   command             absolute-path invocation, run via /bin/bash -c under
+#                       launchd's minimal environment (PATH is just
+#                       /usr/bin:/bin:/usr/sbin:/sbin — no shell profile).
+#
+# Blank lines and lines starting with # are ignored. A malformed row fails
+# the whole file (fail-closed parsing) — see the contract for details.
+
+# Active example — replace <ABS-REPO-ROOT> with the absolute path of the
+# checkout that owns this lane's data dir (the repo whose beeper-in package
+# writes into this data dir's inbox/).
+beeper	900	true	/bin/bash <ABS-REPO-ROOT>/packages/connectors/beeper-in/scripts/beeper-sweep.sh
+
+# Placeholder rows for plan 17 (gmail/calendar first-party connectors) —
+# uncomment and fill in once those lanes exist.
+# gmail-in	300	false	/bin/bash <ABS-REPO-ROOT>/packages/connectors/gmail-in/scripts/gmail-sweep.sh
+# calendar-in	300	false	/bin/bash <ABS-REPO-ROOT>/packages/connectors/calendar-in/scripts/calendar-sweep.sh
