@@ -7,8 +7,15 @@ FAIL; smoke eval 1/1 via wave-parallel runner; pre-merge checker: zero
 findings). Residual: U14.2–.4 (live fresh-store onboarding run + window
 override + incremental-state diff on real data) awaits a user session, since
 the gmail/calendar backfill sweeps are driven by the first-party connectors.
-Known pre-existing: 11 legacy ingestion eval cases fail live (chunk-21 T3
-runner re-baseline debt; not touched by this plan).
+Rode along (user-requested): the chunk-21 eval re-baseline debt was repaired
+in this branch — all 14 legacy ingestion T3 cases (11 failing + 3 flaky)
+rewritten to operative-procedure prompts with contracts embedded verbatim
+and fact-based graders replacing prose byte-diffs (root cause: pre-chunk-21
+prompts carried no contract text and byte-exact prose diffs only passed via
+the old runner's expected/ leak). Final proof: full suite 17/17 PASS,
+$0.72, via the U15 wave-parallel runner. U16 added rerun-failed mode
+(`RA_EVAL_RERUN_FAILED` + per-manifest `.last-run.tsv`; eval-case 1.2.0).
+Remaining old-convention cases 01/06: stable every run, left as-is.
 Package: connectors (backfill modes on gmail-in / calendar-in / beeper-in +
 shared window helper) + core (new onboarding-backfill config contract) +
 ingestion (spec amendment, participation derivation, tier-suggestion scoring,
