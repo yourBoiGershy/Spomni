@@ -31,7 +31,7 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 16 | Eval harness: tool/agent/skill tiers | core (eval-case contract, 4 runners) + query/ingestion/attention cases | 08, 15 | Done (2026-08-29, stream-personalization) |
 | 17 | Composio retirement & direct Google lanes (gmail-in, calendar-in on first-party claude.ai connectors) | connectors (composio-in teardown; gmail-in, calendar-in) + docs | 01, 14; decision composio-retired | Planned — plan file to author |
 | 18 | Query & chat live wiring (register the MCP server against the live store; chat with your own data) | query (server config) + harness docs | 08 | Planned — FIRST priority, plan file to author |
-| 19 | Scheduled syncs runner (one configurable scheduler for all capture lanes; restart-safe) | connectors/scripts + core (sync-lanes contract) | 13; 17's lanes join via config rows when they land | In progress (2026-08-29, chunk-19-sync-scheduler) |
+| 19 | Scheduled syncs runner (one configurable scheduler for all capture lanes; restart-safe) | connectors/scripts + core (sync-lanes contract) | 13; 17's lanes join via config rows when they land | Done (2026-08-29, chunk-19-sync-scheduler; suites 20/82/70/64 green, beeper migrated, reboot-sim + config-change proven; live firing awaits a machine-side TCC grant — see plan 19, affects plan 13's job too) |
 | 20 | Backfill blitz & ship-day shakedown (file the real backlog, prove the loop end to end, TODAY) | cross-package (runs the machinery, builds none) | 03, 13, 18 | Planned — SHIP GATE, runs today |
 | 21 | Calendar intelligence & event proposals (tell/schedule from messages; propose events, draft-only) | attention + query + connectors/calendar | 04, 05, 06, 17, 18 | Planned — plan file to author |
 

@@ -1,6 +1,8 @@
 # Plan 19 — Scheduled syncs runner
 
-Status: In progress (2026-08-29, chunk-19-sync-scheduler)
+Status: Done (2026-08-29, chunk-19-sync-scheduler) — machinery built, tested,
+installed, and verified; live firing blocked machine-side by macOS TCC (see
+"Live verification results" below), user grant pending.
 Depends on: 13 (beeper lane live). 17's gmail/calendar lanes are future config rows —
 the scheduler is config-driven, so 17 is not a build blocker; its lanes get one
 `lanes.tsv` line each when they exist.
@@ -157,3 +159,28 @@ All active lanes running under the scheduler; `status` correct; a simulated
 reboot (bootout+bootstrap) after which jobs fire with no manual step; beeper's
 legacy job removed; interval/disable config change takes effect with no code
 edit.
+
+## Live verification results (2026-08-29)
+
+Green: suites store 20 / capture 82 / beeper 70 / scheduler 64; live install of
+`com.relationship-agent.sync.beeper` (legacy `com.relationship-agent.beeper-in`
+booted out and its plist removed); `status` row correct; reboot simulation
+(bootout + bootstrap from the on-disk plist) reloads with no manual step;
+config change proven live (interval 900→600→900 via `lanes.tsv` edits +
+re-`install`, `launchctl print` confirmed each time, zero code edits);
+malformed config row fail-closed live (`expected 4 tab-separated fields`,
+install aborts, exit 1).
+
+**Blocker found (machine-side, not machinery):** launchd background jobs run
+`/bin/bash` WITHOUT macOS TCC access to `~/Documents` — a probe job read
+`$HOME` fine and got `Operation not permitted` exactly at `~/Documents`. Every
+scheduled fire exits 126 before the script loads. **This also invalidated
+plan 13's standing assumption:** the legacy beeper launchd job had failed the
+same way on every 15-minute fire since install — its only successful sweep was
+the manual terminal run at deploy time (terminal sessions carry the user's TCC
+grants; launchd agents don't). Remediation is a user action, either: (a) grant
+`/bin/bash` Full Disk Access (System Settings → Privacy & Security → Full Disk
+Access → + → ⌘⇧G → `/bin/bash`) — quick, standard for launchd shell agents; or
+(b) relocate the machinery + data worktrees outside `~/Documents` (durable, no
+TCC surface, aligns with the always-on-box portability story). The scheduler
+starts working at the next interval after either lands — nothing to reinstall.
