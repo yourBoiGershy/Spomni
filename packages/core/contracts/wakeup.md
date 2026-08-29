@@ -1,6 +1,6 @@
 # Contract: wake-up
 
-`schema_version: 1.1.0`
+`schema_version: 1.2.0`
 
 ## Store location
 
@@ -17,12 +17,19 @@ nudges are all the same object, distinguished only by `origin`.
 
 - **Creation:** open to any package, but only through
   `packages/core/scripts/wakeup-add.sh` — the one sanctioned way to append a
-  wake-up entry (see `packages/core/package.md`).
+  wake-up entry (see `packages/core/package.md`). *(since 1.2.0)*
+  `wakeup-add.sh` gains optional event-proposal creation flags
+  (`--kind event-proposal`, `--event-title`, `--event-start`,
+  `--event-end`, `--event-attendee <slug>` repeatable, `--event-location`) —
+  see the `kind`/`proposed-event` fields below.
 - **Lifecycle (fire/snooze/dismiss — i.e. `status` transitions after
   creation, plus the outcome fields `fired-on`, `dismiss-reason`,
-  `acted-on`, `snooze-count` below):** sole writer is `packages/attention`
-  (per `docs/DECISIONS.md#attention-merge` — outcome recording and
-  calibration live inside attention, not a new package).
+  `acted-on`, `snooze-count` below, and *(since 1.2.0)* `confirmed-on` /
+  `created-event-id`):** sole writer is `packages/attention` (per
+  `docs/DECISIONS.md#attention-merge` — outcome recording and calibration
+  live inside attention, not a new package). Confirming or declining an
+  `event-proposal` entry is a lifecycle write like any other and stays
+  attention's alone.
 - **Readers:** `packages/connectors/*-out` (rendering fired wake-ups to a
   destination), `packages/query` (what's pending, briefs).
 
@@ -48,6 +55,10 @@ optional.
 | `acted-on` | bool or `null` | no (default `null`) | *(since 1.1.0)* Set by attention's sweep: `true` when an interaction with any of this entry's `people` is dated within 7 days after `fired-on`, `false` if the window closed without one, `null` until evaluated (e.g. not yet fired, or window still open). |
 | `snooze-count` | integer | no (default `0`) | *(since 1.1.0)* Incremented by attention each time this entry is snoozed. Preserves the snooze history that the `due`-rewrite pattern (see Notes) would otherwise discard. |
 | `signal-type` | string or `null` | no (default `null`) | *(since 1.1.0)* Kebab-case type bucket for calibration, e.g. `birthday`, `job-change`. When `origin: signal`, mirrors the promoting signal event's `type` (`signal-event.md`). `standing` entries set it to their standing kind (e.g. `birthday`). `user-ask` entries typically omit it. Absent/`null` falls into attention's `unclassified` calibration bucket. Open vocabulary — no fixed enum. |
+| `kind` | enum or absent | no (default `nudge`) | *(since 1.2.0)* One of: `nudge`, `event-proposal`. `nudge` is the existing behavior (message draft, no event). `event-proposal` carries a ready-to-confirm calendar event in `proposed-event`. Missing `kind` reads as `nudge`. |
+| `proposed-event` | mapping or `null` | no (default `null`) | *(since 1.2.0)* Required non-null iff `kind: event-proposal`; must be `null` (or absent) otherwise. Fields: `title` (string), `start` / `end` (ISO 8601 datetime with offset), `attendees` (list of `[[slug]]` links, ≥1 — store people, not raw emails; emails are resolved from `people/<slug>.md` at confirm time), `location` (string or `null`). |
+| `confirmed-on` | ISO 8601 date or `null` | no (default `null`) | *(since 1.2.0)* Set by `packages/attention` when the human explicitly confirms an `event-proposal` entry. Always `null` for `kind: nudge` entries. |
+| `created-event-id` | string or `null` | no (default `null`) | *(since 1.2.0)* The connector's event id, set by `packages/attention` only after the calendar create succeeds. **Invariant:** `created-event-id` non-null requires `confirmed-on` non-null AND `kind: event-proposal`. |
 
 ### Body sections
 
@@ -98,6 +109,46 @@ Hey Dana! How's Berlin treating you — all unpacked and settled into the new
 role yet? Would love to hear how the partnerships team is shaping up.
 ```
 
+*(since 1.2.0)* `wakeups/2026-09-05-sam-okafor.md`, an event-proposal card:
+
+```markdown
+---
+schema_version: 1.2.0
+id: 2026-09-05-sam-okafor
+due: 2026-09-05
+people: ["[[sam-okafor]]"]
+why: "scheduling intent: \"we should grab coffee sometime\" in last message"
+status: fired
+origin: signal
+source-signal: 20260903T140000Z-scheduling-intent-sam-okafor
+fired-on: 2026-09-05
+dismiss-reason:
+acted-on:
+snooze-count: 0
+signal-type: scheduling-intent
+kind: event-proposal
+proposed-event:
+  title: Coffee with Sam
+  start: 2026-09-08T10:00:00-07:00
+  end: 2026-09-08T11:00:00-07:00
+  attendees: ["[[sam-okafor]]"]
+  location:
+confirmed-on:
+created-event-id:
+---
+
+## Context
+
+Sam mentioned wanting to grab coffee in their 2026-09-03 message. No fixed
+timeframe given, so this slot was picked from the first open block at least
+48h out honoring the working window.
+
+## Draft
+
+Hey Sam! You mentioned grabbing coffee — does Tuesday 9/8 at 10am work for
+you?
+```
+
 ## Notes
 
 - `status: snoozed` should carry a re-fire date; store it by re-writing
@@ -111,6 +162,18 @@ role yet? Would love to hear how the partnerships team is shaping up.
   by attention (a fresh file per occurrence) rather than one file that
   mutates its `due` forward, so `wakeups/` stays a true history of what
   fired and when.
+- *(since 1.2.0)* Declining an `event-proposal` entry uses the existing
+  dismiss mechanics unchanged — no new `dismiss-reason` values were added for
+  it (`not-now`, `not-this-person`, `not-this-signal-type`,
+  `already-handled` all remain sensible choices). The dismissed wake-up file
+  is itself the record: no retry, no second artifact. After a decline,
+  attention suppresses re-proposal for the same (person, `signal-type:
+  scheduling-intent`) pair for 30 days.
+- *(since 1.2.0)* **Invariant:** `created-event-id` non-null requires both
+  `confirmed-on` non-null and `kind: event-proposal`. No writer may set
+  `created-event-id` on a `kind: nudge` entry or on an entry that has not
+  recorded `confirmed-on`; the connector create itself only happens after
+  that confirmation is recorded.
 - **Versioning:** `fired-on`, `dismiss-reason`, `acted-on`, `snooze-count`,
   and `signal-type` are all additive optional fields, so 1.0.0 → 1.1.0 is a
   minor bump per the `capture-event.md` precedent (widening without
@@ -121,3 +184,12 @@ role yet? Would love to hear how the partnerships team is shaping up.
   `dismiss-reason`; a 1.0.0 file that reaches `status: dismissed` without one
   is not itself invalid (it predates the field), but new dismissals should
   upgrade the file to 1.1.0 when writing the reason.
+- **Versioning (1.2.0):** `kind`, `proposed-event`, `confirmed-on`, and
+  `created-event-id` are additive optional fields, so 1.1.0 → 1.2.0 is
+  another minor bump, same precedent. Existing `schema_version: 1.0.0` and
+  `1.1.0` files remain valid as-is — readers must treat a missing `kind` as
+  `nudge` and missing `proposed-event`/`confirmed-on`/`created-event-id` as
+  `null`. Creation of `event-proposal` entries goes through
+  `wakeup-add.sh`'s 1.2.0 event-proposal flags (see Writer / readers above);
+  `confirmed-on` and `created-event-id` are never settable at creation, only
+  by attention's lifecycle writes.

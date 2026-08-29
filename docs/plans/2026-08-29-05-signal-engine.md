@@ -7,6 +7,13 @@ Depends-on: 01, 02 (04 soft — co-attendance signals need it)
 Build the engine that finds reasons to reach out: it runs the ToS-clean signal set on each sweep, emits signal events, ranks them, and converts the winners into wake-up entries carrying ammunition (what you know + the evidence + optionally a draft). Signals are proposals; the ranking layer is what keeps this from becoming an alert firehose.
 
 ## Context
+**Amended by Plan 21** (docs/plans/2026-08-29-21-calendar-intelligence.md):
+the detector set gains `scheduling-intent` (spec ships at
+`packages/attention/specs/scheduling-intent.md`; signal-scan assembly
+includes it in detector order). Timing rule addition: scheduling intent is
+time-sensitive — promoted proposals are due within 1–2 days, not the
++2–3-week job-change pattern.
+
 Read docs/PROJECT-CONTEXT.md first. Decisions that bind this plan:
 - **ToS-clean signals only** — no scraping, no enrichment APIs, no RSS bridges; LinkedIn data only via emails LinkedIn itself sends the user.
 - **Wake-up queue over digests** — ranked signals become dated queue entries, nothing else.
@@ -22,6 +29,7 @@ Read docs/PROJECT-CONTEXT.md first. Decisions that bind this plan:
   - co-attendance: `same-event-as` links from Plan 04
   - posts: belled-contact `linkedin-notification` events
   - debrief harvesting: `needs-follow-up` facts Plan 03 marks
+  - **Amended by Plan 21**: `scheduling-intent` — see the Context note above
 - Ranking spec: warmth (tier + recency + interaction density) × rarity; the two-signal rule; the 5-nudge cap with overflow held, not dropped
 - `packages/attention/fixtures/signals/` — seeded signal scenarios wired to fixture personas
 
@@ -33,7 +41,7 @@ Wave A (parallel):
 
 Wave B (after A):
 4. [worker] Detector specs: job changes (email parse + signature diff + search verify) and company news (search query templates, name-disambiguation rule: always name+company together).
-5. [worker] `packages/attention/skills/signal-scan/SKILL.md` assembly: detector order, signal-event emission, ranking pass, wake-up creation with ammunition block, timing rules (job-change nudge dated +2–3 weeks, birthday dated day-before).
+5. [worker] `packages/attention/skills/signal-scan/SKILL.md` assembly: detector order, signal-event emission, ranking pass, wake-up creation with ammunition block, timing rules (job-change nudge dated +2–3 weeks, birthday dated day-before). **Amended by Plan 21**: include `scheduling-intent` in detector order and apply its 1–2-day timing rule, per the Context note above.
 6. [checker] Run the scan against `packages/attention/fixtures/signals/`: verify each scenario produces the expected wake-up/suppression, the cap holds, the low-warmth post is suppressed, and every emitted wake-up has trigger + ammunition.
 
 ## Interfaces

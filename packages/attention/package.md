@@ -19,6 +19,11 @@ attention-merge).
   calibrate → hand batch to an output adapter)
 - Queue lifecycle: `scripts/wakeup-queue.sh` (list-due, fire, snooze, dismiss —
   creation stays with core's `wakeup-add.sh` so any package may append)
+- Event-proposal confirm/decline lifecycle: `scripts/proposal-confirm.sh`
+  (interim — plan 21's `confirm <id> --event-id <id>` / `decline <id>
+  --reason <enum>` ops on `kind: event-proposal` wake-ups; absorbed by
+  `scripts/wakeup-queue.sh` once plan 06 lands, per plan 21's amendment to
+  plan 06)
 - Outcome recording: `fired-on`/`dismiss-reason`/`snooze-count`/`acted-on` writes on
   `wakeups/*.md` per `specs/outcome-recording.md` (sole writer of the wakeup lifecycle
   fields, per `wakeup.md`'s writer table and `docs/DECISIONS.md#attention-merge`)
@@ -35,9 +40,11 @@ attention-merge).
 
 ## Consumes
 
-- `signal-event@^1`, `wakeup@1.1` (core) — outcome recording targets the 1.1 fields
+- `signal-event@^1`, `wakeup@1.2` (core) — outcome recording targets the 1.1 fields
   specifically (`fired-on`, `dismiss-reason`, `acted-on`, `snooze-count`); a 1.0 file
-  is upgraded to 1.1 in place the first time a 1.1 writer (dismiss) touches it
+  is upgraded to 1.1 in place the first time a 1.1 writer (dismiss) touches it.
+  `scripts/proposal-confirm.sh` targets the 1.2 fields (`confirmed-on`,
+  `created-event-id`) on `kind: event-proposal` entries specifically
 - `profile@1` (core) — signal-scan applies `## Signal opt-outs` before ranking;
   calibration reads style-note context. Read-only: attention never writes `profile.md`
   (revealed preferences propose via a wake-up, they never overwrite stated ones)

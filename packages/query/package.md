@@ -16,14 +16,16 @@ wrapping them is mechanical.
 - Skills: `skills/query/` (index-first retrieval, citations, honest "no match"),
   `skills/brief/` (one-page pre-meeting brief)
 - The nudge-card render consumed by output adapters
-- `server/` (`packages/query/server/`): an MCP tool surface, six read-only tools over
+- `server/` (`packages/query/server/`): an MCP tool surface, seven read-only tools over
   stdio (streamable HTTP behind `--http`, stubbed): `search_people`, `get_person`,
-  `list_interactions`, `get_interaction`, `get_contact_stats`, `suggest_reachouts`.
-  Entry point `server/src/index.ts` (run via `node --experimental-strip-types`, `--store`
-  flag). Registered project-wide via the repo root `.mcp.json`, which defaults `--store`
-  to `data/store` — the convention every checkout points at its own private store
-  through (see `docs/chat-setup.md`). If the store's `index.json`/`stats.json` are
-  missing or stale, the server regenerates them into
+  `list_interactions`, `get_interaction`, `get_contact_stats`, `suggest_reachouts`,
+  `upcoming_meetings`. Entry point `server/src/index.ts` (run via `node
+  --experimental-strip-types`, `--store` flag), transport seam, store-reader, and all
+  seven tool handlers are in place and tested (`tests/test-tools.mjs` and
+  `tests/test-upcoming-meetings.mjs`). Registered project-wide via the repo root
+  `.mcp.json`, which defaults `--store` to `data/store` — the convention every checkout
+  points at its own private store through (see `docs/chat-setup.md`). If the store's
+  `index.json`/`stats.json` are missing or stale, the server regenerates them into
   `${RA_CACHE_DIR:-~/.cache/relationship-agent}` and serves from there; the store itself
   is never written to (single-writer holds). Smoke test: `tests/smoke-live.sh`.
 

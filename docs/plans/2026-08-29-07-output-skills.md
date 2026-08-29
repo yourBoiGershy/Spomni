@@ -7,6 +7,12 @@ Depends-on: 01; renders 06's batches; brief uses 04's artifacts
 Build everything the user actually sees: the query skill ("who do I know in marketing?"), the pre-meeting brief, and the nudge rendering that turns fired wake-ups into cards with trigger, ammunition, and an optional draft — delivered through a pluggable output-adapter interface so terminal/file today and email/Slack later are the same render.
 
 ## Context
+**Amended by Plan 21** (docs/plans/2026-08-29-21-calendar-intelligence.md):
+the brief skill gains an "Upcoming" section — next-7-days filed calendar
+interactions naming the brief's subject, cited, silent when empty (see that
+plan's Query surface section, which also adds the `upcoming_meetings` query
+tool this section draws on).
+
 Read docs/PROJECT-CONTEXT.md first. Decisions that bind this plan:
 - **Draft-never-send** — drafts are attached text; no output adapter may transmit to a third party on the user's behalf. The Gmail-out adapter delivers TO the user's own inbox only.
 - **Pluggable output connectors** — one render, many destinations; adapter = anything taking rendered content + destination config.
@@ -15,7 +21,7 @@ Read docs/PROJECT-CONTEXT.md first. Decisions that bind this plan:
 
 ## Deliverables
 - `packages/query/skills/query/SKILL.md` — natural-language questions over index + person files; answers cite the person files they drew from
-- `packages/query/skills/brief/SKILL.md` — pre-meeting one-pager: store facts (provenance: user) + fresh web research on the person/company (provenance: public), open threads, last-interaction summary, outstanding commitments both directions
+- `packages/query/skills/brief/SKILL.md` — pre-meeting one-pager: store facts (provenance: user) + fresh web research on the person/company (provenance: public), open threads, last-interaction summary, outstanding commitments both directions. **Amended by Plan 21**: also an "Upcoming" section (next-7-days filed calendar interactions naming the subject, cited, silent when empty), per the Context note above.
 - Nudge card format spec + renderer (`packages/query/skills/`, part of the sweep delivery): trigger, evidence, shared-history ammunition, optional draft, snooze/dismiss affordances
 - Output adapter interface doc (`docs/connectors.md`, output half) + two adapters: `packages/connectors/file-out/` (writes `data/outbox/YYYY-MM-DD.md`, shown in-session) and `packages/connectors/gmail-out/` (`gmail-self`: emails the batch to the user's own address)
 - `packages/connectors/fixtures/output/` — a fired-batch artifact + expected renders
@@ -27,7 +33,7 @@ Wave A (parallel):
 3. [worker] `docs/connectors.md` output-adapter half: the interface, destination config shape, the draft-never-send constraint stated as a hard rule for adapter authors.
 
 Wave B (after A):
-4. [worker] `packages/query/skills/brief/SKILL.md` — assembly order, research pass (web search, name+company disambiguation), provenance sections, length cap (one page), staleness note when store facts are old.
+4. [worker] `packages/query/skills/brief/SKILL.md` — assembly order, research pass (web search, name+company disambiguation), provenance sections, length cap (one page), staleness note when store facts are old. **Amended by Plan 21**: include the "Upcoming" section per the Context note above.
 5. [worker] `packages/connectors/file-out/` adapter + `packages/connectors/gmail-out/` adapter (the latter via first-party Gmail connector, self-address only, refuses other recipients). Each gets its sub-package mini-manifest.
 6. [checker] Render the fixture batch through both adapters; verify identical content, correct card structure, drafts present but marked unsent; run 3 query fixtures against the persona pack and verify citations.
 
