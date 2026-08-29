@@ -225,13 +225,44 @@ while IFS= read -r netype; do
   fi
 done <<< "$new_enum_types"
 
-# --- schema_version: emitted value is 1.1.0 ---
+# --- 1.2.0 enum coverage: chat-message ---
+newer_enum_types="
+chat-message
+"
+
+while IFS= read -r cetype; do
+  [ -z "$cetype" ] && continue
+
+  ceid="enum-coverage-1-2-0-$cetype"
+  out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source composio-in --type "$cetype" --id "$ceid" 2>&1)"
+  status=$?
+  cedest="$STORE_DIR/inbox/$ceid.md"
+
+  if [ "$status" -eq 0 ]; then
+    pass "1.2.0 enum coverage: type $cetype accepted, exit 0"
+  else
+    fail "1.2.0 enum coverage: type $cetype rejected, exited $status (expected 0): $out"
+  fi
+
+  if [ -f "$cedest" ]; then
+    pass "1.2.0 enum coverage: type $cetype inbox file written"
+    if grep -qF "type: $cetype" "$cedest"; then
+      pass "1.2.0 enum coverage: type $cetype frontmatter matches"
+    else
+      fail "1.2.0 enum coverage: type $cetype frontmatter does not match"
+    fi
+  else
+    fail "1.2.0 enum coverage: type $cetype inbox file missing at $cedest"
+  fi
+done <<< "$newer_enum_types"
+
+# --- schema_version: emitted value is 1.2.0 ---
 schema_check_dest="$STORE_DIR/inbox/enum-coverage-1-1-0-email.md"
 if [ -f "$schema_check_dest" ]; then
-  if grep -qF "schema_version: 1.1.0" "$schema_check_dest"; then
-    pass "schema_version: emitted value is 1.1.0"
+  if grep -qF "schema_version: 1.2.0" "$schema_check_dest"; then
+    pass "schema_version: emitted value is 1.2.0"
   else
-    fail "schema_version: emitted value is not 1.1.0 in $schema_check_dest"
+    fail "schema_version: emitted value is not 1.2.0 in $schema_check_dest"
   fi
 else
   fail "schema_version check: $schema_check_dest missing"

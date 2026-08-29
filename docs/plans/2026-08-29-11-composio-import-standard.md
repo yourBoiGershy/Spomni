@@ -54,6 +54,7 @@ conceptual gaps the real data exposed.
 | googlecalendar | `calendar-event` | event start | organizer, creator, every attendee | the provider event resource as pretty-printed JSON |
 | linkedin | `profile-snapshot` / `post` | snapshot: none; post: publish time | none (it is the user's own profile) | the provider resource as pretty-printed JSON |
 | (gmail People seed) | `contact-record` | none | the contact's names + emails | the provider contact resource as pretty-printed JSON |
+| beeper (`beeper-in/<network>`, e.g. `beeper-in/whatsapp`, `beeper-in/imessage`) | `chat-message` (1.2.0) | message sent time | sender + other chat participants, display form as seen | the message content; Beeper API envelope stripped, original to `archive/raw/` |
 
 ### Body + transport rule
 The body is the **provider resource** (Gmail message, Calendar event, LinkedIn
@@ -107,3 +108,12 @@ shipped skills agree.
   unchanged and next.
 - Re-writing the 20 existing 1.0.0 events (valid as-is; data op, not code).
 - New lanes/toolkits (the standard now tells them where to land).
+
+## Addendum (2026-08-29): 1.2.0 — chat lanes
+The Beeper personal-chat bridge (DECISIONS `beeper-personal-bridge`, researched in
+the messaging-connectors plan on `stream-connectors`) fits the standard as-is
+except for typing: chat messages had no enum value and would regress to `other`.
+Bump 1.1.0 → 1.2.0 adds `chat-message`; chat lanes follow the existing
+`<connector>/<lane>` source form (`beeper-in/<network>`) and the transport rule
+(Beeper API envelope stripped, original archived). The `beeper-in` connector
+itself is `stream-connectors` territory, not this plan's.

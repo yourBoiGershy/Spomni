@@ -155,10 +155,10 @@ if [ -z "$SOURCE" ]; then
 fi
 
 case "$TYPE" in
-  voice-note|linkedin-notification|event-confirmation|transcript|other|email|calendar-event|profile-snapshot|contact-record|post)
+  voice-note|linkedin-notification|event-confirmation|transcript|other|email|calendar-event|profile-snapshot|contact-record|post|chat-message)
     ;;
   *)
-    add_reason "invalid type: '${TYPE}' (expected one of: voice-note, linkedin-notification, event-confirmation, transcript, other, email, calendar-event, profile-snapshot, contact-record, post)"
+    add_reason "invalid type: '${TYPE}' (expected one of: voice-note, linkedin-notification, event-confirmation, transcript, other, email, calendar-event, profile-snapshot, contact-record, post, chat-message)"
     ;;
 esac
 
@@ -183,7 +183,7 @@ write_frontmatter() {
   dest="$1"
   {
     printf '%s\n' "---"
-    printf 'schema_version: 1.1.0\n'
+    printf 'schema_version: 1.2.0\n'
     printf 'id: %s\n' "$ID"
     printf 'source: %s\n' "$SOURCE"
     printf 'captured_at: %s\n' "$CAPTURED_AT"

@@ -1,6 +1,6 @@
 # Contract: capture event
 
-`schema_version: 1.1.0`
+`schema_version: 1.2.0`
 
 ## Store location
 
@@ -31,9 +31,9 @@ rewrite, summarize, or interpret the body.
 |---|---|---|---|
 | `schema_version` | semver string | yes | Contract version this file conforms to. |
 | `id` | string | yes | Unique within `inbox/`. Recommended form: `<captured_at-compact>-<source>-<short-rand>`, e.g. `20260829T143200Z-gmail-in-9f2a`. Also the filename stem (`inbox/<id>.md`). |
-| `source` | string | yes | The writing connector's name. Convention for multi-lane connectors: `<connector>/<lane>`, e.g. `composio-in/gmail`, `composio-in/googlecalendar`, `composio-in/linkedin` — the connector half is the writing sub-package, the lane half is the Composio toolkit slug. Plain connector names (`manual`, `gmail-in`) remain valid; `source` is a free string, not an enum. |
+| `source` | string | yes | The writing connector's name. Convention for multi-lane connectors: `<connector>/<lane>`, e.g. `composio-in/gmail`, `composio-in/googlecalendar`, `composio-in/linkedin` — the connector half is the writing sub-package, the lane half is the Composio toolkit slug. Chat lanes follow the same form, e.g. `beeper-in/whatsapp`. Plain connector names (`manual`, `gmail-in`) remain valid; `source` is a free string, not an enum. |
 | `captured_at` | ISO 8601 timestamp | yes | `YYYY-MM-DDTHH:MM:SSZ`. When the connector captured the item (not necessarily when the underlying event happened). The `id` and filename derive from this, keeping `inbox/` chronological by capture. |
-| `type` | enum | yes | One of: `voice-note`, `linkedin-notification`, `event-confirmation`, `transcript`, `other`, `email`, `calendar-event`, `profile-snapshot`, `contact-record`, `post`. `event-confirmation` is a confirmation *email*; `calendar-event` is the event record itself. `other` is the escape hatch for genuinely unclassifiable items, not a default. |
+| `type` | enum | yes | One of: `voice-note`, `linkedin-notification`, `event-confirmation`, `transcript`, `other`, `email`, `calendar-event`, `profile-snapshot`, `contact-record`, `post`, `chat-message`. `event-confirmation` is a confirmation *email*; `calendar-event` is the event record itself; `chat-message` is a message in a chat/DM conversation — WhatsApp, iMessage, Signal, Telegram, Discord DM, etc. — as distinct from `email`. `other` is the escape hatch for genuinely unclassifiable items, not a default. |
 | `occurred_at` | ISO 8601 timestamp | no | `YYYY-MM-DDTHH:MM:SSZ`. When the underlying thing happened or will happen — a calendar event's start, an email's `Date` header, a post's publish time. Distinct from `captured_at` (when the sweep ran); omit when the source has no inherent occurrence time. |
 | `participant-hints` | list of strings | no (default `[]`) | Raw, unresolved participant identifiers as seen in the source — names, emails, handles. The filing engine resolves these to `[[slug]]` person links; capture events never contain resolved links. |
 
