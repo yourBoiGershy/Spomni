@@ -165,16 +165,28 @@ instructions point at.
 
 ## Proof of done
 
-- All six tools answer over the live store with real data; smoke exits 0 with
+All items closed 2026-08-29 by chunk 22 (`chunk-22-live-query-verify`); the fixture
+half had already landed with this chunk's merge.
+
+- [x] All six tools answer over the live store with real data; smoke exits 0 with
   non-degraded stats; store dir untouched (single-writer holds live).
-- Store suite, query suite, and T2 evals green.
-- Exactly one registration exists: the project `.mcp.json`; the legacy user-scope
-  entry is gone; a fresh session in this worktree reaches the server with no manual
-  config beyond the documented setup steps.
-- At least one real end-to-end chat where answers cite actual captured interactions
-  (evidence: tool calls + citation paths counted, content withheld).
-- `docs/chat-setup.md` is followable start-to-finish; DECISIONS.md entry recorded;
-  ROADMAP row 18 flipped to Done at merge.
+  *(Chunk 22: smoke-live 6/6 over the filed 21-person store, real `generated_at`;
+  read-only guards green in the query suite.)*
+- [x] Store suite, query suite, and T2 evals green.
+  *(Chunk 22: store 10/10, query 29/29, T2 3 pass / 2 xfail (recorded plan-13
+  personalization gaps) / 0 fail. Note: `evals/fixtures/overlaid-store` is
+  generated — run `build-overlaid-store.sh` before the suite in a fresh checkout.)*
+- [x] Exactly one registration exists: the project `.mcp.json`; the legacy
+  local-scope entry (absolute paths, added pre-`.mcp.json`) removed via
+  `claude mcp remove spomni-query -s local`; `claude mcp list` shows one connected
+  entry and no scope-conflict diagnostic.
+- [x] Three real end-to-end chats in fresh headless sessions via the project-scope
+  registration: reachout suggestions (5 `people/*.md` citations), last-contact
+  lookup (2 people + 3 interaction files cited, provenance labeled told-by-user),
+  upcoming meetings (honest empty result, 21 index citations). Content withheld.
+- [x] `docs/chat-setup.md` followed start-to-finish in a fresh worktree (symlink →
+  npm install → approval → smoke → chat); DECISIONS.md entry recorded
+  (query-mcp-registration); ROADMAP row 18 flipped to Done at merge.
 
 ## Out of scope
 
@@ -185,4 +197,4 @@ instructions point at.
   `docs/chat-setup.md` as future, built when the cloud runtime doc (plan 09) lands.
 - Briefs, nudge cards, output adapters (plan 07).
 
-Status: Ready
+Status: Done (2026-08-29 — fixture half in this chunk's merge; live half closed out by chunk 22, see docs/plans/2026-08-29-22-live-query-verification.md)
