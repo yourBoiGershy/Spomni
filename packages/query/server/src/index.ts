@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 // Entry point for the relationship-agent query MCP server.
 //
-// Scaffold only (docs/plans/2026-08-29-08-chat-mcp-query-layer.md, unit 3):
-// parses --store / RA_STORE_DIR, constructs the MCP server, registers the
-// (currently empty) tool registry, and connects the stdio transport. No
-// store reading and no tool logic live here — that lands in Waves B/C.
+// Scaffold (docs/plans/2026-08-29-08-chat-mcp-query-layer.md, unit 3) plus a
+// trivial store-reader wiring from unit 6: parses --store / RA_STORE_DIR,
+// ensures a fresh store-reader is available, constructs the MCP server,
+// registers the (currently empty) tool registry, and connects the stdio
+// transport. Tool logic itself lands in Wave C — it will pull the reader
+// built here via server context rather than re-deriving it.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerTools } from "./tools/registry.ts";
 import { connectTransport } from "./transport.ts";
+import { ensureFresh } from "./store/staleness.ts";
 
 interface Cli {
   storeDir: string;
@@ -43,7 +46,12 @@ function parseArgs(argv: string[]): Cli {
 }
 
 async function main(): Promise<void> {
-  const { http } = parseArgs(process.argv.slice(2));
+  const { storeDir, http } = parseArgs(process.argv.slice(2));
+
+  const { generatedAt } = ensureFresh(storeDir);
+  process.stderr.write(
+    `relationship-agent-query: store ready (generated_at=${generatedAt})\n`,
+  );
 
   const server = new McpServer({
     name: "relationship-agent-query",

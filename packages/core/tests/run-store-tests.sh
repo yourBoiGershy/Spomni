@@ -110,8 +110,25 @@ fi
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 
-if [ "$FAIL_COUNT" -eq 0 ]; then
-  exit 0
-else
-  exit 1
+STORE_TESTS_STATUS=0
+if [ "$FAIL_COUNT" -ne 0 ]; then
+  STORE_TESTS_STATUS=1
 fi
+
+# --- delegate to the build-stats.sh golden test, tallying its exit status
+#     alongside this script's own ---
+BUILD_STATS_TEST="$SCRIPT_DIR/test-build-stats.sh"
+echo ""
+echo "--- test-build-stats.sh ---"
+if [ -x "$BUILD_STATS_TEST" ]; then
+  "$BUILD_STATS_TEST"
+  build_stats_status=$?
+  if [ "$build_stats_status" -ne 0 ]; then
+    STORE_TESTS_STATUS=1
+  fi
+else
+  echo "FAIL: $BUILD_STATS_TEST not found or not executable"
+  STORE_TESTS_STATUS=1
+fi
+
+exit "$STORE_TESTS_STATUS"
