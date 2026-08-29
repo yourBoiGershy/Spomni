@@ -28,10 +28,24 @@ a platform constraint, not a Composio gap.
   (send + incoming webhook). Both still require a **WhatsApp Business number** — a
   separate identity from the user's personal WhatsApp, so the user's real
   conversations never flow through it.
-- Verdict: **skip.** A Business number changes the user's sending identity (bad fit
-  for authentic relationship maintenance) and captures nothing historical. Manual
-  chat-export files are the only personal-account bridge; revisit only if that pain
-  is wanted.
+- **Correction (same day, web-verified): Meta "Coexistence" mode** (rolled out via
+  Embedded Signup May 2025) runs the WhatsApp Business *app* and the Cloud API on
+  **one shared number**. Path: convert personal WhatsApp → WhatsApp Business app
+  (free, keeps number + chat history on the phone) → onboard to Cloud API via a
+  Tech Partner/BSP embedded signup. Sync is two-way: API sends echo into the app;
+  app-sent/received messages reach the number's webhook (`smb_message_echoes`).
+- Coexistence limits: no group chats, no disappearing/view-once, no voice/video
+  calls, no broadcast lists/catalog; 20 msg/s throughput cap; app must be opened
+  every 13 days; one BSP per number. Contacts will see the "business account"
+  label on the user's profile.
+- Open questions before this becomes a lane: (a) does Composio's `whatsapp`
+  toolkit support coexistence embedded signup, or must onboarding happen at a BSP
+  with credentials handed to Composio? (b) does Composio expose WhatsApp webhook
+  triggers for inbound capture, or is a separate webhook receiver needed?
+  (c) how much history syncs at onboarding vs. capture-from-now-on only.
+- Verdict: **possible after all, via coexistence — but identity-visible (business
+  label) and group chats are excluded.** Park behind Instagram; resolve the three
+  open questions before planning.
 
 ### Messenger — Pages only
 - `facebook` toolkit reads a **Page inbox** (`FACEBOOK_GET_PAGE_CONVERSATIONS`,
@@ -82,7 +96,8 @@ a platform constraint, not a Composio gap.
 3. **Discord guilds** via Composio `discordbot` — only if the user has servers
    worth capturing; DMs impossible.
 4. **Messenger** — only if a user-operated Page exists; otherwise skip.
-5. **WhatsApp** — skip; no personal-account path exists on any vendor.
+5. **WhatsApp** — feasible via Coexistence mode (see correction above); park
+   behind Instagram until its three open questions are resolved.
 
 ## Decisions this would touch
 
