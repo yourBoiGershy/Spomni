@@ -4,7 +4,7 @@ Always-on doctrine. Keep this directory SMALL — it is a prompt-cache target.
 
 | File | Contents |
 |---|---|
-| `orchestration.md` | Dispatch mechanics: concurrency tiers, the mandatory splitting rule, turn economy, monitoring, fix policy (condensed) |
+| `orchestration.md` | Dispatch mechanics: concurrency tiers, the mandatory splitting rule, context economy (warm workers, content-bearing briefs), turn economy, monitoring, fix policy (condensed) |
 
 Reference material that is loaded on demand (not always-on) lives in
 `.claude/context/`:
