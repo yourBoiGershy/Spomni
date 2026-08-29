@@ -1,0 +1,89 @@
+# Decisions
+
+Append-only log of binding decisions. Plans reference entries by name. To reverse a
+decision, add a new entry superseding the old one — never edit history.
+
+---
+
+**draft-never-send** · 2026-08-29
+The agent drafts messages but never sends them; the human always holds the send button.
+Why: authenticity (automated relationship maintenance reads worse than silence) and the
+psychological ownership of the relationship staying with the user. The market's credible
+"chief of staff" tools converged on the same boundary.
+Revisit if: never for sending; delivery of *nudges to the user* is unrestricted.
+
+**code-data-separation** · 2026-08-29
+Public repo = machinery only; each user's people-store lives in their own private dir/repo
+(`data/` gitignored). Why: contact graphs are other people's PII (Covve breach leaked
+non-consenting people's data); also what makes the repo open-sourceable.
+Revisit if: never.
+
+**first-party-mcp-only** · 2026-08-29
+Core integrations use first-party connectors/MCP servers only (Google's official
+Gmail/Calendar/Contacts MCP, Slack's official MCP, claude.ai connectors in Claude Code).
+Aggregators (Composio, Pipedream…) are supported only through the generic
+"add any MCP server" slot, never as a dependency. Why: zero new vendors, no per-call
+metering, no repricing/lock-in risk (Composio Aug 2026 repricing; Pipedream→Workday),
+credentials stay between user and service.
+Revisit if: a needed service has no first-party or credible community MCP server.
+
+**tos-clean-signals-only** · 2026-08-29
+No LinkedIn scraping, no unofficial-API enrichment (Unipile-class), no RSS scraping
+bridges. Signals come from: Google Contacts, the user's own inbox (LinkedIn notification
+emails, signatures, event confirmations), the user's calendars, public web search,
+SEC EDGAR, and debriefs. Why: Proxycurl sued/shut down July 2026; ban risk on the user's
+own accounts; the open-source project must not ship liability.
+Revisit if: LinkedIn opens real API access.
+
+**wakeup-queue-over-digests** · 2026-08-29
+No fixed daily/weekly digest. One primitive — the wake-up queue (due date, who, why,
+context, optional draft) — carries explicit reminder asks, signal-driven nudges, and any
+standing rhythms alike. Coincident due entries are batched at delivery. Why: user
+direction; cadence-based digests are the documented abandonment driver; "remind me in a
+month" and "her birthday is Thursday" are the same object.
+Revisit if: usage shows a desire for a standing weekly review (then it's a recurring
+queue entry, not new architecture).
+
+**markdown-store-plus-index** · 2026-08-29
+People store is plain markdown files with frontmatter plus an auto-generated `index.json`.
+No database, no embeddings in v1 (design so embeddings can bolt on later). Why:
+greppable, LLM-readable, user-ownable, zero dependencies; sufficient for hundreds of
+people with an LLM in the loop.
+Revisit if: query quality degrades at scale — add local embeddings (SQLite), not a server.
+
+**gmail-first-capture** · 2026-08-29
+Gmail is the first input lane: the user's inbox is secretly the universal feed
+(voice-note self-emails, LinkedIn notifications, signatures, event confirmations).
+Phone capture = dictate (Wispr Flow) into a subject-tagged self-email. Why: one connector
+covers capture AND most v1 signals; works from any device.
+Revisit if: friction shows up in practice — the iOS-Shortcut→GitHub inbox lane is the
+designed alternative.
+
+**multiple-google-calendars** · 2026-08-29
+Calendar sync reads all of the user's Google calendars (work + personal), read-only.
+Why: the whole life drives the debrief loop, not just work; read-only keeps the blast
+radius zero.
+Revisit if: a non-Google calendar shows up — add it as another input connector.
+
+**hybrid-runtime** · 2026-08-29
+On-demand sessions (debrief, query, brief) plus scheduled background sweeps (inbox,
+calendar, signals, due wake-ups). Sweeps are quiet unless something surfaces.
+Revisit if: scheduled infra proves flaky — degrade to on-session-open sweeps.
+
+**provenance-labeling** · 2026-08-29
+Every stored fact is labeled told-by-user vs. inferred-from-public-web. Why: keeps the
+store trustworthy; web research is seeded guesswork until confirmed.
+Revisit if: never.
+
+**golden-tests-before-prompts** · 2026-08-29
+Any LLM-specified behavior (filing, signal ranking, nudge rendering) gets golden
+input→expected-output fixtures written before the prompt that implements it.
+Why: prompt-tuning needs a target; regressions need a tripwire.
+Revisit if: never.
+
+**delegation-without-gates** · 2026-08-29
+The repo runs the simplified harness: orchestration doctrine, worker/checker split,
+enforcement hooks, brief template, completion reports — but no gate system, attestation,
+or shipping pipeline yet. Why: new project; gates are earned by failures, not built on
+day one (per the Harness Core Blueprint's own staging advice).
+Revisit if: the project gains tests + CI worth gating — adopt blueprint Stage 2+ then.
