@@ -20,7 +20,7 @@ composio execute <TOOL_SLUG> -d '{...}'
 ```
 
 - `<TOOL_SLUG>` examples: `GMAIL_FETCH_EMAILS`, `GOOGLECALENDAR_EVENTS_LIST`,
-  `LINKEDIN_GET_MY_POSTS`.
+  `LINKEDIN_GET_MY_INFO`.
 - Large results are **not** returned inline — the CLI writes them to a temp JSON file
   and returns `{ "storedInFile": true, "outputFilePath": "/tmp/..." }` in place of the
   payload. Sweeps must handle both the inline-`data` shape and the file-backed shape;
