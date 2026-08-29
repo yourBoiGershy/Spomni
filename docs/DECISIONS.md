@@ -277,3 +277,21 @@ lane (beeper-personal-bridge) and inbox-derived signals (tos-clean-signals-only)
 via any aggregator.
 Revisit if: a needed lane has no first-party or credible community MCP path AND no
 local-bridge equivalent.
+
+**query-mcp-registration** · 2026-08-29
+The query MCP server (`spomni-query`, plan 08) is registered by a project-checked
+`.mcp.json` at the repo root, all paths repo-relative
+(`node --experimental-strip-types packages/query/server/src/index.ts --store data/store`):
+every checkout that merges main gets a working registration with zero per-machine
+config, and every future user gets it on clone. The store argument names the
+`data/store` convention, never a machine path — durably that symlink points at the
+private data-repo clone (git-as-sync-protocol); interim it may point at the live
+capture location until capture-store↔data-repo sync lands (plans 09/19). The legacy
+hand-added user-scope `spomni-query` entry is removed once the project registration
+reaches the user's checkouts, so exactly one registration exists. Missing derived
+artifacts (index/stats) are not a setup step: the server regenerates them into its
+cache dir (staleness-cache), leaving the store untouched. Why: reproducibility and
+code/data separation — registration is machinery and belongs in the public repo;
+store location is a per-user convention, not config (plan 18).
+Revisit if: Claude Code project-scope `.mcp.json` semantics change (cwd or approval
+model), or the cloud runtime (plan 09) needs a second registration surface.
