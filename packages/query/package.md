@@ -22,6 +22,19 @@ wrapping them is mechanical.
   `get_contact_stats`, `suggest_reachouts`. Entry point, transport seam, and empty tool
   registry are in place; store-reader and tool handlers land in later waves.
 
+- Eval suite: `evals/` — `eval-case@1` cases (`packages/core/contracts/
+  eval-case.md`) under `evals/cases/`, manifest at `evals/suite.txt`. T2
+  (`tier: agent`) cases against `packages/core/scripts/eval-run.sh`:
+  `most-overdue`, `interpretability`, `opt-out-respected` [xfail: plan-13],
+  `stated-outranks-revealed` [xfail: plan-13], `draft-never-send-read-only`.
+  The last two personalization-overlay cases run against a materialized
+  fixture directory (`evals/fixtures/overlaid-store/`, gitignored, built by
+  `evals/fixtures/build-overlaid-store.sh` from `packages/core/fixtures/
+  store` + `tests/fixtures/personalization-overlay/`) since the eval-case
+  contract's `store` field takes exactly one path and has no overlay
+  concept — see `evals/cases/opt-out-respected/README.md` for the full
+  rationale.
+
 ## Consumes
 
 - `person@^1`, `interaction@^1`, `wakeup@^1` (core)

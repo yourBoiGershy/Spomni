@@ -1,5 +1,5 @@
 ---
-schema_version: 1.0.0
+schema_version: 1.1.0
 id: <due-date>-<primary-person-slug>
 due: <YYYY-MM-DD>
 people: ["[[<slug>]]"]
@@ -7,6 +7,11 @@ why: "<the trigger, named — never bare cadence>"
 status: pending
 origin: <user-ask|signal|standing>
 source-signal:
+fired-on:
+dismiss-reason:
+acted-on:
+snooze-count: 0
+signal-type:
 ---
 
 ## Context

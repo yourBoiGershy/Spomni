@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-08-29T09:00:00Z",
+  "schema_version": "1.0.0",
+  "weights": {
+    "signal-types": {
+      "birthday": {
+        "rationale": "3 of 4 birthday nudges dismissed not-this-signal-type in 90d",
+        "updated": "2026-08-29",
+        "weight": 0.85
+      }
+    },
+    "tags": {
+      "college-friend": {
+        "rationale": "acted on 3 of 4 fired nudges",
+        "updated": "2026-08-29",
+        "weight": 1.15
+      }
+    }
+  }
+}

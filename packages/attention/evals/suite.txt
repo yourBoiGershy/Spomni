@@ -1,0 +1,3 @@
+# packages/attention/evals/suite.txt
+packages/attention/evals/cases/tier-drift-upward
+packages/attention/evals/cases/declined-proposal

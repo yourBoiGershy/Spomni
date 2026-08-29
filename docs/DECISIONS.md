@@ -250,3 +250,14 @@ never used for auto-outreach.
 Revisit if: a bridged account gets warned/banned, Beeper meters or breaks the local
 API, or an official personal-inbox API appears for any lane (move that lane off the
 bridge).
+
+**preference-provenance** · 2026-08-29
+Preferences carry provenance like facts do: `stated-by-user` vs. `observed-from-behavior`,
+labeled per entry, never mixed. Stated always outranks revealed; revealed preferences
+PROPOSE changes (a wake-up or chat prompt the user confirms) and never silently
+overwrite stated ones or store fields. All personalization state is human-readable
+files in the data dir (`profile.md`, `ranking-weights.json`), so ranking is auditable
+by reading. Why: same trust argument as provenance-labeling — behavior data is seeded
+guesswork until the user confirms it; and learning-as-data keeps the public machinery
+identical for every user (user decision, this date; design in plan 11).
+Revisit if: never (the stated>revealed ordering); the artifact set may grow.

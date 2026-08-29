@@ -107,6 +107,46 @@ else
   fail "no output captured from validate-store.sh against the corrupted store — cannot check seeded corruptions"
 fi
 
+# ---------------------------------------------------------------------------
+# assertion 4: plan-11 contract fixtures (profile.md + wakeup 1.0.0/1.1.0)
+#
+# Each entry below is a standalone mini-store under packages/core/fixtures/
+# (its own people/, interactions/, wakeups/, plus a profile.md at the store
+# root) isolating exactly one profile.md or wakeup rule from
+# packages/core/contracts/profile.md and wakeup.md@1.1.0. "valid" fixtures
+# must pass (exit 0); "invalid" fixtures must fail (exit 1).
+# ---------------------------------------------------------------------------
+
+plan11_fixtures="
+profile-valid:0:profile.md — tagged bullets in every section, birthday — all and job-change — [[slug]] opt-outs
+profile-invalid-untagged-bullet:1:profile.md — untagged Priorities bullet
+profile-invalid-malformed-optout:1:profile.md — malformed Signal opt-outs grammar
+profile-invalid-style-notes-stated:1:profile.md — stated-by-user bullet under Style notes
+wakeup-1.0.0-valid:0:wakeup schema_version 1.0.0, no 1.1.0 fields
+wakeup-1.1.0-fired-acted-on:0:wakeup 1.1.0 fired with fired-on + acted-on: true
+wakeup-1.1.0-dismissed-valid:0:wakeup 1.1.0 dismissed with dismiss-reason: not-this-signal-type
+wakeup-1.1.0-snooze-count:0:wakeup 1.1.0 with snooze-count: 2
+wakeup-1.1.0-invalid-dismissed-no-reason:1:wakeup 1.1.0 dismissed without dismiss-reason
+wakeup-1.1.0-invalid-dismissed-bad-reason:1:wakeup 1.1.0 dismissed with a dismiss-reason outside the enum
+"
+
+while IFS=':' read -r fixture_name expected_status desc; do
+  [ -z "$fixture_name" ] && continue
+  fixture_dir="$REPO_ROOT/packages/core/fixtures/$fixture_name"
+  if [ ! -d "$fixture_dir" ]; then
+    fail "fixture missing: $fixture_dir ($desc)"
+    continue
+  fi
+  fixture_output="$("$VALIDATOR" "$fixture_dir" 2>&1)"
+  fixture_status=$?
+  if [ "$fixture_status" -eq "$expected_status" ]; then
+    pass "$fixture_name exits $expected_status as expected ($desc)"
+  else
+    fail "$fixture_name exited $fixture_status (expected $expected_status) ($desc)"
+    echo "$fixture_output"
+  fi
+done <<< "$plan11_fixtures"
+
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 

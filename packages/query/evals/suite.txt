@@ -1,0 +1,6 @@
+# packages/query/evals/suite.txt — per packages/core/contracts/eval-case.md
+packages/query/evals/cases/most-overdue
+packages/query/evals/cases/interpretability
+packages/query/evals/cases/opt-out-respected
+packages/query/evals/cases/stated-outranks-revealed
+packages/query/evals/cases/draft-never-send-read-only
