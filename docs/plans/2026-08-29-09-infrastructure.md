@@ -52,8 +52,13 @@ any device ◀──(Gmail drafts, rendered repo files — plan 07)── connec
   connector is the session transport; CLI login waits on a fresh dashboard-minted
   `uak_` key and is optional until the sandbox proxy quirk resolves); env var
   `COMPOSIO_API_KEY` documented with the no-secrets-store caveat and rotation
-  guidance; the routine definition for sweeps (cadence config; must verify routines
-  carry connectors — if not, the CLI lane becomes mandatory).
+  guidance; the routine definition for sweeps (cadence config; verify whether routines
+  carry connectors). BOTH transports are firm requirements (user decision 2026-08-29):
+  the connector wherever a model drives (queries, debriefs, cloud sessions), the CLI
+  wherever code drives (deterministic sweep scripts, device-side cron/launchd) — the
+  CLI is also the degradation path when the connector/cloud lane is unavailable. The
+  local Mac's CLI session is already authenticated; every other runtime needs the
+  fresh dashboard-minted `uak_` key (`composio login --user-api-key … --org ok_…`).
 - Heartbeat/deadman: each sweep stamps `last-sweep` in the data repo; staleness > 2×
   cadence surfaces as a wake-up entry — a dead schedule announces itself.
 - git-guard repo-scoping: the machinery repo's branch/push guard must not block the
