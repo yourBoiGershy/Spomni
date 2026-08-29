@@ -3,7 +3,7 @@
 #
 # Offline test suite for the beeper-in shared library
 # (packages/connectors/beeper-in/scripts/lib.sh), per
-# docs/plans/2026-08-29-12-beeper-capture.md ("Runtime state", "Failure
+# docs/plans/2026-08-29-13-beeper-capture.md ("Runtime state", "Failure
 # posture", "Read-only enforcement"). Covers:
 #
 #   1. beeper_load_config: valid config+token, missing config.json,

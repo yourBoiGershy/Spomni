@@ -1,4 +1,4 @@
-# 12 — Beeper capture connector (`beeper-in`)
+# 13 — Beeper capture connector (`beeper-in`)
 
 **Status header:** implementation plan. Builds the personal-chat capture lane decided in
 `docs/DECISIONS.md#beeper-personal-bridge`, informed by plan 11

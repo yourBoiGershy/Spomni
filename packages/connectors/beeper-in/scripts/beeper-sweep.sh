@@ -6,7 +6,7 @@
 #   beeper-sweep.sh [--data-dir <dir>] --list-accounts
 #
 # Implements the plan's Sweep algorithm (steps 1-8), see
-# docs/plans/2026-08-29-12-beeper-capture.md:
+# docs/plans/2026-08-29-13-beeper-capture.md:
 #   1. Load config + token. Missing/empty config -> skip-disabled. No token
 #      -> skip-no-token. Both log + exit 0.
 #   2. GET /v1/info as a reachability probe; any transport failure ->

@@ -5,7 +5,7 @@ version: 0.1.0
 ## Purpose
 
 Read-only personal-chat capture: the user's own Beeper Client API (Desktop or
-headless Server, same API surface — `docs/plans/2026-08-29-12-beeper-capture.md`)
+headless Server, same API surface — `docs/plans/2026-08-29-13-beeper-capture.md`)
 polled for new messages across whichever bridged networks the user opts in, landed
 as raw capture events in `inbox/`. Per-network enablement is opt-in with nothing
 enabled by default (`docs/DECISIONS.md#beeper-personal-bridge`); the API's send
@@ -56,4 +56,4 @@ config, cursors, logs — never in the shared store).
 
 ## Built by
 
-Plan 12 (`docs/plans/2026-08-29-12-beeper-capture.md`).
+Plan 13 (`docs/plans/2026-08-29-13-beeper-capture.md`).

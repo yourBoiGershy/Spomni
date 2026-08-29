@@ -2,7 +2,7 @@
 
 Verified 2026-08-29 against a live instance + OpenAPI 5.0.0. This is the source
 this package implements from; do not re-research — see
-`docs/plans/2026-08-29-12-beeper-capture.md` for how it was gathered.
+`docs/plans/2026-08-29-13-beeper-capture.md` for how it was gathered.
 
 ## Auth
 
