@@ -23,6 +23,12 @@
 #   6. Pagination helpers against the stub + fixtures: fetch_new_messages
 #      (no-cursor single GET; cursor+hasMore loop with direction=after) and
 #      list_new_chats (repeated accountIDs= params).
+#   7. End-to-end: beeper-sweep.sh itself, run against the HTTP stub +
+#      fixtures into a real mktemp store via the real normalize-capture.sh —
+#      full run (inbox events + hints + runs.log), cursor dedup on a second
+#      run, skip-unreachable, skip-disabled, and the normalizer-quarantine
+#      partial-run path (cursor left unadvanced for the quarantined chat
+#      only).
 #
 # bash 3.2 portable (no associative arrays, no mapfile, no ${var,,}) — must
 # run under macOS's stock /bin/bash. Same pass/fail/SUMMARY style as
@@ -505,6 +511,319 @@ fi
 
 ln_chat_count="$(grep -c . "$ln_dir/result.jsonl" 2>/dev/null)"
 assert_eq "list_new_chats: emits one JSON line per chat in the fixture (2)" "$ln_chat_count" "2"
+
+# =============================================================================
+# 7. End-to-end: beeper-sweep.sh against the HTTP stub + fixtures, writing
+#    into a real mktemp store via the real normalize-capture.sh.
+# =============================================================================
+
+SWEEP_SCRIPT="$SCRIPTS_DIR/beeper-sweep.sh"
+NORMALIZE_SCRIPT="$REPO_ROOT/packages/connectors/scripts/normalize-capture.sh"
+
+if [ ! -x "$SWEEP_SCRIPT" ]; then
+  fail "e2e: beeper-sweep.sh not found/executable at $SWEEP_SCRIPT"
+elif [ ! -x "$NORMALIZE_SCRIPT" ]; then
+  fail "e2e: normalize-capture.sh not found/executable at $NORMALIZE_SCRIPT"
+else
+
+E2E_ROOT="$SANDBOX/e2e"
+mkdir -p "$E2E_ROOT"
+
+# make_beeper_config <data_dir> <store_dir_abs> <enabled_ids_space_sep> \
+#   [token] — writes config.json + token into a fresh data_dir. Empty
+# <enabled_ids_space_sep> writes enabled_account_ids: [].
+make_beeper_config() {
+  data_dir="$1"
+  store_dir_abs="$2"
+  ids="$3"
+  token="${4:-e2e-test-token}"
+
+  mkdir -p "$data_dir"
+
+  ids_json="[]"
+  if [ -n "$ids" ]; then
+    ids_json="$(printf '%s\n' $ids | jq -R . | jq -sc .)"
+  fi
+
+  cat > "$data_dir/config.json" <<EOF
+{
+  "base_url": "http://127.0.0.1:23373",
+  "store_dir": "$store_dir_abs",
+  "enabled_account_ids": $ids_json,
+  "max_chats_per_run": 50,
+  "max_pages_per_chat": 10
+}
+EOF
+
+  if [ -n "$token" ]; then
+    printf '%s\n' "$token" > "$data_dir/token"
+  fi
+}
+
+# --- route stub: dispatches by request path to fixture files named by env
+# vars, and logs every call (one path per line) to $STUB_LOG. ---
+route_stub="$E2E_ROOT/route-stub.sh"
+cat > "$route_stub" <<'EOF'
+#!/bin/sh
+path="$1"
+[ -n "${STUB_LOG:-}" ] && echo "$path" >> "$STUB_LOG"
+case "$path" in
+  /v1/info)
+    cat "$STUB_INFO"
+    ;;
+  /v1/accounts)
+    cat "$STUB_ACCOUNTS"
+    ;;
+  /v1/chats\?*)
+    cat "$STUB_CHATS"
+    ;;
+  */messages\?cursor=*)
+    cat "$STUB_MSG_CURSOR"
+    ;;
+  */messages)
+    cat "$STUB_MSG_FIRST"
+    ;;
+  *)
+    echo "e2e route-stub: unmatched path: $path" >&2
+    exit 1
+    ;;
+esac
+EOF
+chmod +x "$route_stub"
+
+info_body="$E2E_ROOT/info-body.json"
+printf '{"ok":true}' > "$info_body"
+
+# =============================================================================
+# 7a. Full run: one enabled account matching fixtures; two fixture chats ->
+#     two inbox events; runs.log ok line.
+# =============================================================================
+
+e2e1_data="$E2E_ROOT/run1/data"
+e2e1_store="$E2E_ROOT/run1/store"
+mkdir -p "$e2e1_store"
+make_beeper_config "$e2e1_data" "$e2e1_store" "matrix local-whatsapp_ba_test1"
+
+e2e1_log="$E2E_ROOT/run1/stub-argv.log"
+
+e2e1_rc=0
+(
+  export STUB_LOG="$e2e1_log"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$e2e1_data"
+) > "$E2E_ROOT/run1/stdout.log" 2>"$E2E_ROOT/run1/stderr.log"
+e2e1_rc=$?
+
+assert_eq "e2e full run: sweep exits 0" "$e2e1_rc" "0"
+
+e2e1_inbox_count="$(find "$e2e1_store/inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
+assert_eq "e2e full run: exactly one inbox event per fixture chat (2)" "$e2e1_inbox_count" "2"
+
+e2e1_source_count="$(grep -l '^source: beeper$' "$e2e1_store"/inbox/*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "e2e full run: every event has source: beeper" "$e2e1_source_count" "2"
+
+e2e1_type_count="$(grep -l '^type: other$' "$e2e1_store"/inbox/*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "e2e full run: every event has type: other" "$e2e1_type_count" "2"
+
+if grep -rq 'Bea Sample' "$e2e1_store"/inbox/*.md 2>/dev/null; then
+  pass "e2e full run: hints include a non-self sender (Bea Sample)"
+else
+  fail "e2e full run: expected hint 'Bea Sample' not found in any inbox event"
+fi
+
+if grep -rlq 'Sample Project Group\|Bea Sample' "$e2e1_store"/inbox/*.md 2>/dev/null; then
+  pass "e2e full run: hints include a chat title"
+else
+  fail "e2e full run: expected a chat title among the hints"
+fi
+
+if grep -rq 'hey, are we still on for coffee Friday?' "$e2e1_store"/inbox/*.md 2>/dev/null; then
+  pass "e2e full run: body contains a fixture message verbatim"
+else
+  fail "e2e full run: fixture message text not found verbatim in any inbox event"
+fi
+
+e2e1_runlog_last="$(tail -n1 "$e2e1_data/runs.log" 2>/dev/null)"
+if printf '%s' "$e2e1_runlog_last" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z ok chats=2 events=2 quarantined=0$'; then
+  pass "e2e full run: runs.log ends with ok chats=2 events=2 quarantined=0"
+else
+  fail "e2e full run: unexpected runs.log last line: [$e2e1_runlog_last]"
+fi
+
+# =============================================================================
+# 7b. Cursor dedup: run the same data/store dirs again; stub now serves
+#     messages-empty.json for cursor-bearing requests -> no new events.
+# =============================================================================
+
+e2e2_log="$E2E_ROOT/run1/stub-argv-run2.log"
+
+(
+  export STUB_LOG="$e2e2_log"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$e2e1_data"
+) > "$E2E_ROOT/run1/stdout-run2.log" 2>"$E2E_ROOT/run1/stderr-run2.log"
+e2e2_rc=$?
+
+assert_eq "e2e cursor dedup: second run exits 0" "$e2e2_rc" "0"
+
+e2e2_inbox_count="$(find "$e2e1_store/inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
+assert_eq "e2e cursor dedup: no new inbox events (still 2)" "$e2e2_inbox_count" "2"
+
+e2e2_runlog_lines="$(grep -c . "$e2e1_data/runs.log" 2>/dev/null)"
+assert_eq "e2e cursor dedup: runs.log gains a second line" "$e2e2_runlog_lines" "2"
+
+if printf '%s\n' "$(grep -c 'cursor=' "$e2e2_log" 2>/dev/null)" | grep -qv '^0$'; then
+  pass "e2e cursor dedup: second run requested cursor-bearing message pages"
+else
+  fail "e2e cursor dedup: expected at least one cursor-bearing request on the second run"
+fi
+
+# =============================================================================
+# 7c. Unreachable: stub exits 7 (curl-style connect failure) on /v1/info.
+# =============================================================================
+
+e2e3_data="$E2E_ROOT/run3/data"
+e2e3_store="$E2E_ROOT/run3/store"
+mkdir -p "$e2e3_store"
+make_beeper_config "$e2e3_data" "$e2e3_store" "matrix local-whatsapp_ba_test1"
+
+unreachable_stub="$E2E_ROOT/run3/unreachable-stub.sh"
+cat > "$unreachable_stub" <<'EOF'
+#!/bin/sh
+exit 7
+EOF
+chmod +x "$unreachable_stub"
+
+(
+  BEEPER_HTTP_STUB="$unreachable_stub" "$SWEEP_SCRIPT" --data-dir "$e2e3_data"
+) > "$E2E_ROOT/run3/stdout.log" 2>"$E2E_ROOT/run3/stderr.log"
+e2e3_rc=$?
+
+assert_eq "e2e unreachable: sweep exits 0" "$e2e3_rc" "0"
+
+e2e3_runlog_last="$(tail -n1 "$e2e3_data/runs.log" 2>/dev/null)"
+if printf '%s' "$e2e3_runlog_last" | grep -Eq 'skip-unreachable chats=0 events=0 quarantined=0$'; then
+  pass "e2e unreachable: runs.log logs skip-unreachable"
+else
+  fail "e2e unreachable: unexpected runs.log last line: [$e2e3_runlog_last]"
+fi
+
+e2e3_inbox_count="$(find "$e2e3_store/inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
+assert_eq "e2e unreachable: inbox stays empty" "$e2e3_inbox_count" "0"
+
+# =============================================================================
+# 7d. Disabled: empty enabled_account_ids -> skip-disabled, no HTTP calls.
+# =============================================================================
+
+e2e4_data="$E2E_ROOT/run4/data"
+e2e4_store="$E2E_ROOT/run4/store"
+mkdir -p "$e2e4_store"
+make_beeper_config "$e2e4_data" "$e2e4_store" ""
+
+e2e4_log="$E2E_ROOT/run4/stub-argv.log"
+
+(
+  export STUB_LOG="$e2e4_log"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$e2e4_data"
+) > "$E2E_ROOT/run4/stdout.log" 2>"$E2E_ROOT/run4/stderr.log"
+e2e4_rc=$?
+
+assert_eq "e2e disabled: sweep exits 0" "$e2e4_rc" "0"
+
+e2e4_runlog_last="$(tail -n1 "$e2e4_data/runs.log" 2>/dev/null)"
+if printf '%s' "$e2e4_runlog_last" | grep -Eq 'skip-disabled chats=0 events=0 quarantined=0$'; then
+  pass "e2e disabled: runs.log logs skip-disabled"
+else
+  fail "e2e disabled: unexpected runs.log last line: [$e2e4_runlog_last]"
+fi
+
+e2e4_stub_calls="$(grep -c . "$e2e4_log" 2>/dev/null)"
+[ -z "$e2e4_stub_calls" ] && e2e4_stub_calls=0
+assert_eq "e2e disabled: no HTTP calls recorded by the stub" "$e2e4_stub_calls" "0"
+
+# =============================================================================
+# 7e. Normalizer failure path: force a deterministic id collision so the
+#     second chat processed is quarantined by normalize-capture.sh while the
+#     first succeeds. Both chats share the same captured_at (fixed per run)
+#     and --source beeper, so the only variable in the normalizer's default
+#     id is its random hex suffix; a fake `openssl` ahead of the real one on
+#     PATH pins that suffix to a constant, making the collision deterministic
+#     (same technique as the existing dup-id case in run-capture-tests.sh,
+#     just driven from the sweep side instead of an explicit --id).
+# =============================================================================
+
+e2e5_data="$E2E_ROOT/run5/data"
+e2e5_store="$E2E_ROOT/run5/store"
+mkdir -p "$e2e5_store"
+make_beeper_config "$e2e5_data" "$e2e5_store" "matrix local-whatsapp_ba_test1"
+
+fake_openssl_dir="$E2E_ROOT/run5/fake-openssl-bin"
+mkdir -p "$fake_openssl_dir"
+cat > "$fake_openssl_dir/openssl" <<'EOF'
+#!/bin/sh
+echo "aaaa"
+EOF
+chmod +x "$fake_openssl_dir/openssl"
+
+e2e5_log="$E2E_ROOT/run5/stub-argv.log"
+
+(
+  export PATH="$fake_openssl_dir:$PATH"
+  export STUB_LOG="$e2e5_log"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$e2e5_data"
+) > "$E2E_ROOT/run5/stdout.log" 2>"$E2E_ROOT/run5/stderr.log"
+e2e5_rc=$?
+
+assert_eq "e2e normalizer failure: sweep exits 0" "$e2e5_rc" "0"
+
+e2e5_inbox_count="$(find "$e2e5_store/inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
+assert_eq "e2e normalizer failure: exactly one chat's event lands in inbox" "$e2e5_inbox_count" "1"
+
+e2e5_quarantine_count="$(find "$e2e5_store/inbox/quarantine" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
+assert_eq "e2e normalizer failure: exactly one chat is quarantined" "$e2e5_quarantine_count" "1"
+
+e2e5_runlog_last="$(tail -n1 "$e2e5_data/runs.log" 2>/dev/null)"
+if printf '%s' "$e2e5_runlog_last" | grep -Eq 'partial chats=2 events=1 quarantined=1$'; then
+  pass "e2e normalizer failure: runs.log logs partial chats=2 events=1 quarantined=1"
+else
+  fail "e2e normalizer failure: unexpected runs.log last line: [$e2e5_runlog_last]"
+fi
+
+e2e5_cursors="$e2e5_data/cursors.tsv"
+e2e5_cursor_lines="$(grep -c . "$e2e5_cursors" 2>/dev/null)"
+assert_eq "e2e normalizer failure: only the succeeding chat's cursor is recorded" "$e2e5_cursor_lines" "1"
+
+if grep -q '^!sample-single-chat:example.org' "$e2e5_cursors" 2>/dev/null; then
+  pass "e2e normalizer failure: the succeeding (first-processed) chat's cursor advanced"
+else
+  fail "e2e normalizer failure: expected matrix chat's cursor entry missing from cursors.tsv"
+fi
+
+if grep -q '^local-whatsapp_ba_test1_group-sample' "$e2e5_cursors" 2>/dev/null; then
+  fail "e2e normalizer failure: quarantined chat's cursor was advanced (must not be)"
+else
+  pass "e2e normalizer failure: quarantined chat's cursor was NOT advanced"
+fi
+
+fi # SWEEP_SCRIPT / NORMALIZE_SCRIPT present
 
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
