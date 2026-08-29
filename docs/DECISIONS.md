@@ -261,3 +261,19 @@ by reading. Why: same trust argument as provenance-labeling — behavior data is
 guesswork until the user confirms it; and learning-as-data keeps the public machinery
 identical for every user (user decision, this date; design in plan 11).
 Revisit if: never (the stated>revealed ordering); the artifact set may grow.
+
+**composio-retired** · 2026-08-29
+Supersedes composio-hub and composio-dual-transport; reinstates the spirit of
+first-party-mcp-only for the Google lanes. All Composio dependencies are dropped:
+`connectors/composio-in` retires, no new Composio lanes, COMPOSIO_API_KEY leaves every
+environment. Gmail and Calendar access moves to the first-party claude.ai connectors
+(Gmail + Google Calendar), driven directly by Claude in-session — the pipes change, the
+store does not. Why: user decision this date — Composio proved too B2B for a personal
+assistant (see 2026-08-29 rethink), its repricing/retention posture was already an
+accepted-cost list, and the first-party connectors now cover the two lanes actually in
+use. The plan-14 import standard (capture-event 1.2.0) STANDS — it is transport-agnostic;
+new lanes must emit conformant events. LinkedIn data continues via the Beeper bridge
+lane (beeper-personal-bridge) and inbox-derived signals (tos-clean-signals-only), not
+via any aggregator.
+Revisit if: a needed lane has no first-party or credible community MCP path AND no
+local-bridge equivalent.
