@@ -69,4 +69,4 @@ this package only guarantees the sweep is invokable as a single skill run.
 
 ## Built by
 
-Plan 17 (`docs/plans/2026-08-29-17-composio-retirement-direct-google-lanes.md`).
+Plan 17 (`docs/plans/`, 2026-08-29 direct-Google-lanes plan).

@@ -9,8 +9,8 @@
 #
 # Prints exactly one of: voice-note / linkedin-notification / email
 #
-# Rules (carried over unchanged from the retired composio-in typing logic,
-# per docs/plans/2026-08-29-17-composio-retirement-direct-google-lanes.md):
+# Rules (Plan 17's per-lane typing logic, `docs/plans/`, 2026-08-29
+# direct-Google-lanes plan):
 #   1. Subject contains the literal, case-sensitive substring "[ra]"
 #      -> voice-note (highest precedence — wins even if the From address is
 #      also a linkedin.com domain).

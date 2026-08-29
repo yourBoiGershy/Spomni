@@ -75,7 +75,7 @@ form:
 
 ```markdown
 ---
-schema_version: 1.1.0
+schema_version: 1.2.0
 id: 20260907T090000Z-calendar-in-calendar-7c1e
 source: calendar-in/calendar
 captured_at: 2026-09-07T09:00:00Z

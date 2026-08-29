@@ -11,7 +11,7 @@ part of the real tool's response shape and must not be treated as one.
 They exist so `gmail-sweep`'s parsing logic and
 `packages/connectors/tests/run-capture-tests.sh` can be developed and run
 offline before Gmail authentication happens in-session
-(`docs/plans/2026-08-29-17-composio-retirement-direct-google-lanes.md`,
+(Plan 17, `docs/plans/`, 2026-08-29 direct-Google-lanes plan,
 Phase 3 / U10).
 
 ## What Phase 3 (U10) must confirm and correct here

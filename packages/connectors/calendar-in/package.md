@@ -19,8 +19,8 @@ middle."
 
 Sweeps call the `mcp__claude_ai_Google_Calendar__*` tool set exposed to the
 session once the user has linked the connector. Tool names verified
-in-session 2026-08-29 (see `docs/plans/2026-08-29-17-composio-retirement-
-direct-google-lanes.md`, "Transport facts").
+in-session 2026-08-29 (see Plan 17, the 2026-08-29 direct-Google-lanes plan
+under `docs/plans/`, "Transport facts").
 
 **Allowed (read-only) tools — the only ones this lane ever calls:**
 
@@ -70,4 +70,4 @@ store).
 
 ## Built by
 
-Plan 17 (`docs/plans/2026-08-29-17-composio-retirement-direct-google-lanes.md`).
+Plan 17 (`docs/plans/`, 2026-08-29 direct-Google-lanes plan).
