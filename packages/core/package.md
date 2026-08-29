@@ -1,6 +1,6 @@
 # package: core
 
-version: 0.2.0
+version: 0.3.0
 
 ## Purpose
 
@@ -13,9 +13,14 @@ nothing.
 
 - Contracts (semver'd, each with a `schema_version`): `contracts/capture-event.md`,
   `contracts/person.md`, `contracts/interaction.md`, `contracts/signal-event.md`,
-  `contracts/wakeup.md`, `contracts/connector-interface.md`, `contracts/derived-index.md`
-  (index.json + stats.json)
-- Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`
+  `contracts/wakeup.md` (1.1.0 — `fired-on`/`dismiss-reason`/`acted-on`/
+  `snooze-count` additions, per plan 11), `contracts/connector-interface.md`,
+  `contracts/derived-index.md` (index.json + stats.json), `contracts/profile.md`
+  (`data/store/profile.md`, the stated-preference singleton, per plan 11),
+  `contracts/ranking-weights.md` (`data/store/ranking-weights.json`, signal-type
+  and tag calibration weights, per plan 11)
+- Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
+  `templates/profile.md`
 - Store scripts: `scripts/build-index.sh` (people/ → index.json),
   `scripts/build-stats.sh` (people/ + interactions/ → stats.json, per
   `contracts/derived-index.md`), `scripts/validate-store.sh`, `scripts/wakeup-add.sh`
@@ -39,4 +44,7 @@ table in docs/PROJECT-CONTEXT.md for who writes into each at runtime.
 Plan 01 (docs/plans/2026-08-29-01-contracts-and-store.md). `contracts/derived-index.md`
 (stats.json half) and the forward-declared `scripts/build-stats.sh` /
 `scripts/gen-scale-store.sh` by plan 08
-(docs/plans/2026-08-29-08-chat-mcp-query-layer.md).
+(docs/plans/2026-08-29-08-chat-mcp-query-layer.md). `contracts/profile.md`,
+`contracts/ranking-weights.md`, `templates/profile.md`, and the `wakeup.md`
+1.1.0 bump by plan 11
+(docs/plans/2026-08-29-11-preference-personalization.md).
