@@ -1,4 +1,4 @@
-# Plan 08: Infrastructure — sync, hub runtime, egress hygiene
+# Plan 09: Infrastructure — sync, hub runtime, egress hygiene
 Status: Ready
 Package: core (store-sync script) + harness (`.claude/hooks/` guard) + docs; integrates attention's sweep (06)
 Depends-on: 01; integrates 06's sweep entry point; constrains the mcp stream's remote surface
