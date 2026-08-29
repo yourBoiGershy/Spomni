@@ -50,7 +50,7 @@ packages/<pkg>/evals/cases/<name>/
 | `budget-usd` | number | no | Expected per-case `total_cost_usd`, advisory only — not enforced per-case, but summed by `eval-suite.sh` against `RA_EVAL_MAX_COST_USD`. |
 | `xfail` | string | no | `"<reason> — <flip condition>"`. Marks the case as expected-to-fail until the named integration lands. See xfail discipline below. |
 | `runnable-when` | string | no | A plan number (e.g. `03`) — the case exists now but is not yet executable because the code it exercises is unbuilt. Runners report `SKIP` with reason, never silently omit it. |
-| `expected` | string | T3 only | Repo-relative path to the expected/ store this case's `graders/` diff against. **Never** a path under `data/`. |
+| `expected` | string | T3 only | Repo-relative path to the expected/ store this case's `graders/` diff against. **Never** a path under `data/`. If a fixture colocates an `expected/` (or `graders/`) subdirectory inside its `store` path, `eval-run-skill.sh` excludes it from the copy handed to the evaluated agent — the golden artifacts must never be readable from inside the workspace being graded. |
 
 ### Body
 

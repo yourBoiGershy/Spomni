@@ -6,12 +6,25 @@
 #
 # A T3 case grades a *skill* run: the case's `store` (usually its own
 # before/ dir, or another case's before/ it references) is copied into a
-# fresh temp cwd, a headless `claude -p` invocation works on that copy with
+# fresh temp cwd — excluding any `expected/` or `graders/` subdirectory the
+# fixture happens to colocate with the store, so the golden answer never
+# leaks into the workspace the agent is evaluated in — a headless `claude
+# -p` invocation works on that copy with
 # NO mcp-config at all (T3 needs no MCP server — the store is plain files in
 # cwd), and the case's graders/ then judge the worked copy. Two built-in
 # graders are exported for cases to call: RA_GRADER_DIFF (recursive byte
 # diff of the worked store vs expected/) and RA_GRADER_ASKED (the skill
 # asked a clarifying question instead of writing anything).
+#
+# The invocation runs with `--permission-mode bypassPermissions`: the temp
+# cwd is a hermetic throwaway copy of the fixture (never the real store, per
+# the PII refusal below), so there is nothing to protect the skill from
+# writing to — without this, headless `-p` runs deny every Write/Bash tool
+# call by default (no TTY to approve them), so a skill that must actually
+# create files (e.g. a proposal wake-up) silently produces nothing and the
+# transcript just says it's "awaiting permission". Skills that correctly
+# produce zero writes (e.g. a declined-proposal case) are unaffected either
+# way.
 #
 # Env knobs:
 #   RA_EVAL_FORCE=1        run a case even if it declares `runnable-when`.
@@ -166,7 +179,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cp -R "$STORE_PATH" "$TMP_DIR/store"
+# Copy the store fixture into the workspace, but never the golden
+# `expected/` (or a sibling `graders/`) if either happens to live inside
+# the fixture dir itself — some fixtures colocate their golden artifacts
+# next to the input store (e.g. scheduling-intent/clear-intent/expected/),
+# and copying that in would hand the evaluated agent the answer key.
+mkdir -p "$TMP_DIR/store"
+(
+  cd "$STORE_PATH" && find . -mindepth 1 -maxdepth 1 \
+    ! -name expected ! -name graders \
+    -exec cp -R {} "$TMP_DIR/store/" \;
+)
 
 RESULT_JSON="$TMP_DIR/result.json"
 
@@ -246,7 +269,7 @@ export RA_EVAL_BEFORE_DIR="$STORE_PATH"
 
 if [ "${RA_EVAL_DRY_RUN:-0}" = "1" ]; then
   echo "DRY RUN (cwd=${TMP_DIR}):"
-  echo "claude -p <prompt body, $(printf '%s' "$PROMPT_BODY" | wc -c | tr -d ' ') bytes> --strict-mcp-config --max-turns ${MAX_TURNS} --model ${MODEL} --output-format json > ${RESULT_JSON}"
+  echo "claude -p <prompt body, $(printf '%s' "$PROMPT_BODY" | wc -c | tr -d ' ') bytes> --strict-mcp-config --permission-mode bypassPermissions --max-turns ${MAX_TURNS} --model ${MODEL} --output-format json > ${RESULT_JSON}"
   echo "RESULT SKIP case=${CASE_NAME} reason=dry-run"
   exit 0
 fi
@@ -254,7 +277,7 @@ fi
 TIMEOUT_SECS="${RA_EVAL_TIMEOUT_SECS:-300}"
 
 (
-  cd "$TMP_DIR" && claude -p "$PROMPT_BODY" --strict-mcp-config --max-turns "$MAX_TURNS" --model "$MODEL" --output-format json > "$RESULT_JSON" 2> "$TMP_DIR/stderr.log"
+  cd "$TMP_DIR" && claude -p "$PROMPT_BODY" --strict-mcp-config --permission-mode bypassPermissions --max-turns "$MAX_TURNS" --model "$MODEL" --output-format json > "$RESULT_JSON" 2> "$TMP_DIR/stderr.log"
 ) &
 CLAUDE_PID=$!
 

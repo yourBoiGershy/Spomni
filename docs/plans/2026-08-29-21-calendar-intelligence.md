@@ -85,7 +85,10 @@ frontmatter fields; every 1.1.0 file remains valid (missing `kind` = `nudge`):
   `already-handled`, `not-this-person` all sensible); no new dismiss-reason
   values. The dismissed wakeup itself is the record (tier-drift precedent):
   no retry, no new artifact. Re-proposal suppression: 30 days per
-  (person, `signal-type: scheduling-intent`) pair after a dismissal.
+  (person, `signal-type: scheduling-intent`) pair after a dismissal —
+  checked BEFORE signal-event emission, so a suppressed intent is total
+  silence (no signal event, no promotion, no artifact), matching the
+  declined-proposal fixture.
 - `wakeup-add.sh` gains optional flags: `--kind event-proposal`,
   `--event-title`, `--event-start`, `--event-end`, `--event-attendee <slug>`
   (repeatable), `--event-location`; validation requires
