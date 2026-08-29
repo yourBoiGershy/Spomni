@@ -1,6 +1,6 @@
 # Contract: eval case
 
-`schema_version: 1.1.0`
+`schema_version: 1.2.0`
 
 The shared format every package authors quality-eval cases in, so one set of
 runner scripts (owned by `packages/core`) can execute cases from any package
@@ -117,6 +117,28 @@ safe because both runners (`eval-run.sh`, `eval-run-skill.sh`) mktemp
 their own worked directory and copy the fixture store before touching
 it, so concurrent cases never share mutable state.
 
+### State file (`.last-run.tsv`)
+
+After every non-dry-run invocation, `eval-suite.sh` writes/updates a
+`.last-run.tsv` sidecar next to each manifest it read
+(`<manifest-dir>/.last-run.tsv`), one row per case that manifest
+contributed this run: `<case-rel-path>\t<OUTCOME>\t<iso8601-timestamp>`.
+It is machine-maintained state, not source — gitignored, never hand-edited.
+
+- A **full run** of a manifest (no `RA_EVAL_SMOKE`/`RA_EVAL_RERUN_FAILED`
+  filtering, or filtering that happens to still include every one of that
+  manifest's lines) rewrites that manifest's state file wholesale.
+- A **filtered run** (smoke and/or rerun-failed actually excluded some
+  lines) updates only the rows for cases it actually dispatched, leaving
+  every other row in the file untouched.
+- A case skipped by the cost cap (`reason=cost-cap`) is not evidence of
+  anything: it never overwrites its previous recorded row, and if it has no
+  previous recorded row either, no row is written for it.
+- `RA_EVAL_DRY_RUN=1` never touches state files — dry-run records nothing.
+
+`RA_EVAL_RERUN_FAILED=1` reads this file back to decide which cases to
+re-dispatch (see the Environment variables table below).
+
 ## Result-line vocabulary
 
 Every case run emits exactly one machine-parseable result line. The
@@ -169,6 +191,7 @@ noted default.
 | `RA_EVAL_MAX_COST_USD` | `eval-suite.sh` | Suite-wide cost cap in USD. Checked between waves (see `RA_EVAL_PARALLEL`); once the running total exceeds it, not-yet-dispatched cases are marked `RESULT SKIP reason=cost-cap` without running — up to one full wave of already in-flight cases may complete past the cap before it's checked. Default `2.00`. |
 | `RA_EVAL_PARALLEL` | `eval-suite.sh` | Number of cases dispatched concurrently per wave. Default `4`; `1` reproduces the original serial per-case dispatch. |
 | `RA_EVAL_SMOKE` | `eval-suite.sh` | Set to `1` to run only manifest lines carrying an inline trailing `# smoke` tag. A manifest with zero tagged lines prints a `SUITE NOTE:` and is skipped; if every manifest yields zero smoke lines the suite exits `2`. |
+| `RA_EVAL_RERUN_FAILED` | `eval-suite.sh` | Set to `1` to filter each manifest's case lines down to only those whose last recorded outcome (in that manifest's `.last-run.tsv` sidecar — see State file below) was `FAIL`, `ERROR`, or `XPASS`, plus any case with no recorded outcome yet (never run before — included, not silently skipped). Composes with `RA_EVAL_SMOKE` as an intersection. A manifest with no `.last-run.tsv` yet has its filter skipped entirely (all its cases run) and gets a `SUITE NOTE:`. If filtering leaves zero cases across every manifest, the suite prints `SUITE NOTE: nothing to re-run — last recorded run has no failures` and exits `0` (a success state, not the zero-cases `exit 2`). |
 | `RA_EVAL_RUNNER_AGENT` / `RA_EVAL_RUNNER_SKILL` | `eval-suite.sh` | Test hooks: absolute paths overriding the `eval-run.sh` / `eval-run-skill.sh` runner script paths. Default unchanged. |
 | `RA_EVAL_TIMEOUT_SECS` | `eval-run.sh`, `eval-run-skill.sh` | Wall-clock guard per case (backgrounded sleep-and-kill, no `timeout(1)`). Default `300`; `eval-judge.sh` defaults to `120`. |
 | `RA_EVAL_DRY_RUN` | `eval-run.sh`, `eval-run-skill.sh` | Set to `1` to print the `claude` invocation instead of running it, and emit `RESULT SKIP case=<name> reason=dry-run` in place of an actual result. |

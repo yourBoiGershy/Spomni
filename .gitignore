@@ -4,3 +4,7 @@
 data/*
 !data/README.md
 .DS_Store
+
+# eval-suite.sh run state (per-manifest last-outcomes sidecar; see
+# packages/core/scripts/eval-suite.sh and packages/core/contracts/eval-case.md)
+.last-run.tsv

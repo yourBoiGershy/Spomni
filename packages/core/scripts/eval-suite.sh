@@ -63,6 +63,38 @@
 #                          and continues (silence is never valid); if every
 #                          manifest yields zero smoke lines, the suite exits
 #                          2 like the existing zero-cases path.
+#   RA_EVAL_RERUN_FAILED=1 filter every manifest's case lines down to only
+#                          those cases whose most recent recorded outcome
+#                          (in <manifest-dir>/.last-run.tsv, see "State
+#                          file" below) was FAIL, ERROR, or XPASS — plus any
+#                          case with no recorded outcome at all (never run
+#                          before, so it can't be silently skipped).
+#                          Composes with RA_EVAL_SMOKE as an intersection
+#                          (both filters apply). If a manifest has no
+#                          .last-run.tsv yet, that manifest's filter is
+#                          skipped entirely (all its cases run) and a
+#                          `SUITE NOTE:` names it — a missing state file
+#                          fails open to a full run, never to silently
+#                          running nothing. If, after filtering, zero cases
+#                          remain across every manifest, the suite prints
+#                          `SUITE NOTE: nothing to re-run — last recorded
+#                          run has no failures` and exits 0 (a success
+#                          state, distinct from the empty-manifest exit-2
+#                          error below).
+#
+# State file (<manifest-dir>/.last-run.tsv): after every non-dry-run
+# invocation, eval-suite.sh records each dispatched case's outcome next to
+# its manifest, one row per case: `<case-rel-path><TAB><OUTCOME><TAB>
+# <iso8601-timestamp>`. A full run (no RA_EVAL_SMOKE, no
+# RA_EVAL_RERUN_FAILED, or one that happens to include every one of that
+# manifest's lines anyway) rewrites that manifest's whole state file; a
+# filtered run (smoke and/or rerun-failed actually excluded some lines)
+# updates only the rows for cases it actually dispatched, leaving every
+# other row untouched. A case skipped by the cost cap (`reason=cost-cap`)
+# is not evidence of anything and never overwrites its previous recorded
+# outcome — if it has no previous recorded outcome either, no row is
+# written for it at all. RA_EVAL_DRY_RUN=1 never touches state files
+# (dry-run records nothing).
 #
 # Test hooks (override the runner script paths; default unchanged):
 #   RA_EVAL_RUNNER_AGENT   absolute path replacing eval-run.sh.
@@ -78,7 +110,9 @@
 #
 # Exit codes:
 #   0  fail=0 AND xpass=0 AND error=0 (SKIPs, including cost-cap SKIPs,
-#      never fail the suite on their own)
+#      never fail the suite on their own); also the "nothing to re-run"
+#      state under RA_EVAL_RERUN_FAILED=1 (see above) — a success state,
+#      not the zero-cases error below.
 #   1  fail>0 OR xpass>0 OR error>0
 #   2  a named manifest was not found, or every manifest resolved to zero
 #      runnable case lines (silence about a broken manifest is never a
@@ -98,6 +132,8 @@ RUN_SKILL="${RA_EVAL_RUNNER_SKILL:-$SCRIPT_DIR/eval-run-skill.sh}"
 MAX_COST_USD="${RA_EVAL_MAX_COST_USD:-2.00}"
 PARALLEL="${RA_EVAL_PARALLEL:-4}"
 SMOKE_ONLY="${RA_EVAL_SMOKE:-0}"
+RERUN_FAILED="${RA_EVAL_RERUN_FAILED:-0}"
+DRY_RUN="${RA_EVAL_DRY_RUN:-0}"
 
 # ---------------------------------------------------------------------------
 # Manifest resolution
@@ -112,10 +148,19 @@ else
 fi
 
 CASES_FILE="$(mktemp "${TMPDIR:-/tmp}/ra-eval-suite-cases.XXXXXX")"
+CASE_MANIFEST_FILE="$(mktemp "${TMPDIR:-/tmp}/ra-eval-suite-case-manifests.XXXXXX")"
 cleanup_cases_file() {
-  rm -f "$CASES_FILE"
+  rm -f "$CASES_FILE" "$CASE_MANIFEST_FILE"
 }
 trap cleanup_cases_file EXIT
+
+# Per-manifest bookkeeping (parallel indexed arrays, bash 3.2-safe) used
+# both to decide the RA_EVAL_RERUN_FAILED filter and, later, whether a
+# manifest's .last-run.tsv gets a wholesale rewrite or a partial merge.
+MANIFEST_REL_LIST=()
+MANIFEST_STATE_PATH=()
+MANIFEST_FULL_COUNT=()
+MANIFEST_INCLUDED_COUNT=()
 
 TOTAL_LINES=0
 for m in $MANIFEST_ARGS; do
@@ -129,12 +174,25 @@ for m in $MANIFEST_ARGS; do
     exit 2
   fi
 
+  MANIFEST_DIR="$(cd "$(dirname "$MANIFEST_PATH")" && pwd)"
+  STATE_PATH="$MANIFEST_DIR/.last-run.tsv"
+
+  MANIFEST_REL_LIST+=("$m")
+  MANIFEST_STATE_PATH+=("$STATE_PATH")
+
+  RERUN_STATE_MISSING=0
+  if [ "$RERUN_FAILED" = "1" ] && [ ! -f "$STATE_PATH" ]; then
+    RERUN_STATE_MISSING=1
+    echo "SUITE NOTE: RA_EVAL_RERUN_FAILED=1 but no recorded run state for manifest: ${m} (expected ${STATE_PATH}) — running all its cases" >&2
+  fi
+
   # Per line: strip everything from the first '#' onward (this handles
   # both full-line comments, whose stripped remainder is blank and thus
   # dropped below, and an inline trailing `# smoke` tag on an otherwise
   # live case line), trim surrounding whitespace, THEN treat the tag text
   # (if any) as the smoke marker.
   MANIFEST_LINE_COUNT=0
+  MANIFEST_FULL_LINE_COUNT=0
   while IFS= read -r raw_line || [ -n "$raw_line" ]; do
     case "$raw_line" in
       *'#'*)
@@ -150,16 +208,30 @@ for m in $MANIFEST_ARGS; do
     path_part="$(printf '%s' "$path_part" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
     [ -n "$path_part" ] || continue
 
+    MANIFEST_FULL_LINE_COUNT=$((MANIFEST_FULL_LINE_COUNT + 1))
+
     tag_trimmed="$(printf '%s' "$tag_part" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 
     if [ "$SMOKE_ONLY" = "1" ] && [ "$tag_trimmed" != "smoke" ]; then
       continue
     fi
 
+    if [ "$RERUN_FAILED" = "1" ] && [ "$RERUN_STATE_MISSING" -eq 0 ]; then
+      prev_outcome="$(awk -F'\t' -v p="$path_part" '$1==p{print $2; exit}' "$STATE_PATH")"
+      case "$prev_outcome" in
+        FAIL|ERROR|XPASS|'') : ;;   # last FAIL/ERROR/XPASS, or never recorded -> include
+        *) continue ;;              # PASS/XFAIL/SKIP -> already green (or not a failure); skip
+      esac
+    fi
+
     printf '%s\n' "$path_part" >> "$CASES_FILE"
+    printf '%s\n' "$m" >> "$CASE_MANIFEST_FILE"
     MANIFEST_LINE_COUNT=$((MANIFEST_LINE_COUNT + 1))
     TOTAL_LINES=$((TOTAL_LINES + 1))
   done < "$MANIFEST_PATH"
+
+  MANIFEST_INCLUDED_COUNT+=("$MANIFEST_LINE_COUNT")
+  MANIFEST_FULL_COUNT+=("$MANIFEST_FULL_LINE_COUNT")
 
   if [ "$SMOKE_ONLY" = "1" ] && [ "$MANIFEST_LINE_COUNT" -eq 0 ]; then
     echo "SUITE NOTE: no smoke-tagged (# smoke) cases in manifest: ${m}" >&2
@@ -167,6 +239,10 @@ for m in $MANIFEST_ARGS; do
 done
 
 if [ "$TOTAL_LINES" -eq 0 ]; then
+  if [ "$RERUN_FAILED" = "1" ]; then
+    echo "SUITE NOTE: nothing to re-run — last recorded run has no failures" >&2
+    exit 0
+  fi
   if [ "$SMOKE_ONLY" = "1" ]; then
     echo "SUITE ERROR: no smoke-tagged case lines found across manifest(s): ${MANIFEST_ARGS}" >&2
   else
@@ -218,6 +294,83 @@ print(1 if float(sys.argv[1]) > float(sys.argv[2]) else 0)
 " "$1" "$2"
 }
 
+# write_state_files: records each dispatched case's outcome into its
+# manifest's <manifest-dir>/.last-run.tsv (see header comment for the
+# format and wholesale-vs-merge rule). Never called under
+# RA_EVAL_DRY_RUN=1 (dry-run records nothing). Reads CASE_LIST,
+# CASE_MANIFEST, CASE_OUTCOME, CASE_COST_SKIPPED, TOTAL_CASES, and the
+# MANIFEST_* arrays populated during manifest resolution.
+write_state_files() {
+  RUN_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  n_manifests="${#MANIFEST_REL_LIST[@]}"
+  mi=0
+  while [ "$mi" -lt "$n_manifests" ]; do
+    m_rel="${MANIFEST_REL_LIST[$mi]}"
+    state_path="${MANIFEST_STATE_PATH[$mi]}"
+
+    wholesale=0
+    if [ "${MANIFEST_INCLUDED_COUNT[$mi]}" -eq "${MANIFEST_FULL_COUNT[$mi]}" ]; then
+      wholesale=1
+    fi
+
+    new_tmp="$(mktemp "${TMPDIR:-/tmp}/ra-eval-state.XXXXXX")"
+
+    if [ "$wholesale" -eq 1 ] || [ ! -f "$state_path" ]; then
+      : > "$new_tmp"
+    else
+      cp "$state_path" "$new_tmp"
+    fi
+
+    # Merge mode only: drop rows for cases this manifest is about to
+    # rewrite fresh below, so the fresh row replaces (not duplicates) the
+    # old one. No-op when new_tmp started empty (wholesale, or no prior
+    # state file).
+    if [ "$wholesale" -eq 0 ] && [ -s "$new_tmp" ]; then
+      ci=0
+      while [ "$ci" -lt "$TOTAL_CASES" ]; do
+        if [ "${CASE_MANIFEST[$ci]}" = "$m_rel" ] && [ "${CASE_COST_SKIPPED[$ci]}" != "1" ]; then
+          c_path="${CASE_LIST[$ci]}"
+          awk -F'\t' -v p="$c_path" '$1!=p' "$new_tmp" > "${new_tmp}.f"
+          mv "${new_tmp}.f" "$new_tmp"
+        fi
+        ci=$((ci + 1))
+      done
+    fi
+
+    # Fresh rows for every case this manifest actually dispatched this run
+    # (cost-cap skips are excluded — see below).
+    ci=0
+    while [ "$ci" -lt "$TOTAL_CASES" ]; do
+      if [ "${CASE_MANIFEST[$ci]}" = "$m_rel" ] && [ "${CASE_COST_SKIPPED[$ci]}" != "1" ]; then
+        printf '%s\t%s\t%s\n' "${CASE_LIST[$ci]}" "${CASE_OUTCOME[$ci]}" "$RUN_TS" >> "$new_tmp"
+      fi
+      ci=$((ci + 1))
+    done
+
+    # Wholesale mode only: a cost-cap-skipped case is not evidence, but if
+    # this manifest previously had a recorded outcome for it, carry that
+    # row forward unchanged rather than dropping it from a full rewrite.
+    if [ "$wholesale" -eq 1 ] && [ -f "$state_path" ]; then
+      ci=0
+      while [ "$ci" -lt "$TOTAL_CASES" ]; do
+        if [ "${CASE_MANIFEST[$ci]}" = "$m_rel" ] && [ "${CASE_COST_SKIPPED[$ci]}" = "1" ]; then
+          c_path="${CASE_LIST[$ci]}"
+          prev_row="$(awk -F'\t' -v p="$c_path" '$1==p{print; exit}' "$state_path")"
+          if [ -n "$prev_row" ]; then
+            printf '%s\n' "$prev_row" >> "$new_tmp"
+          fi
+        fi
+        ci=$((ci + 1))
+      done
+    fi
+
+    mkdir -p "$(dirname "$state_path")"
+    mv "$new_tmp" "$state_path"
+
+    mi=$((mi + 1))
+  done
+}
+
 # ---------------------------------------------------------------------------
 # Dispatch loop — wave-parallel
 # ---------------------------------------------------------------------------
@@ -237,7 +390,17 @@ CASE_LIST=()
 while IFS= read -r case_line; do
   CASE_LIST+=("$case_line")
 done < "$CASES_FILE"
+CASE_MANIFEST=()
+while IFS= read -r manifest_line; do
+  CASE_MANIFEST+=("$manifest_line")
+done < "$CASE_MANIFEST_FILE"
 TOTAL_CASES="${#CASE_LIST[@]}"
+
+# Per-case outcome/cost-skip bookkeeping for the .last-run.tsv state files
+# written after dispatch (see write_state_files below). Indices match
+# CASE_LIST/CASE_MANIFEST throughout.
+CASE_OUTCOME=()
+CASE_COST_SKIPPED=()
 
 WAVE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ra-eval-suite-wave.XXXXXX")"
 cleanup_wave_dir() {
@@ -265,6 +428,8 @@ while [ "$idx" -lt "$TOTAL_CASES" ]; do
       CASE_NAME="$(basename "$case_rel")"
       echo "RESULT SKIP case=${CASE_NAME} reason=cost-cap"
       SKIP_N=$((SKIP_N + 1))
+      CASE_OUTCOME[$j]="SKIP"
+      CASE_COST_SKIPPED[$j]=1
       j=$((j + 1))
     done
     break
@@ -365,6 +530,9 @@ while [ "$idx" -lt "$TOTAL_CASES" ]; do
     OUTCOME="$(printf '%s\n' "$RESULT_LINE" | sed -n 's/^RESULT \([A-Z]*\).*/\1/p')"
     COST="$(printf '%s\n' "$RESULT_LINE" | sed -n 's/.*cost_usd=\([^ ]*\).*/\1/p')"
 
+    CASE_OUTCOME[$w]="$OUTCOME"
+    CASE_COST_SKIPPED[$w]=0
+
     case "$OUTCOME" in
       PASS) PASS_N=$((PASS_N + 1)) ;;
       FAIL) FAIL_N=$((FAIL_N + 1)) ;;
@@ -388,6 +556,10 @@ while [ "$idx" -lt "$TOTAL_CASES" ]; do
 
   idx=$((wave_end + 1))
 done
+
+if [ "$DRY_RUN" != "1" ]; then
+  write_state_files
+fi
 
 TOTAL_COST_FMT="$(python3 -c "print('%.2f' % float('$TOTAL_COST'))")"
 
