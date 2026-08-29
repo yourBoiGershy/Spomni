@@ -47,6 +47,7 @@ optional.
 | `dismiss-reason` | enum or `null` | no (default `null`) | *(since 1.1.0)* One of: `not-now`, `not-this-person`, `not-this-signal-type`, `already-handled`. Required (non-null) whenever `status: dismissed` is written by a 1.1.0 writer. |
 | `acted-on` | bool or `null` | no (default `null`) | *(since 1.1.0)* Set by attention's sweep: `true` when an interaction with any of this entry's `people` is dated within 7 days after `fired-on`, `false` if the window closed without one, `null` until evaluated (e.g. not yet fired, or window still open). |
 | `snooze-count` | integer | no (default `0`) | *(since 1.1.0)* Incremented by attention each time this entry is snoozed. Preserves the snooze history that the `due`-rewrite pattern (see Notes) would otherwise discard. |
+| `signal-type` | string or `null` | no (default `null`) | *(since 1.1.0)* Kebab-case type bucket for calibration, e.g. `birthday`, `job-change`. When `origin: signal`, mirrors the promoting signal event's `type` (`signal-event.md`). `standing` entries set it to their standing kind (e.g. `birthday`). `user-ask` entries typically omit it. Absent/`null` falls into attention's `unclassified` calibration bucket. Open vocabulary — no fixed enum. |
 
 ### Body sections
 
@@ -81,6 +82,7 @@ fired-on: 2026-09-20
 dismiss-reason:
 acted-on:
 snooze-count: 0
+signal-type: job-change
 ---
 
 ## Context
@@ -109,13 +111,13 @@ role yet? Would love to hear how the partnerships team is shaping up.
   by attention (a fresh file per occurrence) rather than one file that
   mutates its `due` forward, so `wakeups/` stays a true history of what
   fired and when.
-- **Versioning:** `fired-on`, `dismiss-reason`, `acted-on`, and
-  `snooze-count` are all additive optional fields, so 1.0.0 → 1.1.0 is a
+- **Versioning:** `fired-on`, `dismiss-reason`, `acted-on`, `snooze-count`,
+  and `signal-type` are all additive optional fields, so 1.0.0 → 1.1.0 is a
   minor bump per the `capture-event.md` precedent (widening without
   breaking). Existing `schema_version: 1.0.0` files remain valid as-is —
-  readers must treat a missing `fired-on`/`dismiss-reason`/`acted-on` as
-  `null` and a missing `snooze-count` as `0`, matching the defaults above.
-  A 1.1.0 writer dismissing an entry must set `dismiss-reason`; a 1.0.0
-  file that reaches `status: dismissed` without one is not itself invalid
-  (it predates the field), but new dismissals should upgrade the file to
-  1.1.0 when writing the reason.
+  readers must treat a missing `fired-on`/`dismiss-reason`/`acted-on`/
+  `signal-type` as `null` and a missing `snooze-count` as `0`, matching the
+  defaults above. A 1.1.0 writer dismissing an entry must set
+  `dismiss-reason`; a 1.0.0 file that reaches `status: dismissed` without one
+  is not itself invalid (it predates the field), but new dismissals should
+  upgrade the file to 1.1.0 when writing the reason.

@@ -11,6 +11,7 @@ fired-on: 2026-08-20
 dismiss-reason:
 acted-on: false
 snooze-count: 0
+signal-type: birthday
 ---
 
 ## Context

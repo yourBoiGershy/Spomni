@@ -66,21 +66,21 @@ For every in-window entry, the raw facts pulled are: `status`,
 `dismiss-reason`, `acted-on`, `snooze-count`, `origin`, `source-signal`,
 `people` (list of slugs).
 
-### 2.1 Signal-type derivation — flagged assumption, pending plan 05/06
+### 2.1 Signal-type derivation
 
-Neither `wakeup.md` (1.1.0) nor `wakeup-add.sh` currently carries an
-explicit `signal-type` field — `why` is freeform prose and `source-signal`
-(when present) is an opaque id. This is a real gap this spec cannot close
-unilaterally (both files are siblings' territory), so it is called out here
-as the **required touchpoint for plan 05/06**: when plan 05's signal-scan
-step creates a wake-up (`origin: signal` or `origin: standing`), it should
-write an additional frontmatter field `signal-type: <token>` (e.g.
-`birthday`, `job-change`) — additive, so a future `wakeup.md` minor bump
-(1.1.0 → 1.2.0) covers it, exactly like the 1.0.0 → 1.1.0 precedent.
+`wakeup.md` (1.1.0) carries an optional `signal-type` frontmatter field
+(kebab-case, e.g. `birthday`, `job-change`) — additive over 1.0.0, per that
+contract's field table. It is not yet universally populated: plan 05/06's
+signal-scan and standing-nudge creation paths are the **required touchpoint**
+that must SET it at creation time (when `origin: signal` or `origin:
+standing`, per `wakeup.md`'s description of the field), so this remains a
+live touchpoint to keep landing, not a closed gap.
 
-Until that field exists, `calibrate.sh` degrades gracefully rather than
-guessing at hyphen-splitting an opaque id (person slugs themselves contain
-hyphens, making any split of `source-signal` ambiguous):
+Because the field can still be absent on entries created before that
+touchpoint lands everywhere (or on any writer that omits it), `calibrate.sh`
+degrades gracefully rather than guessing at hyphen-splitting the opaque
+`source-signal` id (person slugs themselves contain hyphens, making any
+split of `source-signal` ambiguous):
 
 - If frontmatter `signal-type` is present, use it verbatim.
 - Else, every such entry (`origin: signal` or `origin: standing` with no
@@ -88,7 +88,7 @@ hyphens, making any split of `source-signal` ambiguous):
   the aggregate counts are never silently dropped — they show up in
   `ranking-weights.json` under `"unclassified"` with a rationale that says
   as much (see the example in section 3), which is itself a visible nudge to
-  land the plan 05/06 field.
+  confirm the plan 05/06 touchpoint is setting the field consistently.
 - `origin: user-ask` entries are excluded from the signal-type dimension
   entirely — they are not signal-driven, so a signal-type dismissal reason
   doesn't apply to them semantically (a user explicitly asked to be
@@ -305,8 +305,10 @@ record of prior calibration rationale text").
 
 - Does not write `wakeup.md` outcome fields (`outcome-recording.md`'s
   territory) or `profile.md` (ingestion's territory).
-- Does not implement the `signal-type` frontmatter field on `wakeup.md` /
-  `wakeup-add.sh` — that is plan 05/06's touchpoint, flagged in 2.1.
+- Does not set the `signal-type` frontmatter field at wake-up creation time
+  — the field exists on `wakeup.md` (1.1.0), but populating it consistently
+  on `origin: signal` / `origin: standing` entries is plan 05/06's
+  touchpoint, flagged in 2.1.
 - Does not implement the tier-drift detector (plan 11 unit 10, a sibling
   spec) — a person's `tier` field is untouched by this step.
 - Does not implement the profile.md-filing side of a confirmed suppression

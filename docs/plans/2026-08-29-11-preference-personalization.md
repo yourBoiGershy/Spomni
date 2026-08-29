@@ -101,12 +101,17 @@ capture-event.md precedent; v1.0 files stay valid):
   listed person dated within 7 days after `fired-on`.
 - `snooze-count` (integer, default 0) — incremented per snooze, preserving the
   history today's due-rewrite discards.
+- `signal-type` (kebab-case string, optional; added by the wave-F fix pass) —
+  the promoting signal's type (standing entries: their standing kind), so
+  calibration can bucket outcomes per signal type; absent = `unclassified`.
 
 ### Touchpoints plans 05/06 briefs MUST honor (why Phase 1 merges first)
 
 - 05 signal-scan: apply `profile.md` Signal opt-outs before ranking; multiply
   rank by `ranking-weights.json` weights when present (neutral fallback when
-  absent); create wake-ups at `schema_version: 1.1.0`.
+  absent); create wake-ups at `schema_version: 1.1.0` with `signal-type` set
+  from the detector (standing entries set their standing kind, e.g. `birthday`)
+  — absent signal-type degrades calibration to an `unclassified` bucket.
 - 06 wakeup-queue.sh: `dismiss` requires `--reason <enum>`; `snooze` increments
   `snooze-count` alongside the due rewrite; `fire` writes `fired-on`.
 - 06 sweep: two new steps after firing — acted-on detection and calibration

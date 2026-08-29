@@ -11,6 +11,7 @@ fired-on: 2026-07-20
 dismiss-reason:
 acted-on: false
 snooze-count: 0
+signal-type: life-event
 ---
 
 ## Context

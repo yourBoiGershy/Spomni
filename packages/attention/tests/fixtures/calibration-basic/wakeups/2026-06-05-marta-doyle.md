@@ -11,6 +11,7 @@ fired-on: 2026-06-05
 dismiss-reason:
 acted-on: true
 snooze-count: 0
+signal-type: job-change
 ---
 
 ## Context

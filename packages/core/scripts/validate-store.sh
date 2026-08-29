@@ -20,9 +20,9 @@
 #      be [observed-from-behavior], Signal opt-outs bullets must parse as
 #      `<signal-type> — all` or `<signal-type> — [[slug]]`.
 #   7. wakeups/ accepts schema_version 1.0.0 and 1.1.0; when 1.1.0 fields
-#      (fired-on, dismiss-reason, acted-on, snooze-count) are present they
-#      are validated, and a 1.1.0 `status: dismissed` entry must carry a
-#      non-null dismiss-reason.
+#      (fired-on, dismiss-reason, acted-on, snooze-count, signal-type) are
+#      present they are validated, and a 1.1.0 `status: dismissed` entry must
+#      carry a non-null dismiss-reason.
 #
 # Output: one finding per line, "path/to/file.md:LINE: message", to stdout.
 # Exit 0 and "store clean: N files checked" when clean; exit 1 otherwise.
@@ -479,6 +479,16 @@ if [ -d "$store_dir/wakeups" ]; then
             if [ -n "$snooze_count_val" ] && [ "$snooze_count_val" != "null" ]; then
                 if ! printf '%s' "$snooze_count_val" | grep -qE '^[0-9]+$'; then
                     report "$f" "$snooze_count_line" "invalid snooze-count: '${snooze_count_val}' (expected non-negative integer)"
+                fi
+            fi
+        fi
+
+        signal_type_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "signal-type")
+        if [ -n "$signal_type_line" ]; then
+            signal_type_val=$(scalar_value "$f" "$signal_type_line" "signal-type")
+            if [ -n "$signal_type_val" ] && [ "$signal_type_val" != "null" ]; then
+                if ! printf '%s' "$signal_type_val" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$'; then
+                    report "$f" "$signal_type_line" "invalid signal-type: '${signal_type_val}' (expected non-empty kebab-case)"
                 fi
             fi
         fi

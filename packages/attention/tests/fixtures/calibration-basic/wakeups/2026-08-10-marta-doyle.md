@@ -11,6 +11,7 @@ fired-on: 2026-08-10
 dismiss-reason:
 acted-on: true
 snooze-count: 0
+signal-type: cadence-gap
 ---
 
 ## Context

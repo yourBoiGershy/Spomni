@@ -11,6 +11,7 @@ fired-on:
 dismiss-reason:
 acted-on:
 snooze-count: 0
+signal-type:
 ---
 
 ## Context
