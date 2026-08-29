@@ -1,0 +1,6 @@
+.claude/logs/
+.claude/reports/
+.claude/settings.local.json
+data/*
+!data/README.md
+.DS_Store
