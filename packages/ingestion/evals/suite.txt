@@ -15,4 +15,4 @@ packages/ingestion/evals/cases/13-debrief-ambiguous-name
 packages/ingestion/evals/cases/14-debrief-commitment-user
 packages/ingestion/evals/cases/15-debrief-commitment-other
 packages/ingestion/evals/cases/16-debrief-contradiction
-packages/ingestion/evals/cases/confirm-first-tier-writes
+packages/ingestion/evals/cases/confirm-first-tier-writes   # smoke
