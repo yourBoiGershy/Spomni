@@ -18,6 +18,15 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 08 | Chat MCP & query data layer | query (MCP server) + core (stats contract, fixtures) | 01 | Done (2026-08-29, stream-mcp) |
 | 09 | Infrastructure: cloud runtime, data-repo discipline, egress | core (sync script) + harness guards + docs | 01; integrates 06, 10 | In progress (2026-08-29, stream-infrastructure; data repo live) |
 | 10 | Composio access layer | connectors/composio-in (+ shared normalizer) | 01 | Done (2026-08-29, branch chunk-08-composio-access; live-proven: 20 real events, 3 lanes, zero dupes) |
+| 12 | Cadence & capacity-aware scheduling (routine map, week-plan contract, capacity-aware nudge selection) | attention + core (week-plan contract) + docs/runtime-cloud.md | 01; amends 05/06 (its amendment unit must land before either is dispatched); integrates 09 | Ready |
+
+> **Plan-number collision (2026-08-29, unresolved):** three parallel streams each
+> minted a "plan 11" on their own branches — `11-composio-import-standard`
+> (stream-composio-standardization), `11-messaging-connectors-research`
+> (stream-connectors), `11-preference-personalization` (stream-personalization).
+> None are merged yet. Cadence & capacity took **12** to stay clear; the three 11s
+> must be renumbered (11/13/14) at their next session or first merge — first to
+> merge keeps 11.
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
 attention-merge. Plan 04 spans a thin connector plus ingestion-side matching — see
