@@ -14,6 +14,15 @@
 #   5. No duplicate person slugs (kebab-cased `name` collisions).
 #   Plus a contract-called-out rule: every person `## Facts` bullet carries a
 #   provenance tag ([told-by-user] or [inferred-public-web]).
+#   6. `profile.md` (singleton, optional — absence is not an error): only the
+#      four fixed sections, every bullet provenance-tagged
+#      ([stated-by-user]/[observed-from-behavior]), Style notes bullets must
+#      be [observed-from-behavior], Signal opt-outs bullets must parse as
+#      `<signal-type> — all` or `<signal-type> — [[slug]]`.
+#   7. wakeups/ accepts schema_version 1.0.0 and 1.1.0; when 1.1.0 fields
+#      (fired-on, dismiss-reason, acted-on, snooze-count) are present they
+#      are validated, and a 1.1.0 `status: dismissed` entry must carry a
+#      non-null dismiss-reason.
 #
 # Output: one finding per line, "path/to/file.md:LINE: message", to stdout.
 # Exit 0 and "store clean: N files checked" when clean; exit 1 otherwise.
@@ -270,6 +279,77 @@ EOF
 fi
 
 # ---------------------------------------------------------------------------
+# Pass 1.5: profile.md (singleton, optional — absence is not an error)
+# ---------------------------------------------------------------------------
+
+if [ -f "$store_dir/profile.md" ]; then
+    f="$store_dir/profile.md"
+    files_checked=$((files_checked + 1))
+
+    fm_end=$(find_frontmatter_end "$f")
+    if [ -z "$fm_end" ]; then
+        report "$f" 1 "malformed frontmatter: missing opening/closing ---"
+    else
+        fm_start=2
+        fm_body_end=$((fm_end - 1))
+        check_frontmatter_lines_parseable "$f" "$fm_start" "$fm_body_end"
+
+        require_field "$f" "$fm_start" "$fm_body_end" "schema_version" > /dev/null
+
+        # Only the four fixed sections are allowed.
+        bad_headings=$(awk -v e="$fm_end" '
+            NR>e && /^## / { print NR":"$0 }
+        ' "$f")
+        if [ -n "$bad_headings" ]; then
+            while IFS= read -r entry; do
+                [ -n "$entry" ] || continue
+                ln="${entry%%:*}"
+                txt="${entry#*:}"
+                case "$txt" in
+                    "## Priorities"|"## Cadence wishes"|"## Signal opt-outs"|"## Style notes") ;;
+                    *) report "$f" "$ln" "unexpected section '${txt}' (profile.md allows only Priorities, Cadence wishes, Signal opt-outs, Style notes)" ;;
+                esac
+            done <<EOF
+$bad_headings
+EOF
+        fi
+
+        for section in "Priorities" "Cadence wishes" "Signal opt-outs" "Style notes"; do
+            bullets=$(awk -v header="## ${section}" '
+                $0 == header {insec=1; next}
+                /^## /{insec=0}
+                insec && /^- / { print NR":"$0 }
+            ' "$f")
+            [ -n "$bullets" ] || continue
+            while IFS= read -r entry; do
+                [ -n "$entry" ] || continue
+                ln="${entry%%:*}"
+                txt="${entry#*:}"
+                if ! printf '%s' "$txt" | grep -qE '^- \*\*\[(stated-by-user|observed-from-behavior)\]\*\*'; then
+                    report "$f" "$ln" "${section} bullet missing provenance tag ([stated-by-user] or [observed-from-behavior])"
+                    continue
+                fi
+                if [ "$section" = "Style notes" ]; then
+                    if ! printf '%s' "$txt" | grep -qE '^- \*\*\[observed-from-behavior\]\*\*'; then
+                        report "$f" "$ln" "Style notes bullet must be [observed-from-behavior], not [stated-by-user]"
+                    fi
+                fi
+                if [ "$section" = "Signal opt-outs" ]; then
+                    rest=$(printf '%s' "$txt" | sed -E 's/^- \*\*\[(stated-by-user|observed-from-behavior)\]\*\*[[:space:]]*//')
+                    if ! printf '%s' "$rest" | grep -qE '^[A-Za-z0-9_-]+ — (all|\[\[[A-Za-z0-9_-]+\]\])[[:space:]]*$'; then
+                        report "$f" "$ln" "Signal opt-outs bullet malformed (expected '<signal-type> — all' or '<signal-type> — [[slug]]')"
+                    fi
+                fi
+            done <<EOF
+$bullets
+EOF
+        done
+
+        check_links_resolve "$f"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Pass 2: interactions/
 # ---------------------------------------------------------------------------
 
@@ -321,7 +401,12 @@ if [ -d "$store_dir/wakeups" ]; then
         fm_body_end=$((fm_end - 1))
         check_frontmatter_lines_parseable "$f" "$fm_start" "$fm_body_end"
 
-        require_field "$f" "$fm_start" "$fm_body_end" "schema_version" > /dev/null
+        sv_line=$(require_field "$f" "$fm_start" "$fm_body_end" "schema_version")
+        sv_val=""
+        if [ -n "$sv_line" ]; then
+            sv_val=$(scalar_value "$f" "$sv_line" "schema_version")
+            check_enum "$f" "$sv_line" "schema_version" "$sv_val" "1\.0\.0|1\.1\.0"
+        fi
         require_field "$f" "$fm_start" "$fm_body_end" "id" > /dev/null
         require_field "$f" "$fm_start" "$fm_body_end" "due" > /dev/null
         require_field "$f" "$fm_start" "$fm_body_end" "why" > /dev/null
@@ -357,6 +442,50 @@ if [ -d "$store_dir/wakeups" ]; then
                 if [ -z "$src_val" ] || [ "$src_val" = "null" ]; then
                     report "$f" "$src_line" "origin: signal requires a non-null source-signal"
                 fi
+            fi
+        fi
+
+        # --- schema_version 1.1.0 fields (validated only when present) ---
+        fired_on_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "fired-on")
+        if [ -n "$fired_on_line" ]; then
+            fired_on_val=$(scalar_value "$f" "$fired_on_line" "fired-on")
+            if [ -n "$fired_on_val" ] && [ "$fired_on_val" != "null" ]; then
+                if ! printf '%s' "$fired_on_val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+                    report "$f" "$fired_on_line" "invalid fired-on: '${fired_on_val}' (expected ISO 8601 date YYYY-MM-DD)"
+                fi
+            fi
+        fi
+
+        dismiss_reason_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "dismiss-reason")
+        dismiss_reason_val=""
+        if [ -n "$dismiss_reason_line" ]; then
+            dismiss_reason_val=$(scalar_value "$f" "$dismiss_reason_line" "dismiss-reason")
+            if [ -n "$dismiss_reason_val" ] && [ "$dismiss_reason_val" != "null" ]; then
+                check_enum "$f" "$dismiss_reason_line" "dismiss-reason" "$dismiss_reason_val" "not-now|not-this-person|not-this-signal-type|already-handled"
+            fi
+        fi
+
+        acted_on_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "acted-on")
+        if [ -n "$acted_on_line" ]; then
+            acted_on_val=$(scalar_value "$f" "$acted_on_line" "acted-on")
+            if [ -n "$acted_on_val" ] && [ "$acted_on_val" != "null" ]; then
+                check_enum "$f" "$acted_on_line" "acted-on" "$acted_on_val" "true|false"
+            fi
+        fi
+
+        snooze_count_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "snooze-count")
+        if [ -n "$snooze_count_line" ]; then
+            snooze_count_val=$(scalar_value "$f" "$snooze_count_line" "snooze-count")
+            if [ -n "$snooze_count_val" ] && [ "$snooze_count_val" != "null" ]; then
+                if ! printf '%s' "$snooze_count_val" | grep -qE '^[0-9]+$'; then
+                    report "$f" "$snooze_count_line" "invalid snooze-count: '${snooze_count_val}' (expected non-negative integer)"
+                fi
+            fi
+        fi
+
+        if [ "$sv_val" = "1.1.0" ] && [ "$status_val" = "dismissed" ]; then
+            if [ -z "$dismiss_reason_val" ] || [ "$dismiss_reason_val" = "null" ]; then
+                report "$f" "$status_line" "status: dismissed at schema_version 1.1.0 requires a non-null dismiss-reason"
             fi
         fi
 
