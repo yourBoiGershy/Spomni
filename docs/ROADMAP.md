@@ -29,11 +29,12 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 14 | Import standard (capture-event 1.1/1.2: typing, occurred_at, <connector>/<lane> source, transport rule; formerly "Composio import standard" — the contract is transport-agnostic and outlives Composio) | core (contract) + connectors (sweeps, normalizer, beeper alignment) | 01, 13 | Done (2026-08-29; suites capture 82, beeper 70, store 20 green). Caveat: Gmail To/Cc + calendar organizer/creator field shapes never live-verified — re-verify on the new direct lanes in 17 |
 | 15 | Preference & personalization layer | core (profile/ranking-weights/wakeup 1.1) + ingestion/attention specs+goldens | 01, 08 | Done (2026-08-29, stream-personalization) |
 | 16 | Eval harness: tool/agent/skill tiers | core (eval-case contract, 4 runners) + query/ingestion/attention cases | 08, 15 | Done (2026-08-29, stream-personalization) |
-| 17 | Composio retirement & direct Google lanes (gmail-in, calendar-in on first-party claude.ai connectors) | connectors (composio-in teardown; gmail-in, calendar-in) + docs | 01, 14; decision composio-retired | Planned — plan file to author |
-| 18 | Query & chat live wiring (register the MCP server against the live store; chat with your own data) | query (server config) + harness docs | 08 | Wired (2026-08-29, query-live; root `.mcp.json` + smoke + docs landed, fixtures smoke 6/6, suites green, checker CLEAN; live-store pass + chat verification pending chunk-20 filing — then merge) |
-| 19 | Scheduled syncs runner (one configurable scheduler for all capture lanes; restart-safe) | connectors/scripts + infrastructure docs | 13, 17 | Planned — plan file to author |
-| 20 | Live capture & organization trial (chats + emails, end to end, on real data) | cross-package (runs the machinery, builds none) | 03, 13, 17, 18, 19 | Planned — plan file to author |
+| 17 | Composio retirement & direct Google lanes (gmail-in, calendar-in on first-party claude.ai connectors) | connectors (composio-in teardown; gmail-in, calendar-in) + docs | 01, 14; decision composio-retired | Done (2026-08-29; suites 99/70/20 green, both lanes live-verified on real sweeps, plan-14 caveat closed, composio-free grep-proven, CLI logged out). Residual: recurrence-expansion VERIFY-LIVE awaits a recurring event in-window; dashboard key revocation + Google-grant revocation are user steps |
+| 18 | Query & chat live wiring (register the MCP server against the live store; chat with your own data) | query (server config) + harness docs | 08 | Done (2026-08-29, query-live; root `.mcp.json` registration, smoke-live script, chat-setup docs; fixtures smoke 6/6, store+query suites green, checker CLEAN; decision query-mcp-registration). Residual: live-store smoke + chat verification await 20's filed backlog — chunk 22 |
+| 19 | Scheduled syncs runner (one configurable scheduler for all capture lanes; restart-safe) | connectors/scripts + core (sync-lanes contract) | 13; 17's lanes join via config rows when they land | Done (2026-08-29, chunk-19-sync-scheduler; suites 20/82/70/64 green, beeper migrated, reboot-sim + config-change proven; live firing awaits a machine-side TCC grant — see plan 19, affects plan 13's job too) |
+| 20 | Backfill blitz & ship-day shakedown (file the real backlog, prove the loop end to end, TODAY) | cross-package (runs the machinery, builds none) | 03, 13, 18 | Planned — SHIP GATE, runs today |
 | 21 | Calendar intelligence & event proposals (tell/schedule from messages; propose events, draft-only) | attention + query + connectors/calendar | 04, 05, 06, 17, 18 | Planned — plan file to author |
+| 22 | Live-data query sync & verification (plan 18 close-out: smoke 6/6 over the filed live store, real chat with citations, legacy user-scope registration removed) | query (verification only — runs the machinery, builds none) | 18, 20 (filed backlog) | Blocked on 20 — run as soon as the backlog is filed |
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
 attention-merge. Historical plan-number collisions (11/12 renumbered to 13–16 at merge)
@@ -67,7 +68,14 @@ new lanes on a real sweep; capture test suite green; zero live-path composio ref
 (grep-proven); the plan-14 caveat closed — Gmail To/Cc and calendar organizer/creator
 shapes verified live on the new lanes; ROADMAP + memory updated.
 
-### 18 — Query & chat live wiring (START HERE)
+### 18 — Query & chat live wiring (DONE — see plan file; live-data residual is chunk 22)
+
+Landed 2026-08-29 (worktree `query-live/`, plan `docs/plans/2026-08-29-18-query-live-wiring.md`):
+root-committed `.mcp.json` (repo-relative, `--store data/store` per decision
+query-mcp-registration), `packages/query/tests/smoke-live.sh` (all six tools,
+data-independent, degraded-stats = FAIL), `docs/chat-setup.md`, package.md refresh.
+Fixtures smoke 6/6; store/query suites green; hygiene checker CLEAN. The original
+brief follows for the record.
 
 **Context.** The query MCP server (plan 08) is fully implemented — six read-only tools
 (`search_people`, `get_person`, `list_interactions`, `get_interaction`,
@@ -105,23 +113,30 @@ runner+config vs. installer+migration; checker verifies job files.
 jobs fire again with no manual step; beeper's legacy job removed; config change
 (interval/disable) takes effect without editing code.
 
-### 20 — Live capture & organization trial
+### 20 — Backfill blitz & ship-day shakedown (SHIP GATE)
 
-**Context.** The real test of the middle of the spine: run the whole capture→file→query
-loop on the user's actual chats and emails for a trial window and judge whether the
-store organizes reality well. Capture is optional and lossy-tolerant — the trial
-measures machinery quality, never user diligence.
-**Work.** No new machinery. Operate: lanes syncing on schedule (19), debriefs filed
-(03), store validated, queries asked daily (18). Keep a trial log in the data repo;
-file defects against the owning package as they surface.
-**Agent path.** Orchestrator-led operations, not dev-workers: scheduled syncs run
-themselves; a periodic checker audits `check-sync.sh` + `validate-store.sh`; defects
-found get dispatched as normal fix briefs to the owning package.
-**Deliverables / proof of done.** ≥7 consecutive days of real capture with zero data
-loss (check-sync clean each day); filed people/interactions passing validate-store;
-a written organization-quality review from the user (what filed well, what mis-filed,
-what's missing); defect list triaged into plan updates. This trial feeds the v1 exit
-criteria below.
+**Context.** Ship deadline is 2026-08-30 — there is no window for a soak test. The
+store already holds a real backlog (46 inbox events: 25 beeper, 15 gmail, 4 calendar,
+1 linkedin, 1 quarantine) that has never been filed. Filing that backlog and proving
+the whole capture→file→query loop on it, today, is the compressed live test: real
+data, full pipeline, immediate verdict. Longitudinal quality watching moves to
+post-ship monitoring (below) — it is no longer a pre-ship gate.
+**Work.** No new machinery. (a) Run the debrief/filing skill over the full real
+inbox backlog; quarantined/unfileable events get triaged, not dropped. (b) Audit:
+`check-sync.sh` clean (zero loss), `validate-store.sh` green on the filed store.
+(c) Fresh-sweep round-trip: trigger one live beeper + one gmail sweep, file the new
+events, confirm they land end to end. (d) Query shakedown: hit all six `spomni-query`
+tools against the filed store; answers must cite real captured interactions.
+(e) A fast user pass over the filed people list: obvious mis-merges/dupes fixed or
+logged as known-issues for the ship notes.
+**Agent path.** Orchestrator-led, same day: filing runs via the ingestion debrief
+skill (batched, parallel checkers audit after each batch); defects found get ONE
+fix-dispatch round max (fix policy) — anything deeper becomes a known-issue, not a
+ship blocker unless it loses data.
+**Deliverables / proof of done (all TODAY).** Backlog 100% filed or explicitly
+quarantined with reasons; both audit scripts green; fresh-sweep round-trip proven on
+both lanes; all six query tools returning real cited answers; a short ship-notes list
+of known issues. Zero data loss is the only hard blocker.
 
 ### 21 — Calendar intelligence & event proposals
 
@@ -145,17 +160,43 @@ proposal in the wake-up queue (golden-tested); confirming a proposal creates the
 via the connector, declining files silently; zero events ever created without explicit
 confirmation (eval-guarded).
 
+### 22 — Live-data query sync & verification (plan 18 close-out)
+
+**Context.** Chunk 18 wired and proved the query surface against fixtures; the live
+proof was blocked because no live store had filed people yet (the 46-event backlog is
+chunk 20's ship gate). This chunk is the deferred live half — verification only, no
+new machinery. Overlaps with 20(d)'s query shakedown: if 20 completes its shakedown
+with cited answers, 22 collapses to the registration cleanup + smoke re-run.
+**Work.** (a) Confirm the checkout's `data/store` points at the filed live store
+(per docs/chat-setup.md; symlink flip is a local act). (b) `bash
+packages/query/tests/smoke-live.sh` — all six tools PASS, non-degraded stats, store
+byte-untouched. (c) Live chat: ≥3 real questions in a fresh session via the
+project-scope registration; answers cite real store paths with provenance intact
+(evidence = tool names + citation counts, never content). (d) Remove the legacy
+user-scope `spomni-query` entry (`claude mcp remove spomni-query` in the old project
+scope) so exactly one registration exists.
+**Agent path.** Orchestrator-run in any current checkout; no workers needed.
+**Deliverables / proof of done.** Smoke exit 0 over the filed store; chat citations
+verified; exactly one registration; plan 18's "Proof of done" checklist fully closed
+out in its plan file.
+
 ## Execution order (current)
 
-1. **18** — query/chat live wiring (small, immediate payoff, nothing blocks it).
-2. **17** — composio teardown + direct gmail/calendar lanes.
-3. **19** — scheduled syncs runner (needs 17's lanes to exist).
-4. **20** — live capture trial starts as soon as 17+19 are live; runs in the background
-   for ≥7 days while build work continues.
-5. **12 (amendment unit) → 05 + 06 → 07** — the attention layer, honoring plan 15
+**Ship deadline: 2026-08-30.** Pre-ship (today): 18 is done enough to chat (server
+registered as `spomni-query`); **20 runs NOW** — backfill filed, loop proven, ship
+notes written. 17 and 19 squeeze in today only if 20 clears early; otherwise they are
+day-one post-ship items (the beeper lane and composio lanes keep capturing meanwhile,
+so nothing is lost by shipping first).
+
+Post-ship order:
+1. **17** — composio teardown + direct gmail/calendar lanes.
+2. **19** — scheduled syncs runner (needs 17's lanes to exist).
+3. **Post-ship monitoring** — the longitudinal organization-quality watch that used to
+   be 20's trial: periodic check-sync/validate-store audits, defects filed per package.
+4. **12 (amendment unit) → 05 + 06 → 07** — the attention layer, honoring plan 15
    personalization touchpoints.
-6. **21** — calendar intelligence, once 05/06 exist to carry its signals and cards.
-7. **09** — infrastructure continues alongside; **04**'s matching half rides with 05's
+5. **21** — calendar intelligence, once 05/06 exist to carry its signals and cards.
+6. **09** — infrastructure continues alongside; **04**'s matching half rides with 05's
    co-attendance needs.
 
 ## Streams (parallel-session worktrees)
@@ -168,7 +209,7 @@ to resync — never rebase). Streams may run concurrently with each other.
 |---|---|---|---|
 | `ingestion/` | `stream-ingestion` | connectors-in + ingestion (direct first-party lanes: gmail, calendar; beeper lane; user inputs) | 17 → 04 (matching) |
 | `mcp/` | `stream-mcp` | query + connectors-out (answer surface, briefs, model access) | 07 (06-dependent parts last; after 18 merges — 18 moved to `query-live/`) |
-| `query-live/` | `chunk-18-query-live-wiring` | chunk-18 wiring only: root `.mcp.json`, live smoke, chat-setup docs (query territory on loan from `mcp/` — one chunk, then retire the worktree) | 18 |
+| `query-live/` | `chunk-18-query-live-wiring` | chunk-18 wiring (query territory on loan from `mcp/`) — 18 merged; worktree retires after chunk 22's verification runs | 18, 22 |
 | `infrastructure/` | `stream-infrastructure` | cloud runtime + data-repo discipline + egress hygiene + sync scheduling | 09, 19 |
 | (new) `attention/` | `stream-attention` | signal engine + wake-up queue + cadence | 12 → 05 → 06 → 21 (attention parts) |
 
@@ -193,13 +234,13 @@ stream's packages.
   world-readable, merged or not. Data safety lives at the push boundary (pii-guard,
   plan 09), never in merge speed.
 
-## Live trial → v1 (exit criteria)
+## Post-ship monitoring → v1 (exit criteria)
 
-Chunk 20 starts the clock: two weeks on real data once the attention layer joins.
-Exit criteria (from the build plan): phone-to-filed with zero manual steps; ≥80%
-meeting auto-match; ≥1 useful signal nudge/week with zero bare cadence reminders;
-ad-hoc reminders fire on time; ≥3:1 give-to-ask ratio; zero data loss. All six hold →
-tag v1, open the repo.
+Shipping (2026-08-30) is not v1. After ship, the monitoring loop watches real usage;
+once the attention layer joins, the original exit criteria gate the v1 tag:
+phone-to-filed with zero manual steps; ≥80% meeting auto-match; ≥1 useful signal
+nudge/week with zero bare cadence reminders; ad-hoc reminders fire on time; ≥3:1
+give-to-ask ratio; zero data loss. All six hold → tag v1, open the repo.
 
 ## Later (explicitly deferred)
 

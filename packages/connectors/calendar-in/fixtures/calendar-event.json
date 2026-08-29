@@ -1,0 +1,21 @@
+{
+  "id": "4m36ae4h2dn0vl6fn7qn2ug8go",
+  "summary": "Tech Leaders Dinner",
+  "status": "confirmed",
+  "eventType": "DEFAULT",
+  "location": "Arlo Wine & Restaurant",
+  "htmlLink": "https://www.google.com/calendar/event?eid=example",
+  "conferenceUrl": "https://meet.google.com/xxx-xxxx-xxx",
+  "created": "2026-08-28T13:33:48Z",
+  "updated": "2026-08-28T15:22:13Z",
+  "creator": {"email": "dana.whitfield@example.org"},
+  "organizer": {"email": "dana.whitfield@example.org"},
+  "start": {"dateTime": "2026-08-31T18:30:00-04:00", "timeZone": "America/Toronto"},
+  "end": {"dateTime": "2026-08-31T20:45:00-04:00", "timeZone": "America/Toronto"},
+  "attendees": [
+    {"email": "dana.whitfield@example.org", "organizer": true, "responseStatus": "accepted"},
+    {"email": "user@example.com", "self": true, "responseStatus": "accepted"},
+    {"email": "priya.nair@example.com", "responseStatus": "needsAction"},
+    {"email": "guest@example.com", "responseStatus": "tentative"}
+  ]
+}

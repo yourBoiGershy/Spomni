@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # check-sync.sh — read-only conformance checker for a store's inbox/ against
 # the capture-event contract (packages/core/contracts/capture-event.md,
-# schema_version 1.2.0) and the per-lane mapping table in
-# docs/plans/2026-08-29-14-composio-import-standard.md.
+# schema_version 1.2.0) and the per-lane mapping table in the plan-14 import
+# standard.
 #
 # Usage: check-sync.sh [store-dir]   (defaults to ".")
 #
-# This audits "are we syncing correctly" for any sweep run (Composio or
-# Beeper, live or fixture) that has landed events in <store-dir>/inbox/.
-# It never writes to the store.
+# This audits "are we syncing correctly" for any sweep run (Gmail, Calendar,
+# Beeper, live or fixture, plus any legacy-source events already in the
+# store) that has landed events in <store-dir>/inbox/. It never writes to
+# the store.
 #
 # Checks per inbox/*.md event (quarantine/ excluded — those are already
 # flagged invalid by the writer):
@@ -21,12 +22,16 @@
 #      calendar-lane defect: event-start time written as captured_at).
 #   5. occurred_at, when present, is well-formed ISO 8601.
 #   6. filename is flat under inbox/ (no nested path) and equals id.
-#   7. no Composio/Beeper transport wrapper keys ("successful", "logId")
-#      appear in the body of a non-quarantine event.
+#   7. no CLI transport wrapper keys ("successful", "logId") appear in the
+#      body of a non-quarantine event — guards against any wrapper, not a
+#      specific connector.
 #   8. lane rules from the per-lane table, only when source declares a
-#      lane: composio-in/googlecalendar and beeper-in/* events SHOULD have
-#      occurred_at (WARN, not FAIL, if missing); bare legacy sources
-#      (e.g. plain "gmail") WARN "pre-standard event, valid 1.0.0".
+#      lane: gmail-in/*, calendar-in/*, and beeper-in/* events SHOULD have
+#      occurred_at (WARN, not FAIL, if missing); other <connector>/<lane>
+#      sources (including retired-connector eras) fall through to generic
+#      checks only — still valid, never a FAIL just for the source's age;
+#      bare legacy sources (e.g. plain "gmail") WARN "pre-standard event,
+#      valid 1.0.0".
 #   9. no two inbox events share an id; WARN on byte-identical bodies
 #      (possible dedup failure).
 #
@@ -223,24 +228,25 @@ for f in "$inbox_dir"/*.md; do
         fi
     fi
 
-    # --- transport wrapper leakage: body must never contain Composio/Beeper
-    # CLI wrapper keys ("successful", "logId"). ---
+    # --- transport wrapper leakage: body must never contain a CLI transport
+    # wrapper key ("successful", "logId") from any connector's transport. ---
     body_start=$((fm_end + 1))
     body_tmp="${bodies_dir}/${base}.body"
     tail -n "+${body_start}" "$f" > "$body_tmp"
     if grep -qE '"successful"[[:space:]]*:' "$body_tmp" || grep -qE '"logId"[[:space:]]*:' "$body_tmp"; then
-        fail "$f" "body contains a Composio/Beeper transport wrapper key ('successful' or 'logId') — the CLI envelope must never enter the archive"
+        fail "$f" "body contains a CLI transport wrapper key ('successful' or 'logId') — the transport envelope must never enter the archive"
     fi
 
     # --- per-lane rules, only when source declares a lane ---
     case "$source_val" in
-        composio-in/googlecalendar|beeper-in/*)
+        gmail-in/*|calendar-in/*|beeper-in/*)
             if [ -z "$occurred_at_line" ]; then
                 warn "$f" "source '${source_val}' SHOULD have occurred_at per the per-lane table"
             fi
             ;;
         */*)
-            : # other <connector>/<lane> sources: no additional rule here
+            : # other <connector>/<lane> sources (including retired-connector
+              # eras): still valid, generic checks only, never a FAIL here
             ;;
         gmail|googlecalendar|linkedin)
             warn "$f" "pre-standard event, valid 1.0.0 (bare legacy source '${source_val}')"

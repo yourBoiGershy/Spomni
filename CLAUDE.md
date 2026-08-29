@@ -18,9 +18,9 @@ sends. This repo holds the machinery; user data never lives here (see
 - **Other people's data stays local.** No LinkedIn scraping, no enrichment
   APIs; the people-store (the contact graph) lives only in the user's private
   data dir — no third-party cloud ever holds it. Access to the user's own
-  accounts flows through connectors the user explicitly links — currently a
-  Composio account as the hub (see DECISIONS.md `composio-hub`) — the pipes,
-  never the store.
+  accounts flows through the first-party claude.ai connectors (Gmail, Google
+  Calendar) the user explicitly links (see DECISIONS.md `composio-retired`) —
+  the pipes, never the store.
 - **Code and data are separate.** This public repo is machinery only. Each
   user's people-store lives in their own private location; `data/` is
   gitignored and typically points at a private repo.
@@ -101,8 +101,9 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   met via the other package's `package.md` + core contracts, never its files.
 - Test commands (bash 3.2, no npm/jest — run all before any merge):
   `bash packages/core/tests/run-store-tests.sh`,
-  `bash packages/connectors/tests/run-capture-tests.sh`, and
-  `bash packages/connectors/tests/run-beeper-capture-tests.sh`.
+  `bash packages/connectors/tests/run-capture-tests.sh`,
+  `bash packages/connectors/tests/run-beeper-capture-tests.sh`, and
+  `bash packages/connectors/tests/run-scheduler-tests.sh`.
   Store sanity: `bash packages/core/scripts/validate-store.sh <store-dir>`
   (checks people/interactions/wakeups only — not inbox/).
   Capture-sync audit: `bash packages/connectors/scripts/check-sync.sh <store-dir>`

@@ -1,0 +1,62 @@
+{
+  "nextPageToken": "09612572260890495170",
+  "resultCountEstimate": "3",
+  "threads": [
+    {
+      "id": "18f2a3b9c0d1e2f3",
+      "messages": [
+        {
+          "id": "18f2a3b9c0d1e2f3",
+          "threadId": "18f2a3b9c0d1e2f3",
+          "date": "2026-08-29T14:02:11Z",
+          "historyId": "3916961",
+          "internalDate": "1788012131000",
+          "labelIds": ["INBOX", "UNREAD"],
+          "sender": "dana.whitfield@example.com",
+          "sizeEstimate": 4021,
+          "snippet": "Hey, following up on the fintech partnerships sync we had last week...",
+          "subject": "Re: fintech partnerships sync",
+          "toRecipients": ["me@example.com"],
+          "ccRecipients": ["priya.nair@example.com"]
+        }
+      ]
+    },
+    {
+      "id": "18f2a3b9c0d1e300",
+      "messages": [
+        {
+          "id": "18f2a3b9c0d1e300",
+          "threadId": "18f2a3b9c0d1e300",
+          "date": "2026-08-29T14:32:00Z",
+          "historyId": "3916970",
+          "internalDate": "1788013920000",
+          "labelIds": ["INBOX"],
+          "sender": "me@example.com",
+          "sizeEstimate": 2114,
+          "snippet": "ok so just grabbed coffee with dana whitfield, she's now leading...",
+          "subject": "debrief: coffee with dana [ra]",
+          "toRecipients": ["me@example.com"]
+        }
+      ]
+    },
+    {
+      "id": "18f2a3b9c0d1e310",
+      "messages": [
+        {
+          "id": "18f2a3b9c0d1e310",
+          "threadId": "18f2a3b9c0d1e310",
+          "date": "2026-08-29T09:15:44Z",
+          "historyId": "3916940",
+          "internalDate": "1788007544000",
+          "labelIds": ["INBOX", "CATEGORY_UPDATES"],
+          "sender": "notifications-noreply@linkedin.com",
+          "sizeEstimate": 5390,
+          "snippet": "Priya Nair viewed your profile and 3 other updates",
+          "subject": "Priya Nair and 3 others viewed your profile",
+          "toRecipients": ["me@example.com"]
+        }
+      ]
+    }
+  ],
+  "_fixture_note": "Live-verified 2026-08-29 shape (mcp__claude_ai_Gmail__search_threads, view=THREAD_VIEW_MINIMAL). This field is not part of the real tool's response and must not be treated as one."
+}

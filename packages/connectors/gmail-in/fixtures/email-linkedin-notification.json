@@ -1,0 +1,15 @@
+{
+  "id": "18f2a3b9c0d1e310",
+  "threadId": "18f2a3b9c0d1e310",
+  "date": "2026-08-29T09:15:44Z",
+  "historyId": "3916940",
+  "internalDate": "1788007544000",
+  "labelIds": ["INBOX", "CATEGORY_UPDATES"],
+  "sender": "notifications-noreply@linkedin.com",
+  "sizeEstimate": 5390,
+  "snippet": "Priya Nair viewed your profile and 3 other updates",
+  "subject": "Priya Nair and 3 others viewed your profile",
+  "toRecipients": ["me@example.com"],
+  "plaintextBody": "See who's been checking out your profile this week. Priya Nair, Product Manager at Lumen Analytics, and 3 others viewed your profile.",
+  "_fixture_note": "Live-verified 2026-08-29 shape (mcp__claude_ai_Gmail__get_thread / get_message, messageFormat=PLAIN_TEXT). sender domain is linkedin.com, driving classify.sh's linkedin-notification rule. No ccRecipients field, per the live convention of omitting the field entirely when empty. This field is not part of the real tool's response and must not be treated as one."
+}

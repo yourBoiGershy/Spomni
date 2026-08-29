@@ -1,6 +1,8 @@
 # Plan 18: Query & chat live wiring
 
-Status: In progress — waves A + C done (2026-08-29); wave B partially blocked
+Status: Done (2026-08-29) — merged to main; the live-data residual (units 5 live pass +
+7 chat verification, legacy user-scope registration removal) is roadmap chunk 22,
+blocked on chunk 20's filed backlog
 
 Execution state (2026-08-29): Wave A landed (root `.mcp.json`; smoke-live 6/6 PASS
 against `packages/core/fixtures/store`, store byte-untouched; chat-setup docs +

@@ -2,8 +2,9 @@
 # packages/connectors/tests/run-capture-tests.sh
 #
 # Asserts that packages/connectors/scripts/normalize-capture.sh, the shared
-# capture normalizer, behaves correctly against the composio-in fixture pack
-# (packages/connectors/composio-in/fixtures/), per
+# capture normalizer, behaves correctly against the gmail-in and calendar-in
+# fixture packs (packages/connectors/gmail-in/fixtures/,
+# packages/connectors/calendar-in/fixtures/), per
 # packages/core/contracts/capture-event.md:
 #
 #   1. valid fixtures normalize into inbox/<id>.md, exit 0, with correct
@@ -19,6 +20,14 @@
 #      envelope validity gates, not body content.
 #   8. quarantine never deletes: quarantined content equals the input.
 #
+# Also exercises the two lane-local helpers directly:
+#   9. gmail-in/scripts/classify.sh typing rules ([ra] subject -> voice-note;
+#      linkedin.com/*.linkedin.com From -> linkedin-notification; default ->
+#      email; precedence when both fire).
+#  10. calendar-in/scripts/extract-hints.sh against calendar-event.json
+#      (organizer + creator + every attendee present, no self-filtering,
+#      "Name <email>" / bare-email output forms).
+#
 # bash 3.2 portable (no associative arrays, no mapfile) — this must run
 # under macOS's stock /bin/bash. Resolves all paths relative to the repo
 # root, so it can be invoked from anywhere. Uses a throwaway mktemp -d store,
@@ -31,7 +40,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 NORMALIZER="$REPO_ROOT/packages/connectors/scripts/normalize-capture.sh"
-FIXTURES_DIR="$REPO_ROOT/packages/connectors/composio-in/fixtures"
+GMAIL_FIXTURES_DIR="$REPO_ROOT/packages/connectors/gmail-in/fixtures"
+CALENDAR_FIXTURES_DIR="$REPO_ROOT/packages/connectors/calendar-in/fixtures"
+CLASSIFY="$REPO_ROOT/packages/connectors/gmail-in/scripts/classify.sh"
+EXTRACT_HINTS="$REPO_ROOT/packages/connectors/calendar-in/scripts/extract-hints.sh"
+
+# Source values for the generic (lane-agnostic) tests below — any valid
+# <connector>/<lane> string works; gmail-in/gmail is used throughout for
+# consistency.
+GENERIC_SOURCE="gmail-in/gmail"
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -53,7 +70,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# --- normalizer must exist ---
+# --- normalizer + fixtures + helpers must exist ---
 if [ ! -f "$NORMALIZER" ]; then
   echo "SKIP: $NORMALIZER not found — cannot run capture tests yet."
   echo ""
@@ -68,8 +85,29 @@ if [ ! -x "$NORMALIZER" ]; then
   exit 1
 fi
 
-if [ ! -d "$FIXTURES_DIR" ]; then
-  echo "FAIL: fixtures dir missing at $FIXTURES_DIR"
+if [ ! -d "$GMAIL_FIXTURES_DIR" ]; then
+  echo "FAIL: gmail-in fixtures dir missing at $GMAIL_FIXTURES_DIR"
+  echo ""
+  echo "SUMMARY: 0 passed, 1 failed"
+  exit 1
+fi
+
+if [ ! -d "$CALENDAR_FIXTURES_DIR" ]; then
+  echo "FAIL: calendar-in fixtures dir missing at $CALENDAR_FIXTURES_DIR"
+  echo ""
+  echo "SUMMARY: 0 passed, 1 failed"
+  exit 1
+fi
+
+if [ ! -x "$CLASSIFY" ]; then
+  echo "FAIL: $CLASSIFY missing or not executable"
+  echo ""
+  echo "SUMMARY: 0 passed, 1 failed"
+  exit 1
+fi
+
+if [ ! -x "$EXTRACT_HINTS" ]; then
+  echo "FAIL: $EXTRACT_HINTS missing or not executable"
   echo ""
   echo "SUMMARY: 0 passed, 1 failed"
   exit 1
@@ -89,81 +127,95 @@ extract_body() {
   tail -n +"$body_start" "$f"
 }
 
-# --- assertion 1 & 2: each valid fixture normalizes correctly, body verbatim ---
-fixture_specs="
-email-voice-note.json:voice-note
-email-linkedin-notification.json:other
-calendar-event.json:other
-linkedin-post.json:other
-"
+# --- assertion 1 & 2: each valid fixture normalizes correctly, body verbatim
+# --- run once per lane pack, against that lane's own --source value.
+run_fixture_pack() {
+  fixtures_dir="$1"
+  fixture_source="$2"
+  specs="$3"
 
-# `<<<` (here-string) runs the loop in the current shell under bash 3.2
-# (unlike piping into `while`, which forks a subshell), so PASS_COUNT/
-# FAIL_COUNT updates inside the loop are visible afterward.
-while IFS=':' read -r fname ftype; do
-  [ -z "$fname" ] && continue
+  while IFS=':' read -r fname ftype; do
+    [ -z "$fname" ] && continue
 
-  fixture_path="$FIXTURES_DIR/$fname"
-  stem="${fname%.*}"
+    fixture_path="$fixtures_dir/$fname"
+    stem="${fname%.*}"
 
-  if [ ! -f "$fixture_path" ]; then
-    fail "fixture missing: $fixture_path"
-    continue
-  fi
-
-  out="$("$NORMALIZER" "$STORE_DIR" --source composio-in --type "$ftype" --id "$stem" --file "$fixture_path" 2>&1)"
-  status=$?
-  dest="$STORE_DIR/inbox/$stem.md"
-
-  if [ "$status" -eq 0 ]; then
-    pass "$fname: normalize-capture.sh exits 0"
-  else
-    fail "$fname: normalize-capture.sh exited $status (expected 0): $out"
-  fi
-
-  if [ -f "$dest" ]; then
-    pass "$fname: inbox file exists at $dest"
-  else
-    fail "$fname: inbox file missing at $dest"
-  fi
-
-  if [ -f "$dest" ]; then
-    if grep -qF "id: $stem" "$dest"; then
-      pass "$fname: frontmatter id matches filename stem ($stem)"
-    else
-      fail "$fname: frontmatter id does not match filename stem ($stem)"
+    if [ ! -f "$fixture_path" ]; then
+      fail "fixture missing: $fixture_path"
+      continue
     fi
 
-    if grep -qF "source: composio-in" "$dest"; then
-      pass "$fname: frontmatter source is composio-in"
+    out="$("$NORMALIZER" "$STORE_DIR" --source "$fixture_source" --type "$ftype" --id "$stem" --file "$fixture_path" 2>&1)"
+    status=$?
+    dest="$STORE_DIR/inbox/$stem.md"
+
+    if [ "$status" -eq 0 ]; then
+      pass "$fname: normalize-capture.sh exits 0"
     else
-      fail "$fname: frontmatter source is not composio-in"
+      fail "$fname: normalize-capture.sh exited $status (expected 0): $out"
     fi
 
-    if grep -qF "type: $ftype" "$dest"; then
-      pass "$fname: frontmatter type is $ftype"
+    if [ -f "$dest" ]; then
+      pass "$fname: inbox file exists at $dest"
     else
-      fail "$fname: frontmatter type is not $ftype"
+      fail "$fname: inbox file missing at $dest"
     fi
 
-    extracted="$(mktemp)"
-    if extract_body "$dest" > "$extracted"; then
-      if diff -q "$fixture_path" "$extracted" >/dev/null 2>&1; then
-        pass "$fname: body is byte-for-byte verbatim"
+    if [ -f "$dest" ]; then
+      if grep -qF "id: $stem" "$dest"; then
+        pass "$fname: frontmatter id matches filename stem ($stem)"
       else
-        fail "$fname: body does not match input verbatim"
+        fail "$fname: frontmatter id does not match filename stem ($stem)"
       fi
-    else
-      fail "$fname: could not locate frontmatter delimiter to extract body"
+
+      if grep -qF "source: $fixture_source" "$dest"; then
+        pass "$fname: frontmatter source is $fixture_source"
+      else
+        fail "$fname: frontmatter source is not $fixture_source"
+      fi
+
+      if grep -qF "type: $ftype" "$dest"; then
+        pass "$fname: frontmatter type is $ftype"
+      else
+        fail "$fname: frontmatter type is not $ftype"
+      fi
+
+      extracted="$(mktemp)"
+      if extract_body "$dest" > "$extracted"; then
+        if diff -q "$fixture_path" "$extracted" >/dev/null 2>&1; then
+          pass "$fname: body is byte-for-byte verbatim"
+        else
+          fail "$fname: body does not match input verbatim"
+        fi
+      else
+        fail "$fname: could not locate frontmatter delimiter to extract body"
+      fi
+      rm -f "$extracted"
     fi
-    rm -f "$extracted"
-  fi
-done <<< "$fixture_specs"
+  done <<< "$specs"
+}
+
+# gmail-in: default `email`, `[ra]`-subject -> voice-note,
+# linkedin.com From -> linkedin-notification (per the plan-17 mapping table).
+gmail_fixture_specs="
+email.json:email
+email-voice-note.json:voice-note
+email-linkedin-notification.json:linkedin-notification
+"
+run_fixture_pack "$GMAIL_FIXTURES_DIR" "gmail-in/gmail" "$gmail_fixture_specs"
+
+# calendar-in: every event (timed or all-day) types as calendar-event.
+calendar_fixture_specs="
+calendar-event.json:calendar-event
+calendar-event-allday.json:calendar-event
+"
+run_fixture_pack "$CALENDAR_FIXTURES_DIR" "calendar-in/calendar" "$calendar_fixture_specs"
 
 # --- enum coverage: no fixture above exercises these types directly (the
-# sweeps only ever emit voice-note/other today; linkedin-notification,
-# event-confirmation, and transcript are reserved for a later filing chunk)
-# — assert the normalizer still accepts each of them with a trivial body ---
+# sweeps only ever emit voice-note/email/linkedin-notification/calendar-event
+# today; event-confirmation and transcript are reserved for a later filing
+# chunk) — assert the normalizer still accepts each of them with a trivial
+# body ---
 remaining_enum_types="
 linkedin-notification
 event-confirmation
@@ -174,7 +226,7 @@ while IFS= read -r etype; do
   [ -z "$etype" ] && continue
 
   eid="enum-coverage-$etype"
-  out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source composio-in --type "$etype" --id "$eid" 2>&1)"
+  out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type "$etype" --id "$eid" 2>&1)"
   status=$?
   edest="$STORE_DIR/inbox/$eid.md"
 
@@ -203,7 +255,7 @@ while IFS= read -r netype; do
   [ -z "$netype" ] && continue
 
   neid="enum-coverage-1-1-0-$netype"
-  out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source composio-in --type "$netype" --id "$neid" 2>&1)"
+  out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type "$netype" --id "$neid" 2>&1)"
   status=$?
   nedest="$STORE_DIR/inbox/$neid.md"
 
@@ -234,7 +286,7 @@ while IFS= read -r cetype; do
   [ -z "$cetype" ] && continue
 
   ceid="enum-coverage-1-2-0-$cetype"
-  out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source composio-in --type "$cetype" --id "$ceid" 2>&1)"
+  out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type "$cetype" --id "$ceid" 2>&1)"
   status=$?
   cedest="$STORE_DIR/inbox/$ceid.md"
 
@@ -269,7 +321,7 @@ else
 fi
 
 # --- occurred_at: valid --occurred-at is emitted after captured_at ---
-out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source composio-in --type email --id occurred-at-valid --occurred-at 2026-08-29T12:00:00Z 2>&1)"
+out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type email --id occurred-at-valid --occurred-at 2026-08-29T12:00:00Z 2>&1)"
 status=$?
 occurred_dest="$STORE_DIR/inbox/occurred-at-valid.md"
 
@@ -292,7 +344,7 @@ else
 fi
 
 # --- occurred_at: omitting the flag produces no occurred_at line ---
-out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source composio-in --type email --id occurred-at-absent 2>&1)"
+out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type email --id occurred-at-absent 2>&1)"
 status=$?
 absent_dest="$STORE_DIR/inbox/occurred-at-absent.md"
 
@@ -307,7 +359,7 @@ else
 fi
 
 # --- occurred_at: malformed --occurred-at quarantines with reason mentioning occurred_at ---
-out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source composio-in --type email --id occurred-at-malformed --occurred-at not-a-date 2>&1)"
+out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type email --id occurred-at-malformed --occurred-at not-a-date 2>&1)"
 status=$?
 malformed_inbox="$STORE_DIR/inbox/occurred-at-malformed.md"
 malformed_quarantine="$STORE_DIR/inbox/quarantine/occurred-at-malformed.md"
@@ -338,7 +390,7 @@ else
 fi
 
 # --- occurred_at: near-miss malformed --occurred-at (space instead of T) quarantines too ---
-out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source composio-in --type email --id occurred-at-nearmiss --occurred-at "2026-08-29 12:00:00" 2>&1)"
+out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type email --id occurred-at-nearmiss --occurred-at "2026-08-29 12:00:00" 2>&1)"
 status=$?
 nearmiss_inbox="$STORE_DIR/inbox/occurred-at-nearmiss.md"
 nearmiss_quarantine="$STORE_DIR/inbox/quarantine/occurred-at-nearmiss.md"
@@ -369,9 +421,9 @@ else
 fi
 
 # --- assertion 3: --hint values land in participant-hints ---
-hint_fixture="$FIXTURES_DIR/calendar-event.json"
+hint_fixture="$CALENDAR_FIXTURES_DIR/calendar-event.json"
 if [ -f "$hint_fixture" ]; then
-  out="$("$NORMALIZER" "$STORE_DIR" --source composio-in --type event-confirmation --id hint-test \
+  out="$("$NORMALIZER" "$STORE_DIR" --source "calendar-in/calendar" --type calendar-event --id hint-test \
     --hint "Dana Whitfield" --hint "dana.whitfield@example.com" --file "$hint_fixture" 2>&1)"
   status=$?
   dest="$STORE_DIR/inbox/hint-test.md"
@@ -390,8 +442,8 @@ else
 fi
 
 # --- assertion 4: invalid --type quarantines, exit 1, inbox untouched ---
-bad_type_fixture="$FIXTURES_DIR/email-voice-note.json"
-out="$("$NORMALIZER" "$STORE_DIR" --source composio-in --type bogus --id invalid-type-test --file "$bad_type_fixture" 2>&1)"
+bad_type_fixture="$GMAIL_FIXTURES_DIR/email-voice-note.json"
+out="$("$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type bogus --id invalid-type-test --file "$bad_type_fixture" 2>&1)"
 status=$?
 inbox_dest="$STORE_DIR/inbox/invalid-type-test.md"
 quarantine_dest="$STORE_DIR/inbox/quarantine/invalid-type-test.md"
@@ -431,10 +483,10 @@ if [ -f "$quarantine_dest" ]; then
 fi
 
 # --- assertion 5: duplicate --id quarantines the second attempt; first untouched ---
-dup_fixture_a="$FIXTURES_DIR/email-voice-note.json"
-dup_fixture_b="$FIXTURES_DIR/email-linkedin-notification.json"
+dup_fixture_a="$GMAIL_FIXTURES_DIR/email-voice-note.json"
+dup_fixture_b="$GMAIL_FIXTURES_DIR/email-linkedin-notification.json"
 
-out="$("$NORMALIZER" "$STORE_DIR" --source composio-in --type voice-note --id dup-test --file "$dup_fixture_a" 2>&1)"
+out="$("$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type voice-note --id dup-test --file "$dup_fixture_a" 2>&1)"
 status=$?
 dup_dest="$STORE_DIR/inbox/dup-test.md"
 
@@ -443,7 +495,7 @@ if [ "$status" -eq 0 ] && [ -f "$dup_dest" ]; then
   first_copy="$(mktemp)"
   cp "$dup_dest" "$first_copy"
 
-  out2="$("$NORMALIZER" "$STORE_DIR" --source composio-in --type transcript --id dup-test --file "$dup_fixture_b" 2>&1)"
+  out2="$("$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type transcript --id dup-test --file "$dup_fixture_b" 2>&1)"
   status2=$?
 
   if [ "$status2" -eq 1 ]; then
@@ -471,7 +523,7 @@ else
 fi
 
 # --- assertion 6: empty body is valid ---
-out="$(printf '' | "$NORMALIZER" "$STORE_DIR" --source composio-in --type other --id empty-body-test 2>&1)"
+out="$(printf '' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type other --id empty-body-test 2>&1)"
 status=$?
 empty_dest="$STORE_DIR/inbox/empty-body-test.md"
 
@@ -490,9 +542,9 @@ else
 fi
 
 # --- assertion 7: malformed-junk.txt as body, valid envelope, still written ---
-junk_fixture="$FIXTURES_DIR/malformed-junk.txt"
+junk_fixture="$GMAIL_FIXTURES_DIR/malformed-junk.txt"
 if [ -f "$junk_fixture" ]; then
-  out="$("$NORMALIZER" "$STORE_DIR" --source composio-in --type other --id malformed-body-test --file "$junk_fixture" 2>&1)"
+  out="$("$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type other --id malformed-body-test --file "$junk_fixture" 2>&1)"
   status=$?
   junk_dest="$STORE_DIR/inbox/malformed-body-test.md"
 
@@ -559,14 +611,90 @@ else
   fail "slashed source: skipped downstream checks (normalizer did not succeed)"
 fi
 
-# --- backfill checkpoint isolation (composio-in gmail-sweep/calendar-sweep
-# backfill mode, per packages/connectors/composio-in/skills/gmail-sweep/SKILL.md
-# and calendar-sweep/SKILL.md's "Backfill mode" sections) ---
-#
-# No live Composio calls here — this simulates the write path the skills
-# describe: pre-seed an incremental checkpoint + processed.log, run a
-# simulated backfill batch, then assert the incremental checkpoint file is
-# byte-identical afterward and only backfill-namespace files were written.
+# --- gmail-in/scripts/classify.sh: typing rules (subject + From-address ->
+# voice-note / linkedin-notification / email), per the plan-17 mapping
+# table. Deterministic, offline, no normalize-capture.sh involvement. ---
+
+classify_check() {
+  # $1 = label, $2 = subject, $3 = from-address, $4 = expected type
+  label="$1"
+  subject="$2"
+  from_addr="$3"
+  expected="$4"
+  got="$("$CLASSIFY" "$subject" "$from_addr" 2>&1)"
+  cstatus=$?
+  if [ "$cstatus" -eq 0 ] && [ "$got" = "$expected" ]; then
+    pass "classify.sh: $label -> $expected"
+  else
+    fail "classify.sh: $label expected '$expected', got '$got' (exit $cstatus)"
+  fi
+}
+
+classify_check "[ra] subject" "debrief: coffee with dana [ra]" "Me <me@example.com>" "voice-note"
+classify_check "linkedin.com From" "Priya Nair viewed your profile" "LinkedIn <notifications-noreply@linkedin.com>" "linkedin-notification"
+classify_check "subdomain of linkedin.com From" "You have a new connection" "LinkedIn <notifications@e.linkedin.com>" "linkedin-notification"
+classify_check "[ra] subject + linkedin.com From together (precedence)" "debrief: call with dana [ra]" "LinkedIn <notifications-noreply@linkedin.com>" "voice-note"
+classify_check "plain subject and From" "Re: fintech partnerships sync" "Dana Whitfield <dana.whitfield@example.com>" "email"
+
+# --- calendar-in/scripts/extract-hints.sh: organizer + creator + every
+# attendee present in the output, correct "Name <email>" / bare-email
+# fallback forms, no self-filtering (the self: true attendee appears). ---
+
+hint_output="$("$EXTRACT_HINTS" < "$CALENDAR_FIXTURES_DIR/calendar-event.json" 2>&1)"
+hint_status=$?
+
+if [ "$hint_status" -eq 0 ]; then
+  pass "extract-hints.sh: exits 0 against calendar-event.json"
+else
+  fail "extract-hints.sh: exited $hint_status against calendar-event.json: $hint_output"
+fi
+
+# calendar-event.json fixture: organizer == creator == dana.whitfield (no
+# displayName, per fixtures/README.md — bare-email fallback form expected);
+# attendees: dana.whitfield (organizer:true), user@example.com (self:true),
+# priya.nair, guest — all bare email, no displayName present anywhere.
+if printf '%s\n' "$hint_output" | grep -qxF "dana.whitfield@example.org"; then
+  pass "extract-hints.sh: organizer/creator (dana.whitfield, bare-email fallback) present"
+else
+  fail "extract-hints.sh: organizer/creator (dana.whitfield) missing from output: $hint_output"
+fi
+
+organizer_creator_count="$(printf '%s\n' "$hint_output" | grep -cxF "dana.whitfield@example.org")"
+if [ "$organizer_creator_count" -ge 3 ]; then
+  pass "extract-hints.sh: dana.whitfield appears for organizer, creator, AND the matching attendee entry (>= 3 lines)"
+else
+  fail "extract-hints.sh: expected >= 3 lines for dana.whitfield (organizer + creator + attendee), got $organizer_creator_count: $hint_output"
+fi
+
+if printf '%s\n' "$hint_output" | grep -qxF "user@example.com"; then
+  pass "extract-hints.sh: self: true attendee (user@example.com) is present — no self-filtering"
+else
+  fail "extract-hints.sh: self: true attendee (user@example.com) missing — should never be filtered: $hint_output"
+fi
+
+if printf '%s\n' "$hint_output" | grep -qxF "priya.nair@example.com"; then
+  pass "extract-hints.sh: non-organizer attendee (priya.nair) present"
+else
+  fail "extract-hints.sh: non-organizer attendee (priya.nair) missing: $hint_output"
+fi
+
+if printf '%s\n' "$hint_output" | grep -qxF "guest@example.com"; then
+  pass "extract-hints.sh: non-organizer attendee (guest) present"
+else
+  fail "extract-hints.sh: non-organizer attendee (guest) missing: $hint_output"
+fi
+
+# ---------------------------------------------------------------------------
+# backfill checkpoint isolation (deferred out of scope for the gmail-in /
+# calendar-in lanes per the plan-17 "Out of scope" section — backfill mode
+# is not ported in this chunk). This block exercises the generic
+# ledger-isolation write
+# pattern the plan's carried-over "Ledger discipline" section describes
+# (an incremental checkpoint/processed.log pair must never be touched by a
+# backfill batch's writes), independent of any specific connector, so it
+# stays as regression coverage for whichever lane later re-adds backfill
+# mode.
+# ---------------------------------------------------------------------------
 
 CONNECTOR_STATE_DIR="$(mktemp -d)"
 GMAIL_STATE="$CONNECTOR_STATE_DIR/gmail"
