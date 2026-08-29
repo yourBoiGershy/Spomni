@@ -35,6 +35,28 @@ worker budget so the parent can reserve it.
 - A dev-worker prompt with a bulleted list of **4+ independent items** is the
   tell: stop and split.
 
+## Context economy (workers start warm)
+
+Cold workers re-reading CLAUDE.md, manifests, and contracts before their first
+edit is the dominant latency cost of dispatch. Four rules:
+
+- **Briefs carry content, not pointers.** Whoever wrote the brief has already
+  read the contract, type, or exemplar — paste the relevant excerpt into the
+  brief verbatim (template §2/§4). Litmus: a worker forced to open more than
+  ~2 files before its first edit got an underspecified brief.
+- **Reuse warm workers.** For serial units in the same package, continue that
+  package's existing dev-worker via SendMessage instead of spawning fresh —
+  it already holds the layout, contracts, and test commands from its first
+  unit. Spawn fresh only for parallelism across packages/modules; at most one
+  warm worker per package at a time (single-writer rule).
+- **Fork when the orchestrator already holds the context.** `subagent_type:
+  "fork"` clones this conversation into the worker — use it when the session
+  has already done the investigation (e.g. the fix right after a debugging
+  session). Never fork clean-slate units; inherited context is pure waste there.
+- **Manifests stay capsule-sized.** `package.md` is the one file a cold worker
+  legitimately must read; keep it tight enough that one read is sufficient
+  orientation, and tighten it when it drifts into prose.
+
 ## Turn economy & monitoring
 
 - Batch independent Bash calls into one message; never poll in foreground;

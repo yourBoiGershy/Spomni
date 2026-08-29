@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "spomni-query": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "--experimental-strip-types",
+        "packages/query/server/src/index.ts",
+        "--store",
+        "data/store"
+      ],
+      "env": {}
+    }
+  }
+}

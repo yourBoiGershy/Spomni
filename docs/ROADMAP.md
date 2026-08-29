@@ -29,12 +29,14 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 14 | Import standard (capture-event 1.1/1.2: typing, occurred_at, <connector>/<lane> source, transport rule; formerly "Composio import standard" — the contract is transport-agnostic and outlives Composio) | core (contract) + connectors (sweeps, normalizer, beeper alignment) | 01, 13 | Done (2026-08-29; suites capture 82, beeper 70, store 20 green). Caveat: Gmail To/Cc + calendar organizer/creator field shapes never live-verified — re-verify on the new direct lanes in 17 |
 | 15 | Preference & personalization layer | core (profile/ranking-weights/wakeup 1.1) + ingestion/attention specs+goldens | 01, 08 | Done (2026-08-29, stream-personalization) |
 | 16 | Eval harness: tool/agent/skill tiers | core (eval-case contract, 4 runners) + query/ingestion/attention cases | 08, 15 | Done (2026-08-29, stream-personalization) |
-| 17 | Composio retirement & direct Google lanes (gmail-in, calendar-in on first-party claude.ai connectors) | connectors (composio-in teardown; gmail-in, calendar-in) + docs | 01, 14; decision composio-retired | Planned — plan file to author |
-| 18 | Query & chat live wiring (register the MCP server against the live store; chat with your own data) | query (server config) + harness docs | 08 | Planned — FIRST priority, plan file to author |
-| 19 | Scheduled syncs runner (one configurable scheduler for all capture lanes; restart-safe) | connectors/scripts + infrastructure docs | 13, 17 | Planned — plan file to author |
+| 17 | Composio retirement & direct Google lanes (gmail-in, calendar-in on first-party claude.ai connectors) | connectors (composio-in teardown; gmail-in, calendar-in) + docs | 01, 14; decision composio-retired | Done (2026-08-29; suites 99/70/20 green, both lanes live-verified on real sweeps, plan-14 caveat closed, composio-free grep-proven, CLI logged out). Residual: recurrence-expansion VERIFY-LIVE awaits a recurring event in-window; dashboard key revocation + Google-grant revocation are user steps |
+| 18 | Query & chat live wiring (register the MCP server against the live store; chat with your own data) | query (server config) + harness docs | 08 | Done (2026-08-29, query-live; root `.mcp.json` registration, smoke-live script, chat-setup docs; fixtures smoke 6/6, store+query suites green, checker CLEAN; decision query-mcp-registration). Residual: live-store smoke + chat verification await 20's filed backlog — chunk 22 |
+| 19 | Scheduled syncs runner (one configurable scheduler for all capture lanes; restart-safe) | connectors/scripts + core (sync-lanes contract) | 13; 17's lanes join via config rows when they land | Done (2026-08-29, chunk-19-sync-scheduler; suites 20/82/70/64 green, beeper migrated, reboot-sim + config-change proven; live firing awaits a machine-side TCC grant — see plan 19, affects plan 13's job too) |
 | 20 | Backfill blitz & ship-day shakedown (file the real backlog, prove the loop end to end, TODAY) | cross-package (runs the machinery, builds none) | 03, 13, 18 | Done (2026-08-29, chunk-20-backfill-shakedown; 45/45 accounted, 15 filed / 27 held / 3 quarantined, both audits green, beeper round-trip proven, query 6/6; gmail filed→query leg user-accepted as known gap; ship notes `docs/ship-notes-2026-08-30.md`) |
 | 21 | Calendar intelligence & event proposals (tell/schedule from messages; propose events, draft-only) | attention + query + connectors/calendar | 04, 05, 06, 17, 18 | Planned — plan file to author |
-| 22 | Onboarding deep backfill & priority seeding (backfill history on first run, seed tiers from participation signals) | connectors (backfill mode on direct lanes) + ingestion (seed pass, extends `specs/onboarding-tiering-seed.md`) + core (config) | 03, 15, 17 | Planned — plan file to author |
+| 22 | Live-data query sync & verification (plan 18 close-out: smoke 6/6 over the filed live store, real chat with citations, legacy user-scope registration removed) | query (verification only — runs the machinery, builds none) | 18, 20 (filed backlog) | Ready — 20 shipped; its Phase 5 shakedown already gave 6/6 cited answers via a fresh server, so 22 collapses to registration cleanup + smoke-live re-run + real-chat verification |
+| 23 | Harness context economy (content-bearing briefs; warm per-package workers via SendMessage; fork guidance; capsule-sized manifests) | harness docs (`.claude/rules`, `.claude/context`) — no machinery | — | Done (2026-08-29, worktree-harness-context-economy) |
+| 24 | Onboarding deep backfill & priority seeding (backfill history on first run, seed tiers from participation signals) | connectors (backfill mode on direct lanes) + ingestion (seed pass, extends `specs/onboarding-tiering-seed.md`) + core (config) | 03, 15, 17 | Planned — plan file to author |
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
 attention-merge. Historical plan-number collisions (11/12 renumbered to 13–16 at merge)
@@ -68,7 +70,14 @@ new lanes on a real sweep; capture test suite green; zero live-path composio ref
 (grep-proven); the plan-14 caveat closed — Gmail To/Cc and calendar organizer/creator
 shapes verified live on the new lanes; ROADMAP + memory updated.
 
-### 18 — Query & chat live wiring (START HERE)
+### 18 — Query & chat live wiring (DONE — see plan file; live-data residual is chunk 22)
+
+Landed 2026-08-29 (worktree `query-live/`, plan `docs/plans/2026-08-29-18-query-live-wiring.md`):
+root-committed `.mcp.json` (repo-relative, `--store data/store` per decision
+query-mcp-registration), `packages/query/tests/smoke-live.sh` (all six tools,
+data-independent, degraded-stats = FAIL), `docs/chat-setup.md`, package.md refresh.
+Fixtures smoke 6/6; store/query suites green; hygiene checker CLEAN. The original
+brief follows for the record.
 
 **Context.** The query MCP server (plan 08) is fully implemented — six read-only tools
 (`search_people`, `get_person`, `list_interactions`, `get_interaction`,
@@ -153,7 +162,41 @@ proposal in the wake-up queue (golden-tested); confirming a proposal creates the
 via the connector, declining files silently; zero events ever created without explicit
 confirmation (eval-guarded).
 
-### 22 — Onboarding deep backfill & priority seeding
+### 22 — Live-data query sync & verification (plan 18 close-out)
+
+**Context.** Chunk 18 wired and proved the query surface against fixtures; the live
+proof was blocked because no live store had filed people yet (the 46-event backlog is
+chunk 20's ship gate). This chunk is the deferred live half — verification only, no
+new machinery. Overlaps with 20(d)'s query shakedown: if 20 completes its shakedown
+with cited answers, 22 collapses to the registration cleanup + smoke re-run.
+**Work.** (a) Confirm the checkout's `data/store` points at the filed live store
+(per docs/chat-setup.md; symlink flip is a local act). (b) `bash
+packages/query/tests/smoke-live.sh` — all six tools PASS, non-degraded stats, store
+byte-untouched. (c) Live chat: ≥3 real questions in a fresh session via the
+project-scope registration; answers cite real store paths with provenance intact
+(evidence = tool names + citation counts, never content). (d) Remove the legacy
+user-scope `spomni-query` entry (`claude mcp remove spomni-query` in the old project
+scope) so exactly one registration exists.
+**Agent path.** Orchestrator-run in any current checkout; no workers needed.
+**Deliverables / proof of done.** Smoke exit 0 over the filed store; chat citations
+verified; exactly one registration; plan 18's "Proof of done" checklist fully closed
+out in its plan file.
+
+### 23 — Harness context economy
+
+**Context.** Worker agents were spawning cold and regaining context — re-reading
+CLAUDE.md, package manifests, and contracts — before every edit; context regain,
+not the edits themselves, dominated run time.
+**Work.** Doctrine-only, no machinery: briefs carry content inline instead of bare
+paths (brief template §2/§4, with the >2-files-before-first-edit litmus); serial
+same-package units continue a warm dev-worker via SendMessage instead of spawning
+fresh; `fork` for units whose investigation already lives in the orchestrator
+conversation; `package.md` manifests kept capsule-sized. Codified as the new
+"Context economy" section of `.claude/rules/orchestration.md`.
+**Deliverables / proof of done.** Template, orchestration rules, and rules index
+updated; roadmap row 23 added. No package code touched.
+
+### 24 — Onboarding deep backfill & priority seeding
 
 **Context (from the chunk-20 live run, 2026-08-29).** The ship-gate backfill only
 filed what the incremental sweeps had already captured — a fresh install must
@@ -188,20 +231,20 @@ without confirmation (eval-guarded); window override honored end to end.
 zero data loss, audits green; gmail filed→query leg accepted as a known gap,
 closes with 17's lanes + first human email).
 
-Post-ship order:
-1. **Query-chat live test** — reconnect `spomni-query` (fresh boot snapshot —
-   known issue 1 in the ship notes) and exercise chat over the filed store;
-   file defects against query.
-2. **17** — composio teardown + direct gmail/calendar lanes (in progress).
-3. **19** — scheduled syncs runner (needs 17's lanes to exist).
-4. **Post-ship monitoring** — the longitudinal organization-quality watch that used to
+Post-ship order (17, 18, 19 landed in parallel sessions on ship day):
+1. **22** — live-data query sync & verification: mostly satisfied by 20's Phase 5
+   shakedown (6/6 cited answers via a fresh server); remaining = reconnect the
+   session server (boot-snapshot known issue), `smoke-live.sh` over the filed
+   store, ≥3 real chat questions with citations, legacy registration removal.
+2. **Post-ship monitoring** — the longitudinal organization-quality watch that used to
    be 20's trial: periodic check-sync/validate-store audits, defects filed per package.
-5. **22** — onboarding deep backfill & priority seeding (needs 17's lanes; extends
-   the onboarding-tiering-seed spec with participation signals + configurable window).
-6. **12 (amendment unit) → 05 + 06 → 07** — the attention layer, honoring plan 15
+3. **24** — onboarding deep backfill & priority seeding (needs 17's lanes; extends
+   the onboarding-tiering-seed spec with participation signals + a configurable
+   backfill window, default 6 months).
+4. **12 (amendment unit) → 05 + 06 → 07** — the attention layer, honoring plan 15
    personalization touchpoints.
-7. **21** — calendar intelligence, once 05/06 exist to carry its signals and cards.
-8. **09** — infrastructure continues alongside; **04**'s matching half rides with 05's
+5. **21** — calendar intelligence, once 05/06 exist to carry its signals and cards.
+6. **09** — infrastructure continues alongside; **04**'s matching half rides with 05's
    co-attendance needs.
 
 ## Streams (parallel-session worktrees)
@@ -213,7 +256,8 @@ to resync — never rebase). Streams may run concurrently with each other.
 | Worktree | Branch | Territory | Chunks |
 |---|---|---|---|
 | `ingestion/` | `stream-ingestion` | connectors-in + ingestion (direct first-party lanes: gmail, calendar; beeper lane; user inputs) | 17 → 04 (matching) |
-| `mcp/` | `stream-mcp` | query + connectors-out (answer surface, briefs, model access) | 18 → 07 (06-dependent parts last) |
+| `mcp/` | `stream-mcp` | query + connectors-out (answer surface, briefs, model access) | 07 (06-dependent parts last; after 18 merges — 18 moved to `query-live/`) |
+| `query-live/` | `chunk-18-query-live-wiring` | chunk-18 wiring (query territory on loan from `mcp/`) — 18 merged; worktree retires after chunk 22's verification runs | 18, 22 |
 | `infrastructure/` | `stream-infrastructure` | cloud runtime + data-repo discipline + egress hygiene + sync scheduling | 09, 19 |
 | (new) `attention/` | `stream-attention` | signal engine + wake-up queue + cadence | 12 → 05 → 06 → 21 (attention parts) |
 

@@ -163,8 +163,9 @@ the user pass over the people list — none are loss-class.
 **GO — merged.** The gmail filed→query leg is **accepted as a known gap**
 (closes naturally with chunk 17's lanes + the first human email). Identity
 questions remain open in the private note; held events stay held (no-guilt).
-Follow-ups adopted into the roadmap: post-ship query-chat live test, and
-**chunk 22** — onboarding deep backfill (configurable window, default 6
+Follow-ups adopted into the roadmap: chunk 22 (live-data query sync &
+verification — query-chat test; mostly satisfied by this run's Phase 5), and
+**chunk 24** — onboarding deep backfill (configurable window, default 6
 months) & participation-signal priority seeding (interaction/event boosts;
 unanswered or non-participating contacts seeded very low). Chunk-20 examples
-feeding 22's design are recorded in the private companion note.
+feeding 24's design are recorded in the private companion note.

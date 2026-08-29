@@ -1,0 +1,7 @@
+This is not JSON and not a valid capture-event body/envelope shape at all —
+it exists purely to drive quarantine-path test coverage for the gmail-in
+lane (e.g. a normalize-capture.sh call fed an intentionally invalid --type
+or missing --source against this file as the body, per
+packages/connectors/tests/run-capture-tests.sh's quarantine tests).
+
+Not a Gmail API resource shape of any kind. Do not parse as JSON.
