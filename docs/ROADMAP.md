@@ -37,6 +37,19 @@ Chunks 05/06 (attention) are unassigned — schedule after 02/04 land, either in
 worktree or in `ingestion/` once it goes quiet. The single-writer rule still applies
 across streams: a stream never edits another stream's packages.
 
+### Merge cadence (keep main close, keep branches short-lived)
+
+- A completed chunk merges to main **in the same session its checker passes** — chunks
+  are sized for one session precisely so nothing needs to wait.
+- At most **one** completed-but-unmerged chunk per stream at any moment; anything
+  unmerged for more than a day is an escalation, not a backlog item.
+- Docs-only work merges to main immediately; it never rides along waiting for code.
+- After any merge to main, every active stream resyncs (`git merge main`) at its next
+  session start, before new work.
+- Note what fast merging does NOT do: a pushed branch in a public repo is already
+  world-readable, merged or not. Data safety lives at the push boundary (pii-guard,
+  plan 08), never in merge speed.
+
 ## Waves
 
 - **Wave 1**: 01 alone — it freezes the six contracts and the fixture pack everything

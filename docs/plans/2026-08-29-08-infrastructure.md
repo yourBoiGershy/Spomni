@@ -50,11 +50,16 @@ any device ◀──(Gmail drafts, rendered repo files — plan 07)── connec
 - `docs/EGRESS.md` — the allowlist: the five v1 lanes from the pii-egress-allowlist
   decision, each with what may flow through it and what must not (told-by-user facts never
   in web queries), plus the standing rule that adding a lane requires a DECISIONS entry.
-- PII-scan guard: `.claude/hooks/pii-guard.sh` (pre-commit) + a CI-runnable script —
-  scans staged/changed machinery-repo files for real-looking emails, phone numbers, and
-  non-reserved domains outside the synthetic-fixture conventions (fixtures use
-  `example.com`/`example.org` and reserved numbers); blocks with a named finding, never
-  silently. Also asserts `data/` remains gitignored.
+- PII-scan guard, three enforcement points sharing one scan script:
+  (a) `.claude/hooks/pii-guard.sh` — harness PreToolUse guard on `git commit`/`git push`
+  in the machinery repo; (b) a native git `pre-push` hook (installed by a setup script,
+  covers human pushes outside Claude sessions) — the push boundary is the one that
+  matters in a public repo, since a pushed branch is world-readable whether or not it
+  ever merges; (c) the same script CI-runnable as a **required PR check**, so no PR
+  carrying real-looking data can merge. The scan flags real-looking emails, phone
+  numbers, and non-reserved domains outside the synthetic-fixture conventions (fixtures
+  use `example.com`/`example.org` and reserved numbers); blocks with a named finding,
+  never silently. Also asserts `data/` remains gitignored.
 - Hub runtime kit in `docs/runtime-hub.md`: host options (per home-hub-tailscale),
   Tailscale setup, a launchd/cron template that runs `store-sync.sh pull` → plan 06's
   sweep → `store-sync.sh commit hub && push`, and cadence config.
@@ -73,8 +78,10 @@ Wave A (parallel):
    docs (host options, Tailscale, sync discipline section, cadence config).
 
 Wave B (after A):
-4. [worker] `.claude/hooks/pii-guard.sh` + CI-runnable scan script + settings wiring —
-   synthetic-fixture conventions enforced, `data/` gitignore asserted, findings named.
+4. [worker] The shared scan script + its three mounts: `.claude/hooks/pii-guard.sh`
+   (harness guard on commit/push), git `pre-push` hook + installer, CI workflow as a
+   required PR check — synthetic-fixture conventions enforced, `data/` gitignore
+   asserted, findings named.
 5. [worker] Hub schedule template (launchd + cron variants) invoking sync → sweep → sync,
    plus the `last-sweep` heartbeat stamp and the staleness→wake-up rule (via core's
    `wakeup-add.sh`, honoring the single-writer rule).
