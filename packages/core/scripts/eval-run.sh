@@ -16,6 +16,8 @@
 #   RA_EVAL_KEEP=1        keep the temp workspace instead of deleting it
 #   RA_EVAL_DRY_RUN=1     print the claude invocation instead of running it
 #                         (used by the harness's own tests, not a case tier)
+#                         and emit RESULT SKIP case=<name> reason=dry-run
+#   RA_EVAL_FORCE=1       run a case even if it declares `runnable-when`
 #
 # Portable to bash 3.2 (macOS default): no associative arrays, no mapfile,
 # no timeout(1) (backgrounded sleep-and-kill for the wall-clock guard).
@@ -89,6 +91,7 @@ STORE="$(extract_field "$FRONTMATTER" store)"
 MAX_TURNS="$(extract_field "$FRONTMATTER" max-turns)"
 MODEL="$(extract_field "$FRONTMATTER" model)"
 XFAIL="$(extract_field "$FRONTMATTER" xfail)"
+RUNNABLE_WHEN="$(extract_field "$FRONTMATTER" runnable-when)"
 ALLOWED_TOOLS_LIST="$(extract_list "$FRONTMATTER" allowed-tools)"
 
 MAX_TURNS="${MAX_TURNS:-8}"
@@ -112,6 +115,12 @@ fi
 
 if [ -z "$BODY" ]; then
   result_error "prompt.md has no body (task prompt) after frontmatter"
+fi
+
+# --- runnable-when: SKIP unless forced (the plan the case exercises isn't built) ---
+if [ -n "$RUNNABLE_WHEN" ] && [ "${RA_EVAL_FORCE:-}" != "1" ]; then
+  echo "RESULT SKIP case=${CASE_NAME} reason=runnable-when:${RUNNABLE_WHEN}"
+  exit 0
 fi
 
 # --- PII rule: store must never resolve under data/ (packages/core/contracts/eval-case.md) ---
@@ -196,6 +205,7 @@ if [ "${RA_EVAL_DRY_RUN:-0}" = "1" ]; then
   echo "DRY RUN: ${CLAUDE_CMD}"
   echo "DRY RUN: cwd=${TMP_DIR}"
   echo "DRY RUN: mcp-config=${CONFIG_PATH}"
+  echo "RESULT SKIP case=${CASE_NAME} reason=dry-run"
   exit 0
 fi
 

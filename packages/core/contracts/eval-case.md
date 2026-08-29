@@ -120,6 +120,11 @@ vocabulary:
 | `XPASS` | All graders passed on a case marked `xfail` — the gap it was pinning has closed without the case being flipped to must-pass. Counts as **suite-red**: this is the forcing function to update the case (drop `xfail`) in the same change that lands the integration. |
 | `SKIP` | Case has `runnable-when` naming a plan not yet built. Always accompanied by a reason (the plan number) — silence about a skipped case is never a valid outcome. |
 
+Dry-run mode (`RA_EVAL_DRY_RUN=1`) also emits `RESULT SKIP case=<name>
+reason=dry-run` on both runner tiers, so the one-RESULT-line-per-run
+guarantee holds even when the underlying `claude` invocation is only
+printed, not executed.
+
 ### xfail discipline (binding)
 
 An `xfail: <reason> — <flip condition>` frontmatter value means "expected to
@@ -142,6 +147,26 @@ the case's `store`/`expected` path and refuses to run, with a clear error,
 if it resolves under `data/`. This is not advisory: real user data must
 never be pointed at by an eval run, per the code-data-separation principle
 and `docs/DECISIONS.md`.
+
+## Environment variables
+
+Runner behavior is tuned entirely through environment variables — no CLI
+flags. Every runner honors only the variables it lists below; unset means the
+noted default.
+
+| Variable | Honored by | Effect |
+|---|---|---|
+| `RA_EVAL_MAX_COST_USD` | `eval-suite.sh` | Suite-wide cost cap; suite exits non-zero if the summed `total_cost_usd` across all run cases exceeds it. Default `2.00`. |
+| `RA_EVAL_TIMEOUT_SECS` | `eval-run.sh`, `eval-run-skill.sh` | Wall-clock guard per case (backgrounded sleep-and-kill, no `timeout(1)`). Default `300`; `eval-judge.sh` defaults to `120`. |
+| `RA_EVAL_DRY_RUN` | `eval-run.sh`, `eval-run-skill.sh` | Set to `1` to print the `claude` invocation instead of running it, and emit `RESULT SKIP case=<name> reason=dry-run` in place of an actual result. |
+| `RA_EVAL_FORCE` | `eval-run.sh`, `eval-run-skill.sh` | Set to `1` to run a case despite it declaring `runnable-when` (bypasses the `SKIP`). |
+| `RA_EVAL_KEEP` | `eval-run.sh` | Set to `1` to keep the temp workspace instead of deleting it on exit (T3's `eval-run-skill.sh` always cleans up). |
+| `RA_EVAL_JUDGE_MODEL` | `eval-judge.sh` | Overrides the model used for `judge.md` rubric grading. Default `haiku`. |
+| `RA_EVAL_PARSE_TEST` | `eval-judge.sh` | Set to `1` to run `eval-judge.sh`'s own judge-output parse self-test instead of grading a case. |
+| `RA_GRADER_DIFF` | `eval-run-skill.sh` (exported, consumed by case graders) | Path to the built-in recursive byte-diff grader script, written into the T3 temp workspace. |
+| `RA_GRADER_ASKED` | `eval-run-skill.sh` (exported, consumed by case graders) | Path to the built-in "skill asked a clarifying question and wrote nothing" grader script, written into the T3 temp workspace. |
+| `RA_EVAL_EXPECTED_DIR` | `eval-run-skill.sh` (exported, consumed by `RA_GRADER_DIFF`) | Absolute path to the case's resolved `expected/` store, for graders that don't pass it as an explicit arg. |
+| `RA_EVAL_BEFORE_DIR` | `eval-run-skill.sh` (exported, consumed by `RA_GRADER_ASKED`) | Absolute path to the case's resolved pre-run store, for graders that don't pass it as an explicit arg. |
 
 ## Worked example (T2, agent tier)
 
