@@ -30,6 +30,23 @@ list, shapes, cursor semantics, and the chat-ID URL-encoding caveat.
   (source form `beeper-in/<network>`, `occurred_at` set to the newest message's
   timestamp in the batch).
 
+## Backfill mode
+
+`scripts/beeper-sweep.sh --backfill` (plan 24 U6) is a one-shot onboarding
+mode, never wired into the sync scheduler (D4). It resolves the onboarding
+backfill window via `packages/connectors/scripts/resolve-backfill-window.sh
+<private-data-root>` (abort on non-zero exit, no fallback window) and, per
+chat, paginates messages backward (`direction=before`) from the chat's
+existing *incremental* cursor (or the newest page, if none) back to the
+window start — so it only ever fetches history the incremental sweep hasn't
+already covered. State is fully isolated (D5):
+`data/connectors/beeper-in/backfill-cursors.tsv` +
+`backfill-last-sweep`, siblings of the incremental `cursors.tsv`/
+`last-sweep` — this mode never reads or writes those incremental files.
+Runs are logged to the same `runs.log` with a `backfill-` outcome-line
+marker (e.g. `backfill-ok`, `backfill-partial`). Incremental invocation (no
+flag) is unaffected.
+
 ## Scheduling
 
 This lane's sweep (`scripts/beeper-sweep.sh`) is scheduled by the shared sync

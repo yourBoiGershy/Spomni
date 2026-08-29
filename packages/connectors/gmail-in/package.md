@@ -60,13 +60,23 @@ sibling input connectors under the single-writer rule for that directory) plus
 this package's own local state under `data/connectors/gmail/` (checkpoint,
 processed-message ledger, raw-item archive — never in the shared store).
 
+## Backfill mode
+
+A separate, explicitly-invoked one-shot mode of `gmail-sweep` (Plan 24, U4)
+for onboarding: sweeps a wider historical window resolved via
+`packages/connectors/scripts/resolve-backfill-window.sh`, using its own
+isolated state (`data/connectors/gmail/backfill-checkpoint` +
+`backfill-processed.log`, sibling to the incremental files) so it never
+reads or writes the incremental `checkpoint`/`processed.log`. Never a
+`sync-lanes` scheduler row — invoked only by explicit request. See
+`skills/gmail-sweep/SKILL.md`'s "Backfill mode" section for the full
+mechanics (window resolution, dual-ledger dedup, checkpoint-advance rule).
+
 ## Out of scope (deferred)
 
-Backfill mode is deferred by Plan 17; date-range querying (`after:`/
-`before:` in `search_threads`) exists on this surface, so a
-backfill-equivalent sweep (widen the query window past the 30-day
-first-run bound) is possible if a later plan wants it — nothing here blocks
-it. A one-shot contacts-seed is **permanently deferred**, not
+Date-range querying (`after:`/`before:` in `search_threads`) also underpins
+the backfill mode above, which was deferred by Plan 17 and is now built by
+Plan 24. A one-shot contacts-seed is **permanently deferred**, not
 pending-verification: live-verified 2026-08-29, no contacts/People tool
 exists on this connector's surface at all (see `skills/gmail-sweep/SKILL.md`
 step 0's "Not present on this surface" note); revisit only if the surface

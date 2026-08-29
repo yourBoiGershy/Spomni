@@ -68,6 +68,17 @@ directory) plus this package's own local state under
 `data/connectors/calendar/` (dedup ledger, checkpoint — never in the shared
 store).
 
+## Backfill mode (plan 24)
+
+`calendar-sweep`'s SKILL.md also documents an explicit-invocation-only
+backfill mode for onboarding: it resolves its window via
+`packages/connectors/scripts/resolve-backfill-window.sh` (past events only,
+window-start → now — never the future side), and dedups against a second
+ledger, `data/connectors/calendar/backfill-processed.log`, read alongside
+(never instead of) `processed.log` but written to exclusively — a backfill
+run never appends to the incremental lane's `processed.log`. See the SKILL
+doc's "Backfill mode" section for the full contract.
+
 ## Built by
 
 Plan 17 (`docs/plans/`, 2026-08-29 direct-Google-lanes plan).

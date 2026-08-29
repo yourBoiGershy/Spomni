@@ -241,3 +241,43 @@ This skill is invokable as a single skill run over the full multi-calendar
 window described above — no external scheduler is assumed or required by
 this document. Recurring/periodic invocation (launchd or otherwise) is
 chunk 19's job.
+
+## Backfill mode (onboarding, explicit invocation only)
+
+A separate one-shot mode for a new user's onboarding session to sweep past
+events over a wider, configured window without disturbing the incremental
+lane's state. Invoked explicitly only — "run calendar-sweep in backfill
+mode" — never wired into the sync-lanes schedule (plan 19) as a standing
+row. Everything in §1, §3, §4, §5, §6, §7, and §9 above applies unchanged
+(enumeration, per-calendar failure isolation, event field handling,
+`occurred_at` normalization, hints, body/raw archiving, and the end-of-run
+summary); only the window (§2) and the dedup/log target (§8) differ, as
+follows.
+
+**Window:** resolve the backfill window by running
+`bash packages/connectors/scripts/resolve-backfill-window.sh <data-dir>`.
+On success it prints one line to stdout, tab-separated:
+`window_start_iso<TAB>window_months`. On a malformed config it exits
+non-zero — abort the backfill run and surface its stderr rather than
+guessing a window. Use `window_start_iso` as `startTime` and **now** (the
+run's own current UTC time) as `endTime` for every calendar's `list_events`
+call — backfill covers **window-start → now only** (past events). It never
+extends into the future; the upcoming/future side of the calendar stays the
+incremental sweep's job (§2), untouched by this mode.
+
+**Dedup and log isolation (adapted from plan 24 D5 to this checkpoint-less
+lane):** before capturing an event, check its dedup key
+(`<event-id>:<updated-timestamp>`, per §8) against **both**
+`data/connectors/calendar/processed.log` (the incremental lane's ledger) and
+`data/connectors/calendar/backfill-processed.log` (this mode's own ledger,
+same key format) — skip if present in either. On a successful capture
+(normalize-capture.sh exit 0), append the dedup key **only** to
+`backfill-processed.log`. A backfill run **never writes to
+`processed.log`** — that file remains the incremental sweep's exclusively,
+so a later incremental run's rolling-window dedup state is unaffected by
+anything a backfill run captured. `skipped-calendars.log` (§3) is shared
+and appended to by either mode, unchanged.
+
+**Summary (§9), adapted:** report the same fields, plus explicitly label
+the run as a backfill run and state the resolved window
+(`window_start_iso` → now) in the summary output.

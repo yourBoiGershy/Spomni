@@ -16,11 +16,23 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   user confirmation, style notes)
 - Skills: `skills/debrief/` (filing engine), `skills/calendar-reconcile/`
   (attendee↔person matching, event links, un-debriefed + upcoming-briefworthy
-  artifacts)
+  artifacts), `skills/onboarding-seed/` (session-driven, one-shot fresh-install
+  pass: sequences the three lanes' backfill modes, normal filing,
+  `build-stats.sh`, and the two seed-time scripts below into one batched,
+  human-confirmed tier-suggestion presentation, per plan 24)
+- Scripts: `scripts/derive-participation.sh` (read-only; derives per-person
+  `user_engaged`/`group_linked` participation flags from preserved raw
+  capture events, ephemeral input to onboarding tier suggestions — never
+  written to the store), `scripts/suggest-tiers.sh` (read-only; applies the
+  deterministic D3 scoring model to `stats.json` + the participation flags,
+  emitting the ordered, capped suggestion batch — both plan 24)
 - Specs: `specs/stated-preference-filing.md` — how tier utterances, signal opt-outs,
   priorities, and cadence wishes file into `person.md`/`profile.md`, including the
   tier-change confirmation path (amends plan 03's filing-engine brief; plan 03 is
-  unbuilt)
+  unbuilt); `specs/onboarding-tiering-seed.md` — the cold-start tier-suggestion
+  sequence, scoring model, and no-guilt presentation rules `skills/onboarding-seed/`
+  runs (plan 11 unit 13, amended by plan 24 for the 6-month configurable window +
+  participation-signal scoring)
 - Conventions: `needs-confirmation` and `needs-follow-up` markers, met-at /
   will-meet-at / same-event-as links
 - Evals: `evals/cases/` — 16 T3 (skill-tier) cases (`eval-case@1`,
@@ -37,9 +49,12 @@ provenance labeling. Ingestion is the sole writer of the people-store.
 
 ## Consumes
 
-- `person@^1`, `interaction@^1`, `capture-event@^1`, `wakeup@^1`, `profile@^1` (core;
-  wake-up creation only via core's `wakeup-add.sh`; `profile@^1` and `person@^1` tier
-  writes per `specs/stated-preference-filing.md`)
+- `person@^1`, `interaction@^1`, `capture-event@^1`, `wakeup@^1`, `profile@^1`,
+  `onboarding-backfill@^1.0` (core; wake-up creation only via core's
+  `wakeup-add.sh`; `profile@^1` and `person@^1` tier writes per
+  `specs/stated-preference-filing.md`; `onboarding-backfill@^1.0` read by
+  `skills/onboarding-seed/` and `scripts/derive-participation.sh` for the
+  configured window and `self` identities, per plan 24)
 - Typed capture events from `connectors/gmail-in`, event artifacts from
   `connectors/calendar-in`
 - Tier-change proposal wake-ups from `packages/attention` (read-only — the
@@ -53,4 +68,7 @@ private data dir.
 
 ## Built by
 
-Plans 03 (filing engine) and 04 (matching half).
+Plans 03 (filing engine) and 04 (matching half). `skills/onboarding-seed/`,
+`scripts/derive-participation.sh`, `scripts/suggest-tiers.sh`, and the
+`onboarding-tiering-seed.md` spec amendment by plan 24
+(docs/plans/2026-08-29-24-onboarding-backfill-priority-seeding.md).
