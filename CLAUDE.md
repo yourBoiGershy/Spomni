@@ -16,9 +16,11 @@ sends. This repo holds the machinery; user data never lives here (see
 - **Provenance labeling.** Facts about people are marked told-by-the-user vs.
   inferred-from-public-web, never mixed.
 - **Other people's data stays local.** No LinkedIn scraping, no enrichment
-  APIs, no third-party clouds holding the contact graph. First-party
-  connectors (user's own Gmail/Calendar/Contacts via official MCP/connectors)
-  plus whatever the user explicitly plugs in.
+  APIs; the people-store (the contact graph) lives only in the user's private
+  data dir — no third-party cloud ever holds it. Access to the user's own
+  accounts flows through connectors the user explicitly links — currently a
+  Composio account as the hub (see DECISIONS.md `composio-hub`) — the pipes,
+  never the store.
 - **Code and data are separate.** This public repo is machinery only. Each
   user's people-store lives in their own private location; `data/` is
   gitignored and typically points at a private repo.
@@ -97,6 +99,9 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   (override via `HARNESS_PROTECTED_PREFIXES` in the hook's environment).
 - One package = one focused agent/session's territory; cross-package needs are
   met via the other package's `package.md` + core contracts, never its files.
-- No build/test commands yet — when the first scripts land, add typecheck/
-  lint/test commands here and in `/implement` step 4.
-  <!-- PARAMETERIZE: fill in when the project grows real tooling -->
+- Test commands (bash 3.2, no npm/jest — run both before any merge):
+  `bash packages/core/tests/run-store-tests.sh` and
+  `bash packages/connectors/tests/run-capture-tests.sh`.
+  Store sanity: `bash packages/core/scripts/validate-store.sh <store-dir>`
+  (checks people/interactions/wakeups only — not inbox/).
+  <!-- PARAMETERIZE: extend as more packages grow suites -->

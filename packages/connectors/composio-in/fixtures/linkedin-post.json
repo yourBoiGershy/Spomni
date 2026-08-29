@@ -1,0 +1,24 @@
+{
+  "successful": true,
+  "data": {
+    "elements": [
+      {
+        "urn": "urn:li:activity:7200000000000000000",
+        "authorName": "Maya Okonkwo",
+        "authorProfileUrl": "https://www.linkedin.com/in/example-maya-okonkwo",
+        "createdAt": "2026-08-20T15:30:00Z",
+        "commentary": "Thrilled to share that our team shipped the new relationship-intelligence pipeline this quarter. Huge thanks to everyone involved!",
+        "shareStatistics": {
+          "likeCount": 142,
+          "commentCount": 18,
+          "shareCount": 6,
+          "impressionCount": 5310
+        },
+        "visibility": "PUBLIC"
+      }
+    ],
+    "paging": { "count": 1, "start": 0, "total": 1 }
+  },
+  "error": null,
+  "logId": "log_2a3b4c5d"
+}

@@ -1,0 +1,22 @@
+{
+  "successful": true,
+  "data": {
+    "messages": [
+      {
+        "messageId": "18c2f9a0b3e4d5f6",
+        "threadId": "18c2f9a0b3e4d5f6",
+        "labelIds": ["INBOX", "UNREAD"],
+        "sender": "Maya Okonkwo <maya.okonkwo@example.com>",
+        "to": "maya.okonkwo@example.com",
+        "subject": "[ra] debrief: lunch with tom park",
+        "messageTimestamp": "2026-08-29T13:05:00Z",
+        "messageText": "ok recording this while it's fresh, had lunch with tom park today, he just moved over to lead the platform team at his new company, mentioned his kid started kindergarten last week and he's been stressed about the commute, said he wants to grab coffee again once things settle down in like a month, should follow up with him then",
+        "attachmentList": []
+      }
+    ],
+    "nextPageToken": null,
+    "resultSizeEstimate": 1
+  },
+  "error": null,
+  "logId": "log_9f2a1c3d"
+}
