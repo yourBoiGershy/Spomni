@@ -4,6 +4,7 @@
 # Usage:
 #   normalize-capture.sh <store-dir> --source <name> --type <type>
 #       [--captured-at <ISO8601Z, default now>]
+#       [--occurred-at <ISO8601Z>]
 #       [--id <id, default <captured_at-compact>-<source>-<4-hex-rand>>]
 #       [--hint <string>]...
 #       [--file <path> | body on stdin]
@@ -33,6 +34,7 @@ shift
 SOURCE=""
 TYPE=""
 CAPTURED_AT=""
+OCCURRED_AT=""
 ID=""
 FILE=""
 # Hints accumulated as newline-separated entries (bash-3.2 has no arrays
@@ -52,6 +54,10 @@ while [ $# -gt 0 ]; do
       ;;
     --captured-at)
       CAPTURED_AT="${2:-}"
+      shift 2
+      ;;
+    --occurred-at)
+      OCCURRED_AT="${2:-}"
       shift 2
       ;;
     --id)
@@ -149,15 +155,19 @@ if [ -z "$SOURCE" ]; then
 fi
 
 case "$TYPE" in
-  voice-note|linkedin-notification|event-confirmation|transcript|other)
+  voice-note|linkedin-notification|event-confirmation|transcript|other|email|calendar-event|profile-snapshot|contact-record|post)
     ;;
   *)
-    add_reason "invalid type: '${TYPE}' (expected one of: voice-note, linkedin-notification, event-confirmation, transcript, other)"
+    add_reason "invalid type: '${TYPE}' (expected one of: voice-note, linkedin-notification, event-confirmation, transcript, other, email, calendar-event, profile-snapshot, contact-record, post)"
     ;;
 esac
 
 if ! printf '%s' "$CAPTURED_AT" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'; then
   add_reason "invalid captured_at: '${CAPTURED_AT}' (expected ISO 8601 YYYY-MM-DDTHH:MM:SSZ)"
+fi
+
+if [ -n "$OCCURRED_AT" ] && ! printf '%s' "$OCCURRED_AT" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'; then
+  add_reason "invalid occurred_at: '${OCCURRED_AT}' (expected ISO 8601 YYYY-MM-DDTHH:MM:SSZ)"
 fi
 
 if [ -e "${INBOX_DIR}/${ID}.md" ]; then
@@ -173,10 +183,13 @@ write_frontmatter() {
   dest="$1"
   {
     printf '%s\n' "---"
-    printf 'schema_version: 1.0.0\n'
+    printf 'schema_version: 1.1.0\n'
     printf 'id: %s\n' "$ID"
     printf 'source: %s\n' "$SOURCE"
     printf 'captured_at: %s\n' "$CAPTURED_AT"
+    if [ -n "$OCCURRED_AT" ]; then
+      printf 'occurred_at: %s\n' "$OCCURRED_AT"
+    fi
     printf 'type: %s\n' "$TYPE"
     if [ -n "$HINTS_FILE_TMP" ] && [ -s "$HINTS_FILE_TMP" ]; then
       printf 'participant-hints:\n'

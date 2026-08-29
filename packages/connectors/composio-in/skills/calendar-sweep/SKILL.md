@@ -154,39 +154,87 @@ already-captured event:
 
 ## Step 5 — one capture event per in-window instance
 
-For each event surviving the dedup check, call the shared normalizer:
+For each event surviving the dedup check, unwrap the Composio CLI wrapper first —
+the event object handed to the normalizer must be the **provider event resource
+itself**, never the `{"successful": ..., "data": ...}` wrapper (or the
+`outputFilePath`-backed equivalent from step 3). Pretty-print it as JSON, then call
+the shared normalizer:
 
 ```sh
-echo '<raw event JSON, byte-for-byte from the API response>' | \
-  packages/connectors/scripts/normalize-capture.sh <store-dir> \
-    --source googlecalendar \
-    --type other \
-    --captured-at <event start, ISO 8601 UTC> \
-    --hint "<attendee 1 email or displayName>" \
-    --hint "<attendee 2 email or displayName>" \
-    ...
+EVENT_JSON="<the event object from data.items[], unwrapped>"
+EVENT_JSON_PRETTY="$(printf '%s' "$EVENT_JSON" | jq '.')"
+
+HINT_ARGS=""
+while IFS= read -r hint; do
+  HINT_ARGS="$HINT_ARGS --hint $(printf '%q' "$hint")"
+done < <(printf '%s' "$EVENT_JSON" | jq -r '
+  ( .organizer? | ((.displayName // "") + (if .email then " <" + .email + ">" else "" end)) ),
+  ( .creator?   | ((.displayName // "") + (if .email then " <" + .email + ">" else "" end)) ),
+  ( .attendees[]? | ((.displayName // "") + (if .email then " <" + .email + ">" else "" end)) )
+' | sed 's/^ <//; s/^ $//' | grep -v '^$')
+
+# Archive the untouched CLI output for this event's raw provenance trail
+# (the body below is a transformation — pretty-printed — of it).
+mkdir -p <store-dir>/archive/raw
+printf '%s' "$EVENT_JSON" > "<store-dir>/archive/raw/${CAPTURE_ID}.json"
+
+printf '%s\n' "$EVENT_JSON_PRETTY" | \
+  eval "packages/connectors/scripts/normalize-capture.sh <store-dir> \
+    --source composio-in/googlecalendar \
+    --type calendar-event \
+    --captured-at \"\$(date -u '+%Y-%m-%dT%H:%M:%SZ')\" \
+    --occurred-at <event start, ISO 8601 UTC> \
+    --id \"\$CAPTURE_ID\" \
+    $HINT_ARGS"
 ```
 
-- `--captured-at` uses the event's own `start.dateTime` (or `start.date` for
-  all-day events, normalized to `T00:00:00Z`) converted to UTC — not the
-  sweep's wall-clock run time. This is when the underlying thing happened,
-  which is what `captured_at` in `capture-event.md` calls for on a calendar
-  source.
-- `--type other`, per this skill's brief. `fixtures/README.md` documents
-  `fixtures/calendar-event.json` as exercising `type: other` too — the two
-  agree.
-- `--hint` per attendee: pass every attendee's `email` (fall back to
-  `displayName` if `email` is absent) **except the user's own entry**
-  (identify it via that attendee's `self: true` flag in the response, per
-  the fixture). Matching these hints to `[[slug]]` people-links is
-  explicitly ingestion's job (plan 04), not this skill's.
-- Body: the raw event JSON object for that instance, verbatim, exactly as
-  returned by the API (pretty-printed or compact, doesn't matter — no
-  trimming, no field removal, no re-serialization changes). This is the
-  capture event's envelope-only guarantee from `capture-event.md`.
-- The normalizer derives its own `id` (`<captured_at-compact>-<source>-<rand>`)
-  unless you pass `--id`; letting it default is fine here since the ledger
-  (step 4), not the capture-event `id`, is this skill's dedup key.
+- `--source composio-in/googlecalendar` per the import standard's
+  `<connector>/<lane>` convention — this replaces the old bare `googlecalendar`
+  value.
+- `--type calendar-event`, per
+  `docs/plans/2026-08-29-11-composio-import-standard.md`'s per-lane mapping —
+  this replaces the old `--type other`. `fixtures/calendar-event.json` and
+  `fixtures/README.md` must agree with this value (updated in the same plan's
+  fixtures unit).
+- `--captured-at` is the **sweep's own run time** (current UTC clock) — **not**
+  the event start time. This is the fix the import standard was written for:
+  today's instructions used the event start as `captured_at`, which produced
+  files dated by when the meeting happens rather than when the sweep ran.
+  `captured_at` means capture time, per `capture-event.md`; the `id` (and
+  filename) derive from this value, so a batch of events captured in the same
+  run gets ids clustered around "now", not scattered across the event window.
+- `--occurred-at` uses the event's own `start.dateTime` (or `start.date` for
+  all-day events, normalized to `T00:00:00Z`) converted to UTC — when the
+  meeting actually happens. This is the field that used to have nowhere to
+  live; it now carries what `--captured-at` wrongly carried before.
+- Compute `CAPTURE_ID` yourself (rather than letting the normalizer default it)
+  only if you need it before the call for the `archive/raw/` filename — e.g.
+  `CAPTURE_ID="$(date -u '+%Y%m%dT%H%M%SZ')-composio-in-googlecalendar-$(head -c4
+  /dev/urandom | xxd -p)"` (or any scheme matching `capture-event.md`'s
+  recommended `<captured_at-compact>-<source>-<short-rand>` form) and pass it via
+  `--id`; otherwise let the normalizer derive its own id and skip the
+  `archive/raw/` step's exact filename correlation (not recommended — the
+  provenance trail depends on the raw file's name matching the capture id).
+- `--hint` per participant: pass the **organizer**, the **creator**, and every
+  **attendee** — not attendees alone. Use each one's `"Name <email>"` form as
+  seen in the response (fall back to email-only or name-only if one half is
+  absent). Do **not** exclude the user's own entry — capture every participant
+  as seen; per the import standard's noise policy, filtering by relevance is
+  the filing engine's job (plan 04), not this sweep's. Matching these hints to
+  `[[slug]]` people-links is likewise ingestion's job.
+- `fixtures/calendar-event.json` (as of this unit) only exercises `attendees` —
+  it has no `organizer`/`creator` fields yet. Confirm the real response's
+  `organizer`/`creator` shape via `composio tools info
+  GOOGLECALENDAR_EVENTS_LIST` or a live call before relying on the `jq` filter
+  above; the Calendar API convention is `{ "organizer": { "email": ...,
+  "displayName": ..., "self": true|absent }, "creator": { ... } }`, same shape
+  as an attendee entry.
+- Body: the provider event resource, pretty-printed as JSON (see
+  `EVENT_JSON_PRETTY` above) — never the raw CLI wrapper. Because this is a
+  transformation of the untouched API response (unwrapped, pretty-printed),
+  archive the untouched response at
+  `<store-dir>/archive/raw/<capture-id>.json` per `docs/data-layout.md`, using
+  the same `CAPTURE_ID` passed to `--id` so the two files correlate.
 - On success (`exit 0`), the normalizer prints the written `inbox/<id>.md`
   path to stdout — append the ledger line (`<event-id>:<updated-timestamp>`)
   only after that success, so a mid-batch crash re-attempts the event next

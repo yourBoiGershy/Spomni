@@ -191,6 +191,152 @@ while IFS= read -r etype; do
   fi
 done <<< "$remaining_enum_types"
 
+# --- 1.1.0 enum coverage: email, calendar-event, profile-snapshot, post ---
+new_enum_types="
+email
+calendar-event
+profile-snapshot
+post
+"
+
+while IFS= read -r netype; do
+  [ -z "$netype" ] && continue
+
+  neid="enum-coverage-1-1-0-$netype"
+  out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source composio-in --type "$netype" --id "$neid" 2>&1)"
+  status=$?
+  nedest="$STORE_DIR/inbox/$neid.md"
+
+  if [ "$status" -eq 0 ]; then
+    pass "1.1.0 enum coverage: type $netype accepted, exit 0"
+  else
+    fail "1.1.0 enum coverage: type $netype rejected, exited $status (expected 0): $out"
+  fi
+
+  if [ -f "$nedest" ]; then
+    pass "1.1.0 enum coverage: type $netype inbox file written"
+    if grep -qF "type: $netype" "$nedest"; then
+      pass "1.1.0 enum coverage: type $netype frontmatter matches"
+    else
+      fail "1.1.0 enum coverage: type $netype frontmatter does not match"
+    fi
+  else
+    fail "1.1.0 enum coverage: type $netype inbox file missing at $nedest"
+  fi
+done <<< "$new_enum_types"
+
+# --- schema_version: emitted value is 1.1.0 ---
+schema_check_dest="$STORE_DIR/inbox/enum-coverage-1-1-0-email.md"
+if [ -f "$schema_check_dest" ]; then
+  if grep -qF "schema_version: 1.1.0" "$schema_check_dest"; then
+    pass "schema_version: emitted value is 1.1.0"
+  else
+    fail "schema_version: emitted value is not 1.1.0 in $schema_check_dest"
+  fi
+else
+  fail "schema_version check: $schema_check_dest missing"
+fi
+
+# --- occurred_at: valid --occurred-at is emitted after captured_at ---
+out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source composio-in --type email --id occurred-at-valid --occurred-at 2026-08-29T12:00:00Z 2>&1)"
+status=$?
+occurred_dest="$STORE_DIR/inbox/occurred-at-valid.md"
+
+if [ "$status" -eq 0 ] && [ -f "$occurred_dest" ]; then
+  pass "occurred_at: valid --occurred-at accepted, exit 0"
+  captured_line="$(grep -n '^captured_at:' "$occurred_dest" | head -n1 | cut -d: -f1)"
+  occurred_line="$(grep -n '^occurred_at:' "$occurred_dest" | head -n1 | cut -d: -f1)"
+  if grep -qF "occurred_at: 2026-08-29T12:00:00Z" "$occurred_dest"; then
+    pass "occurred_at: value matches the passed --occurred-at"
+  else
+    fail "occurred_at: value does not match the passed --occurred-at in $occurred_dest"
+  fi
+  if [ -n "$captured_line" ] && [ -n "$occurred_line" ] && [ "$occurred_line" -eq $((captured_line + 1)) ]; then
+    pass "occurred_at: line placed immediately after captured_at"
+  else
+    fail "occurred_at: line not placed immediately after captured_at (captured_at at $captured_line, occurred_at at $occurred_line)"
+  fi
+else
+  fail "occurred_at: valid --occurred-at did not succeed (status $status): $out"
+fi
+
+# --- occurred_at: omitting the flag produces no occurred_at line ---
+out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source composio-in --type email --id occurred-at-absent 2>&1)"
+status=$?
+absent_dest="$STORE_DIR/inbox/occurred-at-absent.md"
+
+if [ "$status" -eq 0 ] && [ -f "$absent_dest" ]; then
+  if grep -q '^occurred_at:' "$absent_dest"; then
+    fail "occurred_at: line present despite --occurred-at being omitted in $absent_dest"
+  else
+    pass "occurred_at: no line emitted when --occurred-at is omitted"
+  fi
+else
+  fail "occurred_at absent test: normalize-capture.sh did not succeed (status $status): $out"
+fi
+
+# --- occurred_at: malformed --occurred-at quarantines with reason mentioning occurred_at ---
+out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source composio-in --type email --id occurred-at-malformed --occurred-at not-a-date 2>&1)"
+status=$?
+malformed_inbox="$STORE_DIR/inbox/occurred-at-malformed.md"
+malformed_quarantine="$STORE_DIR/inbox/quarantine/occurred-at-malformed.md"
+malformed_reason="$STORE_DIR/inbox/quarantine/occurred-at-malformed.reason.txt"
+
+if [ "$status" -eq 1 ]; then
+  pass "occurred_at malformed (not-a-date): normalize-capture.sh exits 1"
+else
+  fail "occurred_at malformed (not-a-date): normalize-capture.sh exited $status (expected 1)"
+fi
+
+if [ ! -e "$malformed_inbox" ]; then
+  pass "occurred_at malformed (not-a-date): no inbox file written"
+else
+  fail "occurred_at malformed (not-a-date): an inbox file was written despite malformed occurred_at"
+fi
+
+if [ -f "$malformed_quarantine" ]; then
+  pass "occurred_at malformed (not-a-date): quarantine file exists"
+else
+  fail "occurred_at malformed (not-a-date): quarantine file missing at $malformed_quarantine"
+fi
+
+if [ -f "$malformed_reason" ] && grep -qi "occurred_at" "$malformed_reason"; then
+  pass "occurred_at malformed (not-a-date): .reason.txt mentions occurred_at"
+else
+  fail "occurred_at malformed (not-a-date): .reason.txt missing or does not mention occurred_at"
+fi
+
+# --- occurred_at: near-miss malformed --occurred-at (space instead of T) quarantines too ---
+out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source composio-in --type email --id occurred-at-nearmiss --occurred-at "2026-08-29 12:00:00" 2>&1)"
+status=$?
+nearmiss_inbox="$STORE_DIR/inbox/occurred-at-nearmiss.md"
+nearmiss_quarantine="$STORE_DIR/inbox/quarantine/occurred-at-nearmiss.md"
+nearmiss_reason="$STORE_DIR/inbox/quarantine/occurred-at-nearmiss.reason.txt"
+
+if [ "$status" -eq 1 ]; then
+  pass "occurred_at malformed (near-miss format): normalize-capture.sh exits 1"
+else
+  fail "occurred_at malformed (near-miss format): normalize-capture.sh exited $status (expected 1)"
+fi
+
+if [ ! -e "$nearmiss_inbox" ]; then
+  pass "occurred_at malformed (near-miss format): no inbox file written"
+else
+  fail "occurred_at malformed (near-miss format): an inbox file was written despite malformed occurred_at"
+fi
+
+if [ -f "$nearmiss_quarantine" ]; then
+  pass "occurred_at malformed (near-miss format): quarantine file exists"
+else
+  fail "occurred_at malformed (near-miss format): quarantine file missing at $nearmiss_quarantine"
+fi
+
+if [ -f "$nearmiss_reason" ] && grep -qi "occurred_at" "$nearmiss_reason"; then
+  pass "occurred_at malformed (near-miss format): .reason.txt mentions occurred_at"
+else
+  fail "occurred_at malformed (near-miss format): .reason.txt missing or does not mention occurred_at"
+fi
+
 # --- assertion 3: --hint values land in participant-hints ---
 hint_fixture="$FIXTURES_DIR/calendar-event.json"
 if [ -f "$hint_fixture" ]; then

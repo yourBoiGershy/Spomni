@@ -129,23 +129,34 @@ processed, so a later retry (e.g. after a normalizer fix) can pick it up again.
 printf '%s\n' "$MSG_ID" >> "data/connectors/gmail/processed.log"
 ```
 
-## 4. Typing (minimal — deep classification is a later chunk's job)
+## 4. Typing, per the import standard's per-lane mapping
 
-Per plan 08, this sweep does only minimal typing:
+Per `docs/plans/2026-08-29-11-composio-import-standard.md`'s "Per-lane mapping"
+table:
 
+- `email` — the default `type` for this lane; ordinary correspondence, calendar
+  confirmation mail, security notices, etc. all land as `email`. Triage/finer
+  classification is the filing engine's job (plan 03), not this sweep's.
 - `voice-note` — the message `subject` contains the literal `[ra]` tag (case-sensitive,
   matches `docs/DECISIONS.md#gmail-first-capture`'s "subject-tagged self-email"
-  convention, e.g. `"[ra] debrief: lunch with tom park"`).
-- `other` — every other message (LinkedIn notifications, calendar-confirmation emails,
-  regular correspondence, etc.). Distinguishing those is out of scope here; a later
-  chunk (ingestion/filing or a follow-on sweep refinement) may add finer `type` values
-  such as `linkedin-notification` once that logic exists.
+  convention, e.g. `"[ra] debrief: lunch with tom park"`). This rule is unchanged.
+- `linkedin-notification` — LinkedIn notification mail (sender domain
+  `*.linkedin.com` / `linkedin.com`, e.g. `notifications-noreply@linkedin.com`,
+  `messaging-digest-noreply@linkedin.com`). Identify by the `From:` address's domain,
+  not subject-sniffing — LinkedIn notification subjects vary too widely to pattern-match
+  reliably.
 
 ```sh
 SUBJECT="$(printf '%s' "$MESSAGE" | jq -r '.subject // ""')"
+FROM_HEADER="$(printf '%s' "$MESSAGE" | jq -r '.sender // ""')"
 case "$SUBJECT" in
   *'[ra]'*) TYPE="voice-note" ;;
-  *)        TYPE="other" ;;
+  *)
+    case "$FROM_HEADER" in
+      *'@linkedin.com'*|*'.linkedin.com'*) TYPE="linkedin-notification" ;;
+      *)                                   TYPE="email" ;;
+    esac
+    ;;
 esac
 ```
 
@@ -157,25 +168,50 @@ subject line and sender as part of that text (or as `--hint`s) rather than disca
 them.
 
 ```sh
-SENDER="$(printf '%s' "$MESSAGE" | jq -r '.sender // ""')"
-TIMESTAMP="$(printf '%s' "$MESSAGE" | jq -r '.messageTimestamp')"
+FROM_HEADER="$(printf '%s' "$MESSAGE" | jq -r '.sender // ""')"
+TO_HEADERS="$(printf '%s' "$MESSAGE" | jq -r '(.to // [] | .[])? // (.recipient // empty)')"
+CC_HEADERS="$(printf '%s' "$MESSAGE" | jq -r '(.cc // [])? | .[]?')"
+DATE_HEADER="$(printf '%s' "$MESSAGE" | jq -r '.messageTimestamp')"
 BODY_TEXT="$(printf '%s' "$MESSAGE" | jq -r '.messageText // ""')"
 
+HINT_ARGS="--hint $(printf '%q' "$FROM_HEADER")"
+for addr in $TO_HEADERS; do
+  HINT_ARGS="$HINT_ARGS --hint $(printf '%q' "$addr")"
+done
+for addr in $CC_HEADERS; do
+  HINT_ARGS="$HINT_ARGS --hint $(printf '%q' "$addr")"
+done
+
 printf 'Subject: %s\n\n%s\n' "$SUBJECT" "$BODY_TEXT" | \
-  packages/connectors/scripts/normalize-capture.sh data/store \
-    --source gmail \
-    --type "$TYPE" \
-    --captured-at "$TIMESTAMP" \
-    --hint "$SENDER" \
-    [--hint "$TO_ADDRESS"]   # only when $TO_ADDRESS is not the user's own address
+  eval "packages/connectors/scripts/normalize-capture.sh data/store \
+    --source composio-in/gmail \
+    --type \"$TYPE\" \
+    --captured-at \"\$(date -u '+%Y-%m-%dT%H:%M:%SZ')\" \
+    --occurred-at \"$DATE_HEADER\" \
+    $HINT_ARGS"
 ```
 
 - `<store-dir>` is `data/store` per `docs/data-layout.md`.
-- `--captured-at` uses the message's own `messageTimestamp` (ISO 8601 `Z` form, matches
-  `capture-event.md`'s required format) — not the time the sweep happened to run.
-- `--hint` carries the raw `From:` address/name as a `participant-hints` entry; add
-  additional `--hint` flags for `to:`/`cc:` addresses **only when** present and not the
-  user's own address, so the filing engine has more to resolve against later.
+- `--source composio-in/gmail` per the import standard's `<connector>/<lane>`
+  convention — this replaces the old bare `gmail` value.
+- `--captured-at` is the **sweep's own run time** (current UTC clock), not the
+  message's own timestamp — `captured_at` means capture time, per
+  `capture-event.md`. Compute it once per sweep run and reuse it for every message
+  processed in that run (or per-message, either is fine — it must reflect "now",
+  not the email's `Date` header).
+- `--occurred-at` carries the message's own `messageTimestamp` (ISO 8601 `Z` form,
+  sourced from the Gmail `Date` header) — when the email was actually sent.
+- `--hint` carries the raw `From:` address/name as a `participant-hints` entry, in
+  `"Name <email>"` form as seen in the header, followed by every `To:` and `Cc:`
+  address/name likewise — full participant extraction, not sender-only. Do not
+  filter out the user's own address; capture the header as seen (per the noise
+  policy, filtering is the filing engine's job, not this sweep's).
+- The exact response field names for `To:`/`Cc:` (`.to`/`.recipient`, `.cc`, etc.)
+  were not live-verified for this unit the way `.sender`/`.messageTimestamp`/
+  `.messageText` were — confirm the real field names via
+  `composio tools info GMAIL_FETCH_EMAILS` (or a live call with `verbose: true`)
+  before relying on the `jq` filters above; adjust them to match what
+  `GMAIL_FETCH_EMAILS` actually returns.
 - On success (exit 0), `normalize-capture.sh` prints the new `inbox/<id>.md` path to
   stdout — append `$MSG_ID` to `processed.log` now (step 3).
 - On failure (exit 1), the raw body is quarantined at
@@ -217,8 +253,10 @@ composio execute GMAIL_GET_CONTACTS -d '{
 
 Write **one capture event per contact batch page** (not one per contact — this is
 breadth capture, not structured filing; the filing engine resolves individual people
-later), type `other`, with `participant-hints` populated from every contact's name and
-email address in that page:
+later), type `contact-record` per
+`docs/plans/2026-08-29-11-composio-import-standard.md`'s per-lane mapping, with
+`participant-hints` populated from every contact's name and email address in that
+page:
 
 ```sh
 PAGE_JSON="$RESULT_JSON"   # after resolving storedInFile if applicable
@@ -233,8 +271,8 @@ done < <(printf '%s' "$PAGE_JSON" | jq -r '
 
 printf '%s' "$PAGE_JSON" | \
   eval "packages/connectors/scripts/normalize-capture.sh data/store \
-    --source gmail \
-    --type other \
+    --source composio-in/gmail \
+    --type contact-record \
     $HINT_ARGS"
 ```
 
