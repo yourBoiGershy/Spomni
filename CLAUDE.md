@@ -18,9 +18,9 @@ sends. This repo holds the machinery; user data never lives here (see
 - **Other people's data stays local.** No LinkedIn scraping, no enrichment
   APIs; the people-store (the contact graph) lives only in the user's private
   data dir — no third-party cloud ever holds it. Access to the user's own
-  accounts flows through connectors the user explicitly links — currently a
-  Composio account as the hub (see DECISIONS.md `composio-hub`) — the pipes,
-  never the store.
+  accounts flows through the first-party claude.ai connectors (Gmail, Google
+  Calendar) the user explicitly links (see DECISIONS.md `composio-retired`) —
+  the pipes, never the store.
 - **Code and data are separate.** This public repo is machinery only. Each
   user's people-store lives in their own private location; `data/` is
   gitignored and typically points at a private repo.
