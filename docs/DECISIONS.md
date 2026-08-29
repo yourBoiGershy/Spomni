@@ -128,6 +128,85 @@ without depending on sweep timing.
 Revisit if: cache/store divergence confuses users — surface a reconcile hint, don't
 grant query write access.
 
+**git-as-sync-protocol** · 2026-08-29
+Multi-device sync of the data store runs over git (the user's private repo), never
+file-sync services (Drive/iCloud/Dropbox). Git here is the sync *protocol*, not the
+storage religion: the store stays plain files, and a single-device, single-writer setup
+may point `data/` at any synced folder it likes. Why: the filing engine writes
+multi-file atomic units (person + interaction + links + `index.json`) that need commit
+atomicity; the single-writer rule maps onto git as disjoint-path committers (devices
+append only to `inbox/`, the hub writes everything else) making sync mechanically
+conflict-free; an LLM-written store needs history and revert; sweeps need snapshot
+isolation (pull → work on frozen state → commit → push). Drive-class sync provides none
+of these and produces silent "conflicted copy" files that poison programmatic filing.
+The everyone-has-one capture lane remains Gmail (see gmail-first-capture) — git is
+invisible plumbing, never a user-facing requirement for capture.
+Revisit if: git operations prove too heavy for a target user segment — then wrap them
+in setup scripts, don't change the backend.
+
+**home-hub-tailscale** · 2026-08-29
+The always-on runtime (scheduled sweeps, wake-up firing) is a user-owned always-on
+machine (Mac mini / mini-PC / user's own VPS) reached from other devices over Tailscale
+— never a public endpoint. Degradation floor is hybrid-runtime's on-session-open sweeps:
+hub down means nudges are delayed, never lost. Cloud-hosted scheduled agents (which
+check the private data repo into a provider sandbox) are permitted only as an explicit,
+documented user opt-in, never a default.
+Why: strongest fit with other-people's-data-stays-local; phone reachability without
+exposing anything publicly; the degradation floor is already blessed.
+Revisit if: hub upkeep proves too heavy in the live trial — promote the cloud-agent
+opt-in to a documented easy path, with its trade-off stated plainly.
+
+**pii-egress-allowlist** · 2026-08-29
+Every lane through which person-data leaves the local store is enumerated in
+`docs/EGRESS.md`; no code may transmit store content through any lane not on that list.
+v1 lanes: (1) the LLM provider during sessions and sweeps — inherent to an
+LLM-in-the-loop design, disclosed, and the honest limit of any "no PII" claim;
+(2) the user's own private sync repo host; (3) the user's own first-party connectors
+(their Gmail/Calendar — data already resident there); (4) public web-search queries for
+signals, restricted to public-sphere identifiers (name, org, public role) —
+told-by-user facts NEVER appear in an outbound query; (5) rendered deliveries to the
+user's own surfaces (drafts folder, data-repo files). The public machinery repo
+mechanically cannot carry real data: `data/` gitignored, fixtures synthetic-only
+(reserved domains/numbers), and a PII-scan guard on commit and CI.
+Why: open-sourcing means strangers audit the machinery and non-experts run it; a
+finite, checkable egress surface is the only privacy claim that survives scrutiny —
+"nothing is ever sent anywhere" is false the moment an LLM reads the store.
+Revisit if: a local-model runtime becomes practical — lane (1) then becomes optional.
+
+**cloud-native-runtime** · 2026-08-29
+Supersedes home-hub-tailscale as the default runtime. The private data repo
+(`<user>/relationship-agent-data` on GitHub) is the authoritative store and the
+rendezvous point; on-demand sessions open it in Claude Code cloud from any device
+(claude.ai/code — phone included); scheduled routines run the sweeps against the same
+repo, in a cloud environment whose setup script installs the Composio CLI and clones
+the machinery repo. Data-repo flow is direct commits to its own `main` — no PRs, no
+review ceremony; git history is the undo button (the machinery repo keeps its
+branch/PR doctrine). Accepted trade-offs (user decision, this date): store content
+transits the provider sandbox during runs; `COMPOSIO_API_KEY` lives in the cloud
+environment's env vars because no dedicated secrets store exists yet — values are
+visible to the account, so the key must be rotatable, minted for this use, and never
+committed to either repo. Home hub + Tailscale is demoted to the documented
+privacy-purist variant, with hybrid-runtime's on-session-open sweeps as the floor.
+Revisit if: Claude cloud ships a secrets store (move the key immediately), or the
+sandbox posture changes.
+
+**composio-dual-transport** · 2026-08-29
+Refines composio-hub (ingestion stream). Two transports to the same Composio account:
+(1) the claude.ai Composio connector (hosted MCP, one-time OAuth) is the transport for
+model-driven sessions — verified live in a cloud session on the data repo 2026-08-29,
+Gmail/Calendar/LinkedIn all active, no API key or login line needed; (2) the CLI
+(`composio execute`) remains the transport for deterministic scripts. Verified runtime
+facts: the cloud environment needs full network access (Trusted blocks composio.dev
+with 403); the CLI install must pin `COMPOSIO_INSTALL_VERSION=0.4.0` (the installer's
+latest-stable detection fails on Composio's release list); CLI network-backed commands
+currently return empty output inside the cloud sandbox (proxy quirk) — MCP is the
+reliable path there; CLI login requires a fresh dashboard-minted user API key
+(`uak_…` plus `--org ok_…`) — locally cached keys can be stale, validate against the
+API before shipping one into an environment.
+Revisit if: the sandbox proxy quirk resolves (scripts then work cloud-side), or
+scheduled routines turn out not to carry connectors (sweeps would then need the CLI
+lane, forcing the key fix).
+
 **delegation-without-gates** · 2026-08-29
 The repo runs the simplified harness: orchestration doctrine, worker/checker split,
 enforcement hooks, brief template, completion reports — but no gate system, attestation,

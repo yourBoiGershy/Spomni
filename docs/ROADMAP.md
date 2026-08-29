@@ -16,6 +16,7 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 06 | Wake-up scheduler | attention (queue/sweeps) | 01; orchestrates 03/05 outputs | Ready |
 | 07 | Output skills & adapters (briefs, nudge cards, file-out/gmail-out; query skill superseded by 08) | query + connectors/file-out, gmail-out | 01; 06 for nudge firing | Ready |
 | 08 | Chat MCP & query data layer | query (MCP server) + core (stats contract, fixtures) | 01 | Done (2026-08-29, stream-mcp) |
+| 09 | Infrastructure: cloud runtime, data-repo discipline, egress | core (sync script) + harness guards + docs | 01; integrates 06, 10 | In progress (2026-08-29, stream-infrastructure; data repo live) |
 | 10 | Composio access layer | connectors/composio-in (+ shared normalizer) | 01 | Done (2026-08-29, branch chunk-08-composio-access; live-proven: 20 real events, 3 lanes, zero dupes) |
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
@@ -39,11 +40,24 @@ to resync — never rebase). Streams may run concurrently with each other.
 |---|---|---|---|
 | `ingestion/` | `stream-ingestion` | connectors-in + ingestion (data imports via Composio hub: gmail, calendar, linkedin, user inputs; texts = later local lane) | 10 → 02 → 04 → 03 |
 | `mcp/` | `stream-mcp` | query + connectors-out (answer surface, briefs, model access) | 08 → 07 (06-dependent parts last) |
-| `infrastructure/` | `stream-infrastructure` | phone access / remote runtime / sync — **no plan yet; needs planning first** | TBD |
+| `infrastructure/` | `stream-infrastructure` | cloud runtime + data-repo discipline + egress hygiene (plan 09; decisions git-as-sync-protocol, cloud-native-runtime, pii-egress-allowlist) | 09 |
 
 Chunks 05/06 (attention) are unassigned — schedule after 02/04 land, either in a fourth
 worktree or in `ingestion/` once it goes quiet. The single-writer rule still applies
 across streams: a stream never edits another stream's packages.
+
+### Merge cadence (keep main close, keep branches short-lived)
+
+- A completed chunk merges to main **in the same session its checker passes** — chunks
+  are sized for one session precisely so nothing needs to wait.
+- At most **one** completed-but-unmerged chunk per stream at any moment; anything
+  unmerged for more than a day is an escalation, not a backlog item.
+- Docs-only work merges to main immediately; it never rides along waiting for code.
+- After any merge to main, every active stream resyncs (`git merge main`) at its next
+  session start, before new work.
+- Note what fast merging does NOT do: a pushed branch in a public repo is already
+  world-readable, merged or not. Data safety lives at the push boundary (pii-guard,
+  plan 09), never in merge speed.
 
 ## Waves
 
@@ -65,3 +79,6 @@ across streams: a stream never edits another stream's packages.
 - Local embeddings for fuzzy retrieval
 - Auto-brief the morning of meetings (a standing wake-up)
 - Harness Stage 2+ (gates, attestation, shipping pipeline) once there's CI worth gating
+- Machinery-as-plugin packaging: ship skills/agents/hooks as a Claude Code plugin so any
+  user opens their own private data repo and installs the machinery — the open-source
+  distribution story (per cloud-native-runtime)

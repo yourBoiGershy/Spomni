@@ -61,10 +61,11 @@ has 'git[^|;&]* (commit|push|merge)[^|;&]* --no-verify' && block "--no-verify (h
 
 # ---- Branch guard: commit/push while on main/master ----
 if has 'git[^|;&]* (commit|push)([[:space:]]|$)'; then
-  DIR="${CLAUDE_PROJECT_DIR:-}"
-  if [ -z "$DIR" ] && command -v jq >/dev/null 2>&1; then
+  DIR=""
+  if command -v jq >/dev/null 2>&1; then
     DIR=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
   fi
+  [ -z "$DIR" ] && DIR="${CLAUDE_PROJECT_DIR:-}"
   [ -z "$DIR" ] && DIR="."
   BR=$(git -C "$DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)
   case "$BR" in
