@@ -16,9 +16,11 @@ sends. This repo holds the machinery; user data never lives here (see
 - **Provenance labeling.** Facts about people are marked told-by-the-user vs.
   inferred-from-public-web, never mixed.
 - **Other people's data stays local.** No LinkedIn scraping, no enrichment
-  APIs, no third-party clouds holding the contact graph. First-party
-  connectors (user's own Gmail/Calendar/Contacts via official MCP/connectors)
-  plus whatever the user explicitly plugs in.
+  APIs; the people-store (the contact graph) lives only in the user's private
+  data dir — no third-party cloud ever holds it. Access to the user's own
+  accounts flows through connectors the user explicitly links — currently a
+  Composio account as the hub (see DECISIONS.md `composio-hub`) — the pipes,
+  never the store.
 - **Code and data are separate.** This public repo is machinery only. Each
   user's people-store lives in their own private location; `data/` is
   gitignored and typically points at a private repo.

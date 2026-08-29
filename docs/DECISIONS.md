@@ -114,3 +114,20 @@ enforcement hooks, brief template, completion reports — but no gate system, at
 or shipping pipeline yet. Why: new project; gates are earned by failures, not built on
 day one (per the Harness Core Blueprint's own staging advice).
 Revisit if: the project gains tests + CI worth gating — adopt blueprint Stage 2+ then.
+
+**composio-hub** · 2026-08-29
+Supersedes first-party-mcp-only. Core data access runs through the user's own Composio
+account — one aggregator, many lanes: Gmail (63 tools incl. People/contacts), Google
+Calendar, LinkedIn (official member API), and a 1,300+ toolkit long tail. Access is via
+the Composio CLI (`composio link` / `composio execute`) rather than MCP registration —
+skills shell out to `execute`, which fits the repo's bash-script conventions and needs
+no gateway config. Why: breadth-per-connector — as many data points as possible through
+as few connector setups as possible (user decision, this date). tos-clean-signals-only
+STANDS: Composio's LinkedIn toolkit is the official API (posts, profile, network-size
+count; no connections list, no messages, no notifications), not scraping. Accepted
+costs: tool-call payloads transit Composio's cloud (zero-data-retention is a paid Pro
+add-on; default retention unverified — ask support@composio.dev), free tier hard-capped
+at 100K calls/mo, premium tool calls bill from Sep 10 2026. The people-store itself
+stays local — no third party ever holds the graph, only the pipes.
+Revisit if: Composio's retention answer is bad, repricing bites, or a needed lane has
+no Composio path (iMessage → local chat.db bridge, LinkedIn depth → archive export).
