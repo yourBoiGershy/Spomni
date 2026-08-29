@@ -1,6 +1,8 @@
 # Plan 11: Preference & personalization layer
 
-Status: Ready
+Status: Done (2026-08-29) — all waves landed (contracts, validator + fixtures,
+specs, goldens, calibrate.sh, backfill mode); plans 05/06 implement the specs
+and MUST honor the touchpoints list below. Draft-diff style loop deferred.
 Package: core (contracts, validator) + ingestion (stated-preference filing) +
 attention (outcomes, calibration, tier drift) + connectors/composio-in (backfill mode)
 Depends-on: 01 (hard). **Phase 1 must merge BEFORE plans 05/06 are implemented**
@@ -241,4 +243,4 @@ mode onboarding runs once.
 - ML/embedding-based preference inference; the learning store is files + counts.
 - Draft-diff style loop beyond the deferrable spec above.
 
-Status: Ready
+Status: Done (2026-08-29) — see header.
