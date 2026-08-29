@@ -23,6 +23,10 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   unbuilt)
 - Conventions: `needs-confirmation` and `needs-follow-up` markers, met-at /
   will-meet-at / same-event-as links
+- Evals: `evals/cases/` — T3 (skill-tier) cases wrapping the six
+  `tests/goldens/preferences/*` stated-preference goldens (`eval-case@1`,
+  `packages/core/scripts/eval-run-skill.sh`); all `runnable-when: "03"` until
+  the filing engine lands; `evals/suite.txt` lists them
 
 ## Consumes
 

@@ -26,6 +26,12 @@ attention-merge).
   sole writer; aggregates `wakeups/` outcome history into bounded per-signal-type and
   per-tag adjustments (calibration mechanics specced by a sibling unit, not this file)
 - The fired-batch artifact `query`/output adapters render; snooze/dismiss writebacks
+- `evals/` (`packages/attention/evals/`) — T3 skill-tier eval cases per
+  `packages/core/contracts/eval-case.md`, wrapping
+  `tests/fixtures/tier-drift-upward` and `tests/fixtures/declined-proposal`
+  to pin the tier-drift detector's never-demote and silence-on-decline
+  guardrails (`specs/tier-drift.md`) as executable graders. Both cases carry
+  `runnable-when: "05"` until the detector lands; see `evals/README.md`.
 
 ## Consumes
 

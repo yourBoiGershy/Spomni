@@ -1,0 +1,7 @@
+# packages/ingestion/evals/suite.txt
+packages/ingestion/evals/cases/01-tier-change
+packages/ingestion/evals/cases/02-global-optout
+packages/ingestion/evals/cases/03-cadence-wish
+packages/ingestion/evals/cases/04-priorities
+packages/ingestion/evals/cases/05-person-optout
+packages/ingestion/evals/cases/06-ambiguous-question
