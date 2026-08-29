@@ -30,7 +30,7 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 15 | Preference & personalization layer | core (profile/ranking-weights/wakeup 1.1) + ingestion/attention specs+goldens | 01, 08 | Done (2026-08-29, stream-personalization) |
 | 16 | Eval harness: tool/agent/skill tiers | core (eval-case contract, 4 runners) + query/ingestion/attention cases | 08, 15 | Done (2026-08-29, stream-personalization) |
 | 17 | Composio retirement & direct Google lanes (gmail-in, calendar-in on first-party claude.ai connectors) | connectors (composio-in teardown; gmail-in, calendar-in) + docs | 01, 14; decision composio-retired | Planned — plan file to author |
-| 18 | Query & chat live wiring (register the MCP server against the live store; chat with your own data) | query (server config) + harness docs | 08 | Planned — FIRST priority, plan file to author |
+| 18 | Query & chat live wiring (register the MCP server against the live store; chat with your own data) | query (server config) + harness docs | 08 | Queued (2026-08-29, branch chunk-18-query-live-wiring, worktree query-live; plan authored — docs/plans/2026-08-29-18-query-live-wiring.md) |
 | 19 | Scheduled syncs runner (one configurable scheduler for all capture lanes; restart-safe) | connectors/scripts + infrastructure docs | 13, 17 | Planned — plan file to author |
 | 20 | Live capture & organization trial (chats + emails, end to end, on real data) | cross-package (runs the machinery, builds none) | 03, 13, 17, 18, 19 | Planned — plan file to author |
 | 21 | Calendar intelligence & event proposals (tell/schedule from messages; propose events, draft-only) | attention + query + connectors/calendar | 04, 05, 06, 17, 18 | Planned — plan file to author |
@@ -167,7 +167,8 @@ to resync — never rebase). Streams may run concurrently with each other.
 | Worktree | Branch | Territory | Chunks |
 |---|---|---|---|
 | `ingestion/` | `stream-ingestion` | connectors-in + ingestion (direct first-party lanes: gmail, calendar; beeper lane; user inputs) | 17 → 04 (matching) |
-| `mcp/` | `stream-mcp` | query + connectors-out (answer surface, briefs, model access) | 18 → 07 (06-dependent parts last) |
+| `mcp/` | `stream-mcp` | query + connectors-out (answer surface, briefs, model access) | 07 (06-dependent parts last; after 18 merges — 18 moved to `query-live/`) |
+| `query-live/` | `chunk-18-query-live-wiring` | chunk-18 wiring only: root `.mcp.json`, live smoke, chat-setup docs (query territory on loan from `mcp/` — one chunk, then retire the worktree) | 18 |
 | `infrastructure/` | `stream-infrastructure` | cloud runtime + data-repo discipline + egress hygiene + sync scheduling | 09, 19 |
 | (new) `attention/` | `stream-attention` | signal engine + wake-up queue + cadence | 12 → 05 → 06 → 21 (attention parts) |
 
