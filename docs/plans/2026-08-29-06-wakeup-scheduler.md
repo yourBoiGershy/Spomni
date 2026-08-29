@@ -1,5 +1,6 @@
 # Plan 06: Wake-up scheduler (the heartbeat)
 Status: Ready
+Package: attention (queue/sweeps half; detection/ranking is Plan 05, same package)
 Depends-on: 01; integrates 02, 04, 05 sweeps
 
 ## Objective
@@ -13,20 +14,20 @@ Read docs/PROJECT-CONTEXT.md first. Decisions that bind this plan:
 - **Capture optional and lossy-tolerant** — a sweep that finds nothing stays silent.
 
 ## Deliverables
-- `.claude/scripts/wakeup-queue.sh` — deterministic queue ops: list-due, fire (mark + emit batch artifact), snooze <duration>, dismiss <reason>, add; all writes through this script, never hand-edited
-- `.claude/skills/sweep/SKILL.md` — the background run: capture-sweep (02) → calendar-sync (04) → filing of new inbox items (03) → signal-scan (05) → fire due wake-ups → deliver via output adapter (07)
+- `packages/attention/scripts/wakeup-queue.sh` — deterministic lifecycle ops: list-due, fire (mark + emit batch artifact), snooze <duration>, dismiss <reason>; all lifecycle writes through this script, never hand-edited. Creation (`add`) is NOT here — it lives in core's `packages/core/scripts/wakeup-add.sh` so every package appends the same way (single-writer rule)
+- `packages/attention/skills/sweep/SKILL.md` — the background run: capture-sweep (02) → calendar-pull + calendar-reconcile (04) → filing of new inbox items (03) → signal-scan (05) → fire due wake-ups → deliver via output adapter (07)
 - Scheduled-agent wiring: the schedule definition + a `docs/runtime.md` explaining cadence config and how on-demand sessions interact with the queue
 - Batching rules: entries due within the same window fire as one delivery; overflow beyond the nudge cap rolls to next window
 - Snooze/dismiss feedback: writes back to the signal ranking fields (05's contract)
 
 ## Work units
 Wave A (parallel):
-1. [worker] `.claude/scripts/wakeup-queue.sh` — pure file ops over `wakeups/` per the contract; JSON artifact output; Bash 3.2 portable.
-2. [worker] Tests for the queue script: add → list-due windows, snooze moves the date, dismiss records reason, fire is idempotent (re-run doesn't double-fire).
+1. [worker] `packages/attention/scripts/wakeup-queue.sh` (lifecycle ops) + `packages/core/scripts/wakeup-add.sh` (creation) — pure file ops over `wakeups/` per the contract; JSON artifact output; Bash 3.2 portable.
+2. [worker] Tests for both queue scripts: add → list-due windows, snooze moves the date, dismiss records reason, fire is idempotent (re-run doesn't double-fire).
 3. [worker] `docs/runtime.md` — the runtime model: sweep cadence config, what runs scheduled vs. on-demand, the silence principle.
 
 Wave B (after A):
-4. [worker] `.claude/skills/sweep/SKILL.md` — orchestrates the four sub-skills in order, tolerates any of them being unbuilt (skip with a log line, so this plan can ship before 03/05 are done), fires due entries, hands the batch to the output adapter.
+4. [worker] `packages/attention/skills/sweep/SKILL.md` — orchestrates the sub-skills in order, tolerates any of them being unbuilt (skip with a log line, so this plan can ship before 03/05 are done), fires due entries, hands the batch to the output adapter.
 5. [worker] Scheduled-agent definition + the un-debriefed once-then-drop rule (reads 04's artifact, mentions each meeting at most once, records that it was mentioned).
 6. [checker] Unattended run against fixtures: seed a due wake-up, a future wake-up, and an un-debriefed meeting; verify the due one fires once, the future one doesn't, the meeting is mentioned exactly once across two runs, and the log is clean.
 

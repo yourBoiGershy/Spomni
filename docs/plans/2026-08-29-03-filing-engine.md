@@ -1,5 +1,6 @@
 # Plan 03: Filing engine (the librarian)
 Status: Ready
+Package: ingestion
 Depends-on: 01, 02
 
 ## Objective
@@ -13,21 +14,21 @@ Read docs/PROJECT-CONTEXT.md first. Decisions that bind this plan:
 - **Raw always archived** — the original capture text is never destroyed by filing.
 
 ## Deliverables
-- `.claude/skills/debrief/SKILL.md` — the filing flow (single event or batch from inbox)
+- `packages/ingestion/skills/debrief/SKILL.md` — the filing flow (single event or batch from inbox)
 - Filing rules: person matching (name + calendar-context disambiguation), new-person creation, multi-person events, commitment extraction, link maintenance (person↔person, person↔event, interaction↔people)
 - Optional web-research seed pass for new people (public-web only, provenance-labeled)
-- `fixtures/golden/` — 10 golden transcripts with expected output files
-- `.claude/scripts/check-golden.sh` — diffs actual filing output against expected
+- `packages/ingestion/fixtures/golden/` — 10 golden transcripts with expected output files
+- `packages/ingestion/scripts/check-golden.sh` — diffs actual filing output against expected
 
 ## Work units
 Wave A (parallel — goldens BEFORE the prompt, per project doctrine):
-1. [worker] Golden transcripts 1–5 in `fixtures/golden/`: simple single-person, rambly multi-topic, multi-person meeting, embedded reminder ask, two-word minimal. Each = input event + expected person/interaction/wakeup files.
+1. [worker] Golden transcripts 1–5 in `packages/ingestion/fixtures/golden/`: simple single-person, rambly multi-topic, multi-person meeting, embedded reminder ask, two-word minimal. Each = input event + expected person/interaction/wakeup files.
 2. [worker] Golden transcripts 6–10: new unknown person, ambiguous name (two Sarahs), commitment made by user, commitment made by other party, contradicts-existing-fact (person changed jobs).
-3. [worker] `.claude/scripts/check-golden.sh` — runs the comparison, reports per-golden PASS/FAIL with diffs; ignores timestamps.
+3. [worker] `packages/ingestion/scripts/check-golden.sh` — runs the comparison, reports per-golden PASS/FAIL with diffs; ignores timestamps.
 
 Wave B (after A):
-4. [worker] `.claude/skills/debrief/SKILL.md` core: event → matched person(s) via index + calendar context → updates/creates files per the contracts → archives raw → updates index.
-5. [worker] Debrief skill extensions: commitment extraction rules, reminder-ask → wakeup entry, the one-question rule (when to ask, when to file with a `needs-confirmation` marker instead).
+4. [worker] `packages/ingestion/skills/debrief/SKILL.md` core: event → matched person(s) via index + calendar context → updates/creates files per the contracts → archives raw → updates index.
+5. [worker] Debrief skill extensions: commitment extraction rules, reminder-ask → wakeup entry (created via core's `wakeup-add.sh`, per the single-writer rule), the one-question rule (when to ask, when to file with a `needs-confirmation` marker instead).
 6. [worker] New-person flow: create from template, optional research seed (web search on name+company only), provenance labels on every seeded fact.
 
 Wave C:

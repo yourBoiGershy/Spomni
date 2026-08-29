@@ -1,5 +1,6 @@
 # Plan 05: Signal engine (the scout)
 Status: Ready
+Package: attention (detection/ranking half; queue/sweeps are Plan 06, same package)
 Depends-on: 01, 02 (04 soft — co-attendance signals need it)
 
 ## Objective
@@ -13,7 +14,7 @@ Read docs/PROJECT-CONTEXT.md first. Decisions that bind this plan:
 - **Provenance labeling** — signal evidence is inferred-from-web/email, labeled as such.
 
 ## Deliverables
-- `.claude/skills/signal-scan/SKILL.md` — runs all detectors, emits signal events, ranks, writes wake-ups
+- `packages/attention/skills/signal-scan/SKILL.md` — runs all detectors, emits signal events, ranks, writes wake-ups
 - Detectors (each a section of the skill with its own rules):
   - birthdays: Google Contacts (People API via first-party connector) + person frontmatter
   - job changes: `linkedin-notification` capture events + email-signature diffing + web-search verification
@@ -22,18 +23,18 @@ Read docs/PROJECT-CONTEXT.md first. Decisions that bind this plan:
   - posts: belled-contact `linkedin-notification` events
   - debrief harvesting: `needs-follow-up` facts Plan 03 marks
 - Ranking spec: warmth (tier + recency + interaction density) × rarity; the two-signal rule; the 5-nudge cap with overflow held, not dropped
-- `fixtures/signals/` — seeded signal scenarios wired to fixture personas
+- `packages/attention/fixtures/signals/` — seeded signal scenarios wired to fixture personas
 
 ## Work units
 Wave A (parallel):
 1. [worker] Ranking spec + warmth definition (documented in the skill; deterministic enough that a checker can verify a ranking by hand).
-2. [worker] `fixtures/signals/`: a birthday 5 days out, a LinkedIn job-change email, a co-attendance link, a funding-news search result, a low-warmth post event — each with expected rank and expected wake-up (or expected suppression).
+2. [worker] `packages/attention/fixtures/signals/` content: a birthday 5 days out, a LinkedIn job-change email, a co-attendance link, a funding-news search result, a low-warmth post event — each with expected rank and expected wake-up (or expected suppression).
 3. [worker] Detector specs: birthdays + co-attendance + debrief harvesting (the cheap three).
 
 Wave B (after A):
 4. [worker] Detector specs: job changes (email parse + signature diff + search verify) and company news (search query templates, name-disambiguation rule: always name+company together).
-5. [worker] `.claude/skills/signal-scan/SKILL.md` assembly: detector order, signal-event emission, ranking pass, wake-up creation with ammunition block, timing rules (job-change nudge dated +2–3 weeks, birthday dated day-before).
-6. [checker] Run the scan against `fixtures/signals/`: verify each scenario produces the expected wake-up/suppression, the cap holds, the low-warmth post is suppressed, and every emitted wake-up has trigger + ammunition.
+5. [worker] `packages/attention/skills/signal-scan/SKILL.md` assembly: detector order, signal-event emission, ranking pass, wake-up creation with ammunition block, timing rules (job-change nudge dated +2–3 weeks, birthday dated day-before).
+6. [checker] Run the scan against `packages/attention/fixtures/signals/`: verify each scenario produces the expected wake-up/suppression, the cap holds, the low-warmth post is suppressed, and every emitted wake-up has trigger + ammunition.
 
 ## Interfaces
 Consumes: signal-event/wakeup contracts + index (01); typed `linkedin-notification`/`event-confirmation` events (02); `same-event-as` links (04); `needs-follow-up` markers (03).

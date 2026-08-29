@@ -35,6 +35,45 @@ Connectors in → Inbox → Filing engine → People store → Signal engine →
   Explicit reminder asks, birthdays, and detected signals are all the same object.
 - **Output connectors** render fired wake-ups, briefs, and query answers to wherever the user wants.
 
+## Packages
+
+The machinery is organized as five packages. Grouping follows **artifact ownership**,
+not feature names (see DECISIONS.md: package-architecture, attention-merge).
+
+```
+packages/
+├── core/          # contracts (versioned), templates, store scripts, fixtures — the vocabulary
+├── connectors/    # ALL outside-world I/O, both directions, deliberately dumb
+│   ├── gmail-in/  calendar-in/  contacts-in/   # fetch → normalized artifacts
+│   └── file-out/  gmail-out/                   # rendered batch → destination
+├── ingestion/     # data malleability: filing engine, attendee↔person matching, links, provenance
+├── attention/     # signals + scheduler: detectors, ranking, wake-up queue lifecycle, sweeps
+└── query/         # read-only answer surface: query skill, briefs — "the project's MCP"
+```
+
+**Single-writer rule** — every runtime artifact type has exactly one writing package:
+
+| Artifact | Sole writer |
+|---|---|
+| `inbox/` (capture events) | connectors (input side) |
+| `people/`, `interactions/`, `index.json` | ingestion |
+| `wakeups/` lifecycle (fire/snooze/dismiss) | attention — creation open to all via core's `wakeup-add.sh` |
+| outbound deliveries | connectors (output side) |
+
+**The three no-overlap rules:**
+1. **Single writer per artifact type** (table above). If a new feature needs to write
+   someone else's artifact, it belongs in that package or goes through a core script.
+2. **Dumb edges, smart middle** — connectors fetch and deliver; they never interpret,
+   match, rank, or file.
+3. **Siblings communicate only through core's contracts**, declared in each
+   `package.md` manifest as provides/consumes with versions. Dependency direction:
+   core ← everyone; siblings never import siblings' internals.
+
+Product skills live inside their package (`packages/<pkg>/skills/`); `.claude/skills/`
+holds only harness skills (`/explore`, `/implement`). Packages stay `0.x` until the
+live trial; contracts are semver'd from day one. Each package's plan + contracts +
+golden tests are its durable spec — implementations are regenerable from them.
+
 ## Code vs. data
 
 This repo is machinery only. Each user's people-store lives in their own private location
@@ -97,8 +136,11 @@ index.json      # auto-generated: person → tags, org, location, last-touch
 
 This repo carries a delegation harness (see CLAUDE.md and `.claude/rules/orchestration.md`):
 the main conversation orchestrates and never edits machinery; scoped workers implement;
-`*-checker` agents are read-only (hook-enforced). Plans live in `docs/plans/` and follow the
-shared template; [ROADMAP.md](ROADMAP.md) tracks chunk order and status. Golden tests are
+`*-checker` agents are read-only (hook-enforced). **One package = one focused
+agent/session's territory** — a session (or worker wave) owns a single package at a
+time, and cross-package needs are met by reading the other package's manifest and
+contracts, never by editing its files. Plans live in `docs/plans/` and follow the
+shared template; [ROADMAP.md](ROADMAP.md) tracks chunk order, package mapping, and status. Golden tests are
 written before prompts wherever an LLM behavior is being specified.
 
 ## External references

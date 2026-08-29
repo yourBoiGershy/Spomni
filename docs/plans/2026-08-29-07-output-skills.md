@@ -1,5 +1,6 @@
 # Plan 07: Output skills & adapters (the voice)
 Status: Ready
+Package: query (query + brief) + connectors/file-out, connectors/gmail-out (adapters)
 Depends-on: 01; renders 06's batches; brief uses 04's artifacts
 
 ## Objective
@@ -13,21 +14,21 @@ Read docs/PROJECT-CONTEXT.md first. Decisions that bind this plan:
 - **Nudge-quality rules** — every rendered nudge shows its trigger and ammunition; no bare reminders.
 
 ## Deliverables
-- `.claude/skills/query/SKILL.md` — natural-language questions over index + person files; answers cite the person files they drew from
-- `.claude/skills/brief/SKILL.md` — pre-meeting one-pager: store facts (provenance: user) + fresh web research on the person/company (provenance: public), open threads, last-interaction summary, outstanding commitments both directions
-- Nudge card format spec + renderer (part of the sweep delivery): trigger, evidence, shared-history ammunition, optional draft, snooze/dismiss affordances
-- Output adapter interface doc (`docs/connectors.md`, output half) + two adapters: `file-terminal` (writes `data/outbox/YYYY-MM-DD.md`, shown in-session) and `gmail-self` (emails the batch to the user's own address)
-- `fixtures/output/` — a fired-batch artifact + expected renders
+- `packages/query/skills/query/SKILL.md` — natural-language questions over index + person files; answers cite the person files they drew from
+- `packages/query/skills/brief/SKILL.md` — pre-meeting one-pager: store facts (provenance: user) + fresh web research on the person/company (provenance: public), open threads, last-interaction summary, outstanding commitments both directions
+- Nudge card format spec + renderer (`packages/query/skills/`, part of the sweep delivery): trigger, evidence, shared-history ammunition, optional draft, snooze/dismiss affordances
+- Output adapter interface doc (`docs/connectors.md`, output half) + two adapters: `packages/connectors/file-out/` (writes `data/outbox/YYYY-MM-DD.md`, shown in-session) and `packages/connectors/gmail-out/` (`gmail-self`: emails the batch to the user's own address)
+- `packages/connectors/fixtures/output/` — a fired-batch artifact + expected renders
 
 ## Work units
 Wave A (parallel):
-1. [worker] Nudge card format spec + `fixtures/output/` (one batch with 3 fired wake-ups: birthday, job change with draft, month-out reminder; expected render per adapter).
-2. [worker] `.claude/skills/query/SKILL.md` — index-first retrieval, file-read for detail, citation format, "no match" behavior (say so + nearest neighbors, never invent).
+1. [worker] Nudge card format spec + `packages/connectors/fixtures/output/` (one batch with 3 fired wake-ups: birthday, job change with draft, month-out reminder; expected render per adapter).
+2. [worker] `packages/query/skills/query/SKILL.md` — index-first retrieval, file-read for detail, citation format, "no match" behavior (say so + nearest neighbors, never invent).
 3. [worker] `docs/connectors.md` output-adapter half: the interface, destination config shape, the draft-never-send constraint stated as a hard rule for adapter authors.
 
 Wave B (after A):
-4. [worker] `.claude/skills/brief/SKILL.md` — assembly order, research pass (web search, name+company disambiguation), provenance sections, length cap (one page), staleness note when store facts are old.
-5. [worker] `file-terminal` adapter + `gmail-self` adapter (the latter via first-party Gmail connector, self-address only, refuses other recipients).
+4. [worker] `packages/query/skills/brief/SKILL.md` — assembly order, research pass (web search, name+company disambiguation), provenance sections, length cap (one page), staleness note when store facts are old.
+5. [worker] `packages/connectors/file-out/` adapter + `packages/connectors/gmail-out/` adapter (the latter via first-party Gmail connector, self-address only, refuses other recipients). Each gets its sub-package mini-manifest.
 6. [checker] Render the fixture batch through both adapters; verify identical content, correct card structure, drafts present but marked unsent; run 3 query fixtures against the persona pack and verify citations.
 
 ## Interfaces

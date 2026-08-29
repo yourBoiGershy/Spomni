@@ -1,5 +1,6 @@
 # Plan 02: Capture — Gmail lane & inbox
 Status: Ready
+Package: connectors/gmail-in (shared input tooling at connectors root)
 Depends-on: 01 only
 
 ## Objective
@@ -14,20 +15,20 @@ Read docs/PROJECT-CONTEXT.md first. Decisions that bind this plan:
 
 ## Deliverables
 - `data/` conventions doc: `inbox/`, `inbox/quarantine/`, `archive/raw/` layout (written to `docs/data-layout.md`, enacted in the user's private data dir)
-- `.claude/scripts/normalize-capture.sh` — validates/normalizes a raw drop into a capture-event file
-- `.claude/skills/capture-sweep/SKILL.md` — the Gmail pull: finds new subject-tagged self-emails + recognized notification emails, writes typed capture events
+- `packages/connectors/scripts/normalize-capture.sh` — validates/normalizes a raw drop into a capture-event file (shared by all input lanes)
+- `packages/connectors/gmail-in/skills/capture-sweep/SKILL.md` — the Gmail pull: finds new subject-tagged self-emails + recognized notification emails, writes typed capture events
 - Email type classifiers (prompt rules inside the skill): `voice-note`, `linkedin-notification`, `event-confirmation`, `unknown`
 - `docs/dictation-jogger.md` — the 4-question memory jogger for phone dictation (+ suggested subject tag, e.g. `[ra]`)
-- `templates/capture-event.md` usage examples (contract itself is Plan 01's)
+- Capture-event usage examples appended to `packages/core/templates/` (contract itself is Plan 01's)
 
 ## Work units
 Wave A (parallel):
 1. [worker] `docs/data-layout.md` + `docs/dictation-jogger.md` — data-dir conventions and the phone-side flow.
-2. [worker] `.claude/scripts/normalize-capture.sh` — stdin/file → validated capture event; invalid input moved to `quarantine/` with a reason file; never deletes.
-3. [worker] Test fixtures: 6 sample raw emails in `fixtures/capture/` — 2 dictated voice notes, 2 LinkedIn notification emails (job change, post), 1 Luma confirmation, 1 malformed junk.
+2. [worker] `packages/connectors/scripts/normalize-capture.sh` — stdin/file → validated capture event; invalid input moved to `quarantine/` with a reason file; never deletes.
+3. [worker] Test fixtures: 6 sample raw emails in `packages/connectors/gmail-in/fixtures/` — 2 dictated voice notes, 2 LinkedIn notification emails (job change, post), 1 Luma confirmation, 1 malformed junk.
 
 Wave B (after A):
-4. [worker] `.claude/skills/capture-sweep/SKILL.md` — Gmail query strategy (subject tag + known sender patterns), classification rules per email type, idempotency (processed-message ledger so re-runs don't duplicate), calls normalizer.
+4. [worker] `packages/connectors/gmail-in/skills/capture-sweep/SKILL.md` — Gmail query strategy (subject tag + known sender patterns), classification rules per email type, idempotency (processed-message ledger so re-runs don't duplicate), calls normalizer.
 5. [worker] Tests for the normalizer against the fixture pack (valid → typed events with correct `source` and participant hints; malformed → quarantined).
 6. [checker] Dry-run review: walk the six fixtures through the documented flow and verify each lands where the docs say it should; report mismatches.
 

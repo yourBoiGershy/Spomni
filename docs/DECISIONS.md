@@ -81,6 +81,33 @@ input→expected-output fixtures written before the prompt that implements it.
 Why: prompt-tuning needs a target; regressions need a tripwire.
 Revisit if: never.
 
+**package-architecture** · 2026-08-29
+The machinery is five packages — core, connectors, ingestion, attention, query —
+grouped by **artifact ownership, not feature names**. Three rules prevent overlap:
+single writer per artifact type (inbox=connectors-in; people/interactions/index=
+ingestion; wakeups lifecycle=attention, creation via core's append script;
+outbound=connectors-out); dumb edges smart middle (connectors never interpret);
+siblings communicate only through core's contracts, declared in manifests as
+provides/consumes with versions. Each package's spec + contracts + golden tests are
+the durable artifact — implementations are regenerable from them ("rebuild against
+newer versions" is a supported workflow). Packages stay 0.x until the live trial;
+contracts are semver'd from day one.
+Why: focused agents need territory boundaries the hooks can enforce; versioned
+contracts replace cross-agent chatter with mechanical compatibility checks.
+Revisit if: a package's regeneration repeatedly breaks siblings — tighten contracts,
+don't blur ownership.
+
+**attention-merge** · 2026-08-29
+Signals and the scheduler are one package (`attention`), not two: snooze/dismiss
+feedback couples ranking to firing, and both live on the same wake-up queue — a
+package boundary there would cut through one conversation. Conversely, "calendar" is
+not a package: it splits into a thin `connectors/calendar-in` (dumb pull) and
+ingestion-side attendee↔person matching, per dumb-edges-smart-middle.
+Why: grouping by artifact ownership (who writes the queue; who writes the store)
+rather than by feature noun.
+Revisit if: attention grows past ~2 plans of scope — split detection from delivery
+only if the feedback loop can become a contract.
+
 **delegation-without-gates** · 2026-08-29
 The repo runs the simplified harness: orchestration doctrine, worker/checker split,
 enforcement hooks, brief template, completion reports — but no gate system, attestation,

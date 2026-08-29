@@ -27,9 +27,19 @@ sends. This repo holds the machinery; user data never lives here (see
 
 Connectors in → `inbox/` (normalized capture events, raw kept forever) →
 filing engine → people store (`people/`, `interactions/`, index) → signal
-engine → wake-up queue → connectors out. The build plan (three categories:
-ingestion, connectors, scheduling) lives with the project owner; contracts and
-assistant skills land in `docs/plans/` + `.claude/skills/` as they are built.
+engine → wake-up queue → connectors out.
+
+## Packages
+
+The machinery lives in five packages under `packages/` — `core` (versioned
+contracts, templates, store scripts, fixtures), `connectors` (all outside-world
+I/O, dumb, sub-package per lane), `ingestion` (filing, matching, links),
+`attention` (signals + wake-up queue + sweeps), `query` (read-only answers +
+briefs). **Single-writer rule:** each runtime artifact type has exactly one
+writing package; siblings communicate only through core's contracts, declared
+in each `package.md` manifest as provides/consumes with versions. Product
+skills live in `packages/<pkg>/skills/`; `.claude/skills/` is harness-only.
+Full detail: `docs/PROJECT-CONTEXT.md` (Packages section).
 
 ---
 
@@ -42,10 +52,11 @@ Blueprint — Stage 1 + the delegation core of Stage 3). Deep detail in
 ## Orchestration model
 
 - **The main conversation orchestrates; it never edits production code.**
-  Production code here = the assistant's machinery: `.claude/skills/`,
-  `.claude/agents/`, `.claude/scripts/`, `templates/` (hook-enforced). All
-  such edits go to scoped worker agents. `docs/`, `data/`, and root markdown
-  stay orchestrator-editable for planning.
+  Production code here = the assistant's machinery: everything under
+  `packages/` (manifests included — manifest edits go through workers too)
+  plus `.claude/skills|agents|scripts|hooks/` (hook-enforced). All such edits
+  go to scoped worker agents. `docs/`, `data/`, and root markdown stay
+  orchestrator-editable for planning.
 - **Concurrency caps:** read-only agents (`*-checker`) up to **40**
   concurrent; mutating agents (`*-worker`) up to **15**. Over the cap →
   rolling pool: spawn the first N in one parallel message, refill as each
@@ -82,8 +93,10 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
 ## Project bindings
 
 - Protected edit prefixes for the orchestrator guard:
-  `.claude/skills/ .claude/agents/ .claude/scripts/ templates/`
+  `.claude/skills/ .claude/agents/ .claude/scripts/ .claude/hooks/ packages/`
   (override via `HARNESS_PROTECTED_PREFIXES` in the hook's environment).
+- One package = one focused agent/session's territory; cross-package needs are
+  met via the other package's `package.md` + core contracts, never its files.
 - No build/test commands yet — when the first scripts land, add typecheck/
   lint/test commands here and in `/implement` step 4.
   <!-- PARAMETERIZE: fill in when the project grows real tooling -->

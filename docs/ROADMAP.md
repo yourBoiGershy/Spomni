@@ -6,15 +6,19 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 
 ## Chunks
 
-| # | Plan | Category | Depends on | Status |
+| # | Plan | Package | Depends on | Status |
 |---|---|---|---|---|
-| 01 | Contracts & store | Ingestion | — | Ready |
-| 02 | Capture & Gmail inbox | Connectors (in) | 01 | Ready |
-| 03 | Filing engine | Ingestion | 01, 02 | Ready |
-| 04 | Calendar sync | Ingestion | 01 | Ready |
-| 05 | Signal engine | Ingestion | 01, 02 (email lanes), 04 (co-attendance) | Ready |
-| 06 | Wake-up scheduler | Scheduling | 01; orchestrates 03/05 outputs | Ready |
-| 07 | Output skills & adapters | Connectors (out) | 01; 06 for nudge firing | Ready |
+| 01 | Contracts & store | core | — | Ready |
+| 02 | Capture & Gmail inbox | connectors/gmail-in (+ core's inbox contract) | 01 | Ready |
+| 03 | Filing engine | ingestion | 01, 02 | Ready |
+| 04 | Calendar connector & matching | connectors/calendar-in + ingestion | 01 | Ready |
+| 05 | Signal engine | attention (detection/ranking) | 01, 02 (email lanes), 04 (co-attendance) | Ready |
+| 06 | Wake-up scheduler | attention (queue/sweeps) | 01; orchestrates 03/05 outputs | Ready |
+| 07 | Output skills & adapters | query + connectors/file-out, gmail-out | 01; 06 for nudge firing | Ready |
+
+Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
+attention-merge. Plan 04 spans a thin connector plus ingestion-side matching — see
+dumb-edges-smart-middle in PROJECT-CONTEXT.
 
 ## Waves
 

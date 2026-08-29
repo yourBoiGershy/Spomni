@@ -38,7 +38,7 @@ delegation:
 |---|---|
 | `CLAUDE.md` | Project doctrine + orchestration doctrine (orchestrate-don't-edit, caps, splitting rule, git safety) |
 | `.claude/rules/orchestration.md` | Full dispatch mechanics |
-| `.claude/hooks/` | Enforcement: `git-guard` (destructive git blocked), `checker-readonly` (checkers can't write), `orchestrator-edit-guard` (main session can't edit machinery under `.claude/skills|agents|scripts` or `templates/`), spawn + tool-call JSONL loggers |
+| `.claude/hooks/` | Enforcement: `git-guard` (destructive git blocked), `checker-readonly` (checkers can't write), `orchestrator-edit-guard` (main session can't edit machinery under `packages/` or `.claude/skills|agents|scripts|hooks`), spawn + tool-call JSONL loggers |
 | `.claude/agents/` | Minimal roster: `dev-worker` (sonnet), `codebase-locator-checker` + `codebase-analyzer-checker` (haiku), `plan-architect` (inherit) |
 | `.claude/context/` | 4-section agent brief template + completion-report block |
 | `.claude/skills/` | `/explore` (parallel read-only scouting), `/implement` (split → brief → fan out → consolidate → commit per phase) |
@@ -55,9 +55,14 @@ triage (§04), worktree lifecycle, nested leads (§08).
 
 ```
 CLAUDE.md          project + harness doctrine
-.claude/           harness: rules, hooks, agents, skills, context templates
-templates/         assistant file templates (person, interaction, …) — next wave
-docs/plans/        implementation plans
+.claude/           harness: rules, hooks, agents, harness skills, context templates
+packages/          the assistant, five packages (see docs/PROJECT-CONTEXT.md):
+├── core/          versioned contracts, templates, store scripts, fixtures
+├── connectors/    all I/O, dumb: gmail-in, calendar-in, contacts-in, file-out, gmail-out
+├── ingestion/     filing engine, attendee matching, links, provenance
+├── attention/     signals + ranking + wake-up queue + sweeps
+└── query/         read-only answers + pre-meeting briefs ("the project's MCP")
+docs/plans/        implementation plans (ROADMAP.md maps plans → packages)
 data/              YOUR private store (gitignored; see data/README.md)
 ```
 
@@ -70,9 +75,9 @@ Start a Claude Code session in this repo (hooks load from
 `.claude/settings.json`) and check four behaviors:
 
 1. **Orchestrator delegates:** ask for a trivial two-file change under
-   `templates/` — the session should spawn dev-worker(s) rather than editing
-   directly; if it tries, `orchestrator-edit-guard.sh` blocks with a pointer
-   to the splitting rule.
+   `packages/core/templates/` — the session should spawn dev-worker(s) rather
+   than editing directly; if it tries, `orchestrator-edit-guard.sh` blocks
+   with a pointer to the splitting rule.
 2. **Spawn trail exists:** `.claude/logs/agent-spawns.jsonl` gains one line
    per spawn (and `tool-calls.jsonl` accumulates).
 3. **Checkers are read-only:** ask a `codebase-locator-checker` to "fix" a
