@@ -8,7 +8,7 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 
 | # | Plan | Package | Depends on | Status |
 |---|---|---|---|---|
-| 01 | Contracts & store | core | — | Ready |
+| 01 | Contracts & store | core | — | Done (2026-08-29, branch chunk-01-contracts-and-store) |
 | 02 | Capture & Gmail inbox | connectors/gmail-in (+ core's inbox contract) | 01 | Ready |
 | 03 | Filing engine | ingestion | 01, 02 | Ready |
 | 04 | Calendar connector & matching | connectors/calendar-in + ingestion | 01 | Ready |
