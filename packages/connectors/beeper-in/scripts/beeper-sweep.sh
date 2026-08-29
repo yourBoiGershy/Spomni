@@ -211,7 +211,18 @@ while IFS= read -r chat_json; do
     --arg network "$network" --arg title "$title" --arg chatType "$chat_type" \
     '{chatID: $chatID, accountID: $accountID, network: $network, title: $title, chatType: $chatType, messages: .items}')"
 
-  set -- "$STORE_DIR_ABS" --source beeper --type other --captured-at "$RUN_START"
+  network_source="$network"
+  [ -z "$network_source" ] && network_source="unknown"
+
+  newest_ts="$(printf '%s' "$fetch_result" | jq -r '[.items[].timestamp] | max // empty' 2>/dev/null)"
+  occurred_at=""
+  if [ -n "$newest_ts" ]; then
+    ts_no_z="${newest_ts%Z}"
+    occurred_at="${ts_no_z%%.*}Z"
+  fi
+
+  set -- "$STORE_DIR_ABS" --source "beeper-in/${network_source}" --type chat-message --captured-at "$RUN_START"
+  [ -n "$occurred_at" ] && set -- "$@" --occurred-at "$occurred_at"
   while IFS= read -r hint; do
     [ -z "$hint" ] && continue
     set -- "$@" --hint "$hint"

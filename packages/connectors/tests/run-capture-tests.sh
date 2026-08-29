@@ -512,6 +512,53 @@ else
   fail "malformed-junk.txt fixture missing: $junk_fixture"
 fi
 
+# --- regression: slashed --source (e.g. "beeper-in/matrix", the 1.2.0
+# <connector>/<lane> convention) with a default (no --id) id must not embed
+# the slash in the filename — the write must land as a flat file directly
+# under inbox/, and the frontmatter source: field must preserve the original
+# slashed value verbatim. ---
+slashed_out="$(printf 'hello world\n' | "$NORMALIZER" "$STORE_DIR" --source "beeper-in/matrix" --type chat-message --captured-at 2026-08-29T19:09:33Z 2>&1)"
+slashed_status=$?
+
+if [ "$slashed_status" -eq 0 ]; then
+  pass "slashed source: normalize-capture.sh exits 0"
+else
+  fail "slashed source: normalize-capture.sh exited $slashed_status (expected 0): $slashed_out"
+fi
+
+if [ "$slashed_status" -eq 0 ] && [ -f "$slashed_out" ]; then
+  pass "slashed source: printed path exists on disk"
+else
+  fail "slashed source: printed path does not exist on disk (printed: $slashed_out)"
+fi
+
+if [ "$slashed_status" -eq 0 ]; then
+  slashed_dirname="$(dirname "$slashed_out")"
+  slashed_basename="$(basename "$slashed_out")"
+  if [ "$slashed_dirname" = "$STORE_DIR/inbox" ]; then
+    pass "slashed source: file lands directly under inbox/ (no nonexistent intermediate dir)"
+  else
+    fail "slashed source: file did not land directly under inbox/ (got dirname: $slashed_dirname)"
+  fi
+
+  case "$slashed_basename" in
+    *beeper-in-matrix*)
+      pass "slashed source: flat filename contains sanitized 'beeper-in-matrix'"
+      ;;
+    *)
+      fail "slashed source: flat filename does not contain sanitized 'beeper-in-matrix' (got: $slashed_basename)"
+      ;;
+  esac
+
+  if grep -qF "source: beeper-in/matrix" "$slashed_out"; then
+    pass "slashed source: frontmatter source preserves 'beeper-in/matrix' verbatim"
+  else
+    fail "slashed source: frontmatter source does not preserve 'beeper-in/matrix' verbatim in $slashed_out"
+  fi
+else
+  fail "slashed source: skipped downstream checks (normalizer did not succeed)"
+fi
+
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 

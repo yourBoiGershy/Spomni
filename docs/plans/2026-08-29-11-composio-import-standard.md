@@ -54,7 +54,7 @@ conceptual gaps the real data exposed.
 | googlecalendar | `calendar-event` | event start | organizer, creator, every attendee | the provider event resource as pretty-printed JSON |
 | linkedin | `profile-snapshot` / `post` | snapshot: none; post: publish time | none (it is the user's own profile) | the provider resource as pretty-printed JSON |
 | (gmail People seed) | `contact-record` | none | the contact's names + emails | the provider contact resource as pretty-printed JSON |
-| beeper (`beeper-in/<network>`, e.g. `beeper-in/whatsapp`, `beeper-in/imessage`) | `chat-message` (1.2.0) | message sent time | sender + other chat participants, display form as seen | the message content; Beeper API envelope stripped, original to `archive/raw/` |
+| beeper (`beeper-in/<network>`, e.g. `beeper-in/whatsapp`, `beeper-in/imessage`) | `chat-message` (1.2.0) | newest message timestamp in the batch (one event per chat per sweep) | chat title + each unique non-self sender | the chat's new-message batch as JSON (chatID, accountID, network, title, chatType, messages) |
 
 ### Body + transport rule
 The body is the **provider resource** (Gmail message, Calendar event, LinkedIn

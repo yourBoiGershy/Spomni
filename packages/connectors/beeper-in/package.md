@@ -26,14 +26,14 @@ list, shapes, cursor semantics, and the chat-ID URL-encoding caveat.
   advanced only after its capture event is normalized successfully — lossy-
   tolerant, no retries, no error spam on transport failure.
 - One capture event per chat per sweep run (envelope-only; batches that chat's new
-  messages verbatim), `type: other` per the capture-event contract's minimal-typing
-  rule (widening the enum for chat threads is a future core minor bump, not this
-  lane).
+  messages verbatim), `type: chat-message` per the capture-event 1.2.0 contract
+  (source form `beeper-in/<network>`, `occurred_at` set to the newest message's
+  timestamp in the batch).
 
 ## Provides
 
 - Raw capture events in `inbox/` for the beeper personal-chat lane (subject to the
-  capture-event contract's `type` enum; this lane uses `other`)
+  capture-event contract's `type` enum; this lane uses `chat-message`)
 - `fixtures/` — synthetic Beeper API response payloads (accounts, chat pages,
   message pages, an empty page) for sweep and lib tests to build against, offline
 - `api-notes.md` — the verified API ground truth this package implements from
@@ -42,7 +42,7 @@ list, shapes, cursor semantics, and the chat-ID URL-encoding caveat.
 
 ## Consumes
 
-- `capture-event@^1`, `connector-interface@^1` (core)
+- `capture-event@^1.2`, `connector-interface@^1` (core)
 - The user's own Beeper Desktop/Server Client API + a user-created Bearer token
   (out-of-band; token lives under the private data dir, never in this repo, per
   `docs/DECISIONS.md#code-data-separation`)

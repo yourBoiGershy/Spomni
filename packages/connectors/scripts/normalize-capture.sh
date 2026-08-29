@@ -130,7 +130,12 @@ rand_hex4() {
 }
 
 if [ -z "$ID" ]; then
-  ID="$(captured_at_compact "$CAPTURED_AT")-${SOURCE}-$(rand_hex4)"
+  # Sanitize the source component for filename/id safety: replace any
+  # path-unsafe character (/, whitespace) with '-' so the id always stays a
+  # flat filename. The frontmatter 'source:' field keeps the original,
+  # unsanitized value — the id form is a convenience, not authoritative.
+  SAFE_SOURCE="$(printf '%s' "$SOURCE" | tr -s '/ \t' '-')"
+  ID="$(captured_at_compact "$CAPTURED_AT")-${SAFE_SOURCE}-$(rand_hex4)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -205,8 +210,18 @@ write_frontmatter() {
 
 if [ "$VALID" -eq 1 ]; then
   DEST="${INBOX_DIR}/${ID}.md"
-  write_frontmatter "$DEST"
-  cat "$BODY_TMP" >> "$DEST"
+  if ! write_frontmatter "$DEST"; then
+    echo "normalize-capture.sh: failed to write inbox event: $DEST" >&2
+    exit 1
+  fi
+  if ! cat "$BODY_TMP" >> "$DEST"; then
+    echo "normalize-capture.sh: failed to append body to inbox event: $DEST" >&2
+    exit 1
+  fi
+  if [ ! -e "$DEST" ]; then
+    echo "normalize-capture.sh: inbox event missing after write: $DEST" >&2
+    exit 1
+  fi
   printf '%s\n' "$DEST"
   exit 0
 else

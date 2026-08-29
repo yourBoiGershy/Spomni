@@ -30,7 +30,7 @@ rewrite, summarize, or interpret the body.
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `schema_version` | semver string | yes | Contract version this file conforms to. |
-| `id` | string | yes | Unique within `inbox/`. Recommended form: `<captured_at-compact>-<source>-<short-rand>`, e.g. `20260829T143200Z-gmail-in-9f2a`. Also the filename stem (`inbox/<id>.md`). |
+| `id` | string | yes | Unique within `inbox/`. Recommended form: `<captured_at-compact>-<source>-<short-rand>`, e.g. `20260829T143200Z-gmail-in-9f2a`. Also the filename stem (`inbox/<id>.md`). When `source` uses the `<connector>/<lane>` form, the `/` (and any other path-unsafe character) is sanitized to `-` for the id/filename only, e.g. `source: composio-in/googlecalendar` yields `id: ...-composio-in-googlecalendar-...`; the frontmatter `source` field itself keeps the original unsanitized value. `id` and the filename must always be a flat name directly under `inbox/`, never a nested path. |
 | `source` | string | yes | The writing connector's name. Convention for multi-lane connectors: `<connector>/<lane>`, e.g. `composio-in/gmail`, `composio-in/googlecalendar`, `composio-in/linkedin` — the connector half is the writing sub-package, the lane half is the Composio toolkit slug. Chat lanes follow the same form, e.g. `beeper-in/whatsapp`. Plain connector names (`manual`, `gmail-in`) remain valid; `source` is a free string, not an enum. |
 | `captured_at` | ISO 8601 timestamp | yes | `YYYY-MM-DDTHH:MM:SSZ`. When the connector captured the item (not necessarily when the underlying event happened). The `id` and filename derive from this, keeping `inbox/` chronological by capture. |
 | `type` | enum | yes | One of: `voice-note`, `linkedin-notification`, `event-confirmation`, `transcript`, `other`, `email`, `calendar-event`, `profile-snapshot`, `contact-record`, `post`, `chat-message`. `event-confirmation` is a confirmation *email*; `calendar-event` is the event record itself; `chat-message` is a message in a chat/DM conversation — WhatsApp, iMessage, Signal, Telegram, Discord DM, etc. — as distinct from `email`. `other` is the escape hatch for genuinely unclassifiable items, not a default. |
@@ -106,3 +106,8 @@ participant-hints:
 - `occurred_at` is optional; the filing engine must not assume it exists.
   Existing 1.0.0 events (no `occurred_at`, plain-string `source`) remain valid
   under 1.1.0 — this bump is additive only, no migration required.
+- Sanitizing `source` for the `id`/filename (e.g. `composio-in/gmail` →
+  `composio-in-gmail`) is purely a filename concern; it does not change or
+  re-encode the `source` field's value, and readers must not reverse the
+  sanitization to recover the original `source` — they should read the
+  `source` field directly instead.

@@ -623,11 +623,20 @@ assert_eq "e2e full run: sweep exits 0" "$e2e1_rc" "0"
 e2e1_inbox_count="$(find "$e2e1_store/inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
 assert_eq "e2e full run: exactly one inbox event per fixture chat (2)" "$e2e1_inbox_count" "2"
 
-e2e1_source_count="$(grep -l '^source: beeper$' "$e2e1_store"/inbox/*.md 2>/dev/null | wc -l | tr -d ' ')"
-assert_eq "e2e full run: every event has source: beeper" "$e2e1_source_count" "2"
+e2e1_source_matrix_count="$(grep -l '^source: beeper-in/matrix$' "$e2e1_store"/inbox/*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "e2e full run: matrix chat's event has source: beeper-in/matrix" "$e2e1_source_matrix_count" "1"
 
-e2e1_type_count="$(grep -l '^type: other$' "$e2e1_store"/inbox/*.md 2>/dev/null | wc -l | tr -d ' ')"
-assert_eq "e2e full run: every event has type: other" "$e2e1_type_count" "2"
+e2e1_source_whatsapp_count="$(grep -l '^source: beeper-in/whatsapp$' "$e2e1_store"/inbox/*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "e2e full run: whatsapp chat's event has source: beeper-in/whatsapp" "$e2e1_source_whatsapp_count" "1"
+
+e2e1_type_count="$(grep -l '^type: chat-message$' "$e2e1_store"/inbox/*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "e2e full run: every event has type: chat-message" "$e2e1_type_count" "2"
+
+e2e1_schema_count="$(grep -l '^schema_version: 1.2.0$' "$e2e1_store"/inbox/*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "e2e full run: every event has schema_version: 1.2.0" "$e2e1_schema_count" "2"
+
+e2e1_occurred_count="$(grep -l '^occurred_at: 2026-08-29T14:32:10Z$' "$e2e1_store"/inbox/*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "e2e full run: every event has occurred_at matching the fixture's newest timestamp (millis stripped)" "$e2e1_occurred_count" "2"
 
 if grep -rq 'Bea Sample' "$e2e1_store"/inbox/*.md 2>/dev/null; then
   pass "e2e full run: hints include a non-self sender (Bea Sample)"
@@ -757,12 +766,20 @@ assert_eq "e2e disabled: no HTTP calls recorded by the stub" "$e2e4_stub_calls" 
 # =============================================================================
 # 7e. Normalizer failure path: force a deterministic id collision so the
 #     second chat processed is quarantined by normalize-capture.sh while the
-#     first succeeds. Both chats share the same captured_at (fixed per run)
-#     and --source beeper, so the only variable in the normalizer's default
-#     id is its random hex suffix; a fake `openssl` ahead of the real one on
-#     PATH pins that suffix to a constant, making the collision deterministic
-#     (same technique as the existing dup-id case in run-capture-tests.sh,
-#     just driven from the sweep side instead of an explicit --id).
+#     first succeeds. The default id is
+#     <captured_at-compact>-<source>-<4-hex-rand>, and --source is now
+#     "beeper-in/<network>" (per-chat, from each chat's own JSON) rather than
+#     a constant "beeper" — the shared fixtures/chats-page.json gives the two
+#     sample chats different networks (matrix, whatsapp), so their sources
+#     no longer collide. This subtest uses its own test-local chats fixture
+#     (same chat ids/participants as fixtures/chats-page.json, just both
+#     chats' "network" field pinned to "matrix") so both events compute the
+#     same --source beeper-in/matrix; both chats share the same captured_at
+#     (fixed per run), so the only remaining variable is the normalizer's
+#     random hex suffix — a fake `openssl` ahead of the real one on PATH pins
+#     that suffix to a constant, making the collision deterministic (same
+#     technique as the existing dup-id case in run-capture-tests.sh, just
+#     driven from the sweep side instead of an explicit --id).
 # =============================================================================
 
 e2e5_data="$E2E_ROOT/run5/data"
@@ -778,6 +795,48 @@ echo "aaaa"
 EOF
 chmod +x "$fake_openssl_dir/openssl"
 
+e2e5_chats_same_network="$E2E_ROOT/run5/chats-page-same-network.json"
+cat > "$e2e5_chats_same_network" <<'EOF'
+{
+  "items": [
+    {
+      "id": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "network": "matrix",
+      "title": "Bea Sample",
+      "type": "single",
+      "participants": {
+        "items": [
+          { "name": "Ada Test", "ids": ["@ada-test:example.org"] },
+          { "name": "Bea Sample", "ids": ["@bea-sample:example.org"] }
+        ]
+      },
+      "lastActivity": "2026-08-29T14:32:10.500Z",
+      "unreadCount": 1
+    },
+    {
+      "id": "local-whatsapp_ba_test1_group-sample",
+      "accountID": "local-whatsapp_ba_test1",
+      "network": "matrix",
+      "title": "Sample Project Group",
+      "type": "group",
+      "participants": {
+        "items": [
+          { "name": "Ada Test", "ids": ["test-user-1"] },
+          { "name": "Cy Sample", "ids": ["whatsapp-cy-sample"] },
+          { "name": "Dee Sample", "ids": ["whatsapp-dee-sample"] }
+        ]
+      },
+      "lastActivity": "2026-08-29T13:05:44.120Z",
+      "unreadCount": 0
+    }
+  ],
+  "hasMore": false,
+  "oldestCursor": "cursor-chats-oldest-sample",
+  "newestCursor": "cursor-chats-newest-sample"
+}
+EOF
+
 e2e5_log="$E2E_ROOT/run5/stub-argv.log"
 
 (
@@ -785,7 +844,7 @@ e2e5_log="$E2E_ROOT/run5/stub-argv.log"
   export STUB_LOG="$e2e5_log"
   export STUB_INFO="$info_body"
   export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
-  export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+  export STUB_CHATS="$e2e5_chats_same_network"
   export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
   export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
   BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$e2e5_data"
