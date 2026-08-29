@@ -1,0 +1,8 @@
+{
+  "id": "fixture-msg-inbound",
+  "threadId": "fixture-thread-inbound",
+  "date": "2026-07-02T10:00:00Z",
+  "sender": "bob.fixture@example.com",
+  "toRecipients": ["me@example.com", "carol.fixture@example.com"],
+  "plaintextBody": "Inbound group-email fixture (3 participant hints) for run-seed-tests.sh's group-linked assertion — never self-authored."
+}

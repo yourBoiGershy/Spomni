@@ -1,0 +1,3 @@
+# onboarding-backfill.tsv fixture — zero self rows, used to exercise
+# derive-participation.sh's fail-closed posture.
+window_months	6

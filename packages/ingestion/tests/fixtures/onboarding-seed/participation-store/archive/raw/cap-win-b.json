@@ -1,0 +1,8 @@
+{
+  "id": "fixture-msg-win-b",
+  "threadId": "fixture-thread-win-b",
+  "date": "2026-01-01T10:00:00Z",
+  "sender": "me@example.com",
+  "toRecipients": ["faye.fixture@example.com"],
+  "plaintextBody": "Out-of-window fixture email, self-authored — MUST be ignored by derive-participation.sh when the run's window-start is after this date; proves out-of-window interactions contribute nothing."
+}
