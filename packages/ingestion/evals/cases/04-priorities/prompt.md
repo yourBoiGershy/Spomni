@@ -2,11 +2,11 @@
 tier: skill
 store: packages/ingestion/tests/goldens/preferences/04-priorities/before
 expected: packages/ingestion/tests/goldens/preferences/04-priorities/expected
-runnable-when: "03"
 max-turns: 8
 model: haiku
 ---
-Act as ingestion's stated-preference filing lane, per
+Act as ingestion's stated-preference filing lane (the "Stated-preference
+lane" section of `packages/ingestion/skills/debrief/SKILL.md`), per
 `packages/ingestion/specs/stated-preference-filing.md` section (c)
 (priorities). The current people-store is the directory `./store`
 (contains `profile.md`) — treat it as the live store for this pass.

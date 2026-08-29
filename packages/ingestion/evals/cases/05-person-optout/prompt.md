@@ -2,11 +2,11 @@
 tier: skill
 store: packages/ingestion/tests/goldens/preferences/05-person-optout/before
 expected: packages/ingestion/tests/goldens/preferences/05-person-optout/expected
-runnable-when: "03"
 max-turns: 8
 model: haiku
 ---
-Act as ingestion's stated-preference filing lane, per
+Act as ingestion's stated-preference filing lane (the "Stated-preference
+lane" section of `packages/ingestion/skills/debrief/SKILL.md`), per
 `packages/ingestion/specs/stated-preference-filing.md` section (b) (signal
 opt-outs). The current people-store is the directory `./store` (contains
 `profile.md` and `people/`) — treat it as the live store for this pass.

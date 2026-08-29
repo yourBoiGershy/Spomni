@@ -5,3 +5,13 @@ packages/ingestion/evals/cases/03-cadence-wish
 packages/ingestion/evals/cases/04-priorities
 packages/ingestion/evals/cases/05-person-optout
 packages/ingestion/evals/cases/06-ambiguous-question
+packages/ingestion/evals/cases/07-debrief-simple
+packages/ingestion/evals/cases/08-debrief-rambly
+packages/ingestion/evals/cases/09-debrief-multi-person-chat
+packages/ingestion/evals/cases/10-debrief-reminder-ask
+packages/ingestion/evals/cases/11-debrief-two-word
+packages/ingestion/evals/cases/12-debrief-new-person
+packages/ingestion/evals/cases/13-debrief-ambiguous-name
+packages/ingestion/evals/cases/14-debrief-commitment-user
+packages/ingestion/evals/cases/15-debrief-commitment-other
+packages/ingestion/evals/cases/16-debrief-contradiction

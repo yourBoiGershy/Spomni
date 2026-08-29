@@ -105,4 +105,9 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   `bash packages/connectors/tests/run-beeper-capture-tests.sh`.
   Store sanity: `bash packages/core/scripts/validate-store.sh <store-dir>`
   (checks people/interactions/wakeups only — not inbox/).
+  Capture-sync audit: `bash packages/connectors/scripts/check-sync.sh <store-dir>`
+  (inbox/ conformance to capture-event 1.2.0 — per-lane rules, wrapper leaks, dups).
+  Filing goldens: `bash packages/ingestion/scripts/check-golden.sh --all
+  packages/ingestion/tests/goldens/debrief <worked-root>`; eval suites:
+  `bash packages/core/scripts/eval-suite.sh packages/<pkg>/evals/suite.txt`.
   <!-- PARAMETERIZE: extend as more packages grow suites -->
