@@ -20,6 +20,22 @@ Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS
 attention-merge. Plan 04 spans a thin connector plus ingestion-side matching — see
 dumb-edges-smart-middle in PROJECT-CONTEXT.
 
+## Streams (parallel-session worktrees)
+
+Long-lived worktrees live in `../relationship-agent-worktrees/`, one per stream; each
+stream runs its chunks serially (branch per chunk off `main`, merge back, `git merge main`
+to resync — never rebase). Streams may run concurrently with each other.
+
+| Worktree | Branch | Territory | Chunks |
+|---|---|---|---|
+| `ingestion/` | `stream-ingestion` | connectors-in + ingestion (data imports: gmail, calendar, user inputs; messages deferred) | 02 → 04 → 03 |
+| `mcp/` | `stream-mcp` | query + connectors-out (answer surface, briefs, model access) | 07 (06-dependent parts last) |
+| `infrastructure/` | `stream-infrastructure` | phone access / remote runtime / sync — **no plan yet; needs planning first** | TBD |
+
+Chunks 05/06 (attention) are unassigned — schedule after 02/04 land, either in a fourth
+worktree or in `ingestion/` once it goes quiet. The single-writer rule still applies
+across streams: a stream never edits another stream's packages.
+
 ## Waves
 
 - **Wave 1**: 01 alone — it freezes the six contracts and the fixture pack everything
