@@ -204,6 +204,18 @@ Wave B (after A):
     update.
 13. [worker] Node tests for `upcoming_meetings`: window filtering, people
     join against the fixture store, empty-window result, citation paths.
+13b. [worker] *(added at dispatch — gap found in Wave A review)*
+    `packages/core/scripts/validate-store.sh` 1.2.0 support: accept
+    `schema_version: 1.2.0` for wakeups; validate `kind` enum,
+    `proposed-event` required-iff `kind: event-proposal` (with
+    title/start/end/≥1 `[[slug]]` attendee), and the invariant
+    (`created-event-id` ⇒ `confirmed-on` ∧ `kind: event-proposal`).
+13c. [worker] *(added at dispatch)* Core test-suite extension —
+    `packages/core/tests/test-wakeup-add.sh` (the unit-7 test content) plus
+    1.2.0 validator fixtures (valid proposal; invalid
+    created-without-confirmed; invalid proposal-without-proposed-event) and
+    their `run-store-tests.sh` wiring; sole owner of `run-store-tests.sh`
+    edits in this wave.
 
 Wave C (after B):
 14. [worker] Eval case `scheduling-intent-proposal` (T3, wraps

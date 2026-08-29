@@ -19,10 +19,17 @@
 #      ([stated-by-user]/[observed-from-behavior]), Style notes bullets must
 #      be [observed-from-behavior], Signal opt-outs bullets must parse as
 #      `<signal-type> — all` or `<signal-type> — [[slug]]`.
-#   7. wakeups/ accepts schema_version 1.0.0 and 1.1.0; when 1.1.0 fields
-#      (fired-on, dismiss-reason, acted-on, snooze-count, signal-type) are
-#      present they are validated, and a 1.1.0 `status: dismissed` entry must
-#      carry a non-null dismiss-reason.
+#   7. wakeups/ accepts schema_version 1.0.0, 1.1.0, and 1.2.0. When 1.1.0
+#      fields (fired-on, dismiss-reason, acted-on, snooze-count, signal-type)
+#      are present they are validated, and a 1.1.0 `status: dismissed` entry
+#      must carry a non-null dismiss-reason. When 1.2.0 fields (kind,
+#      proposed-event, confirmed-on, created-event-id) are present they are
+#      validated: `kind` must be `nudge` or `event-proposal`; `kind:
+#      event-proposal` requires a `proposed-event` mapping with non-empty
+#      title/start/end and >=1 `[[slug]]` attendee, and `proposed-event`
+#      present without `kind: event-proposal` is an error; a non-null
+#      `created-event-id` requires both a non-null `confirmed-on` and
+#      `kind: event-proposal`.
 #
 # Output: one finding per line, "path/to/file.md:LINE: message", to stdout.
 # Exit 0 and "store clean: N files checked" when clean; exit 1 otherwise.
@@ -153,6 +160,51 @@ extract_field_block() {
             }
         }
     ' "$file"
+}
+
+# Lines belonging to a mapping-valued key's block (indented "subkey: value"
+# lines), including the key line itself. E.g. for `proposed-event:` followed
+# by indented `title:`/`start:`/... lines.
+extract_mapping_block() {
+    local file="$1" s="$2" e="$3" key="$4"
+    awk -v s="$s" -v e="$e" -v k="^${key}:" '
+        BEGIN{inblock=0}
+        NR>=s && NR<=e {
+            if ($0 ~ k) { print; inblock=1; next }
+            if (inblock) {
+                if ($0 ~ /^[[:space:]]+[A-Za-z0-9_-]+:/) { print; next }
+                else { inblock=0 }
+            }
+        }
+    ' "$file"
+}
+
+# Prints the line number of an indented "subkey:" line inside a mapping
+# key's block, or nothing.
+find_mapping_field_line() {
+    local file="$1" s="$2" e="$3" mapkey="$4" subkey="$5"
+    awk -v s="$s" -v e="$e" -v mk="^${mapkey}:" -v sk="^[[:space:]]+${subkey}:" '
+        BEGIN{inblock=0}
+        NR>=s && NR<=e {
+            if ($0 ~ mk) { inblock=1; next }
+            if (inblock) {
+                if ($0 ~ /^[[:space:]]+[A-Za-z0-9_-]+:/) {
+                    if ($0 ~ sk) { print NR; exit }
+                    next
+                } else { inblock=0 }
+            }
+        }
+    ' "$file"
+}
+
+# Scalar value of an indented "  key: value" mapping-block line, quotes
+# stripped.
+mapping_scalar_value() {
+    local file="$1" line="$2" key="$3"
+    sed -n "${line}p" "$file" \
+        | sed -E "s/^[[:space:]]*${key}:[[:space:]]*//" \
+        | sed -E 's/[[:space:]]+$//' \
+        | sed -E 's/^"(.*)"$/\1/'
 }
 
 # All [[slug]] links inside a field's value block.
@@ -405,7 +457,7 @@ if [ -d "$store_dir/wakeups" ]; then
         sv_val=""
         if [ -n "$sv_line" ]; then
             sv_val=$(scalar_value "$f" "$sv_line" "schema_version")
-            check_enum "$f" "$sv_line" "schema_version" "$sv_val" "1\.0\.0|1\.1\.0"
+            check_enum "$f" "$sv_line" "schema_version" "$sv_val" "1\.0\.0|1\.1\.0|1\.2\.0"
         fi
         require_field "$f" "$fm_start" "$fm_body_end" "id" > /dev/null
         require_field "$f" "$fm_start" "$fm_body_end" "due" > /dev/null
@@ -496,6 +548,106 @@ if [ -d "$store_dir/wakeups" ]; then
         if [ "$sv_val" = "1.1.0" ] && [ "$status_val" = "dismissed" ]; then
             if [ -z "$dismiss_reason_val" ] || [ "$dismiss_reason_val" = "null" ]; then
                 report "$f" "$status_line" "status: dismissed at schema_version 1.1.0 requires a non-null dismiss-reason"
+            fi
+        fi
+
+        # --- schema_version 1.2.0 fields (validated only when present) ---
+        kind_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "kind")
+        kind_val=""
+        if [ -n "$kind_line" ]; then
+            kind_val=$(scalar_value "$f" "$kind_line" "kind")
+            if [ -n "$kind_val" ] && [ "$kind_val" != "null" ]; then
+                check_enum "$f" "$kind_line" "kind" "$kind_val" "nudge|event-proposal"
+            fi
+        fi
+
+        proposed_event_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "proposed-event")
+        pe_present=0
+        if [ -n "$proposed_event_line" ]; then
+            pe_val=$(scalar_value "$f" "$proposed_event_line" "proposed-event")
+            if [ -n "$pe_val" ] && [ "$pe_val" != "null" ]; then
+                pe_present=1
+            else
+                pe_block=$(extract_mapping_block "$f" "$fm_start" "$fm_body_end" "proposed-event")
+                pe_block_body=$(printf '%s\n' "$pe_block" | tail -n +2)
+                if [ -n "$(printf '%s' "$pe_block_body" | tr -d '[:space:]')" ]; then
+                    pe_present=1
+                fi
+            fi
+        fi
+
+        if [ "$pe_present" -eq 1 ]; then
+            if [ "$kind_val" != "event-proposal" ]; then
+                report "$f" "$proposed_event_line" "proposed-event present without kind: event-proposal"
+            fi
+
+            title_line=$(find_mapping_field_line "$f" "$fm_start" "$fm_body_end" "proposed-event" "title")
+            if [ -z "$title_line" ]; then
+                report "$f" "$proposed_event_line" "proposed-event missing required field: title"
+            else
+                title_val=$(mapping_scalar_value "$f" "$title_line" "title")
+                if [ -z "$title_val" ] || [ "$title_val" = "null" ]; then
+                    report "$f" "$title_line" "proposed-event.title must not be empty"
+                fi
+            fi
+
+            start_line=$(find_mapping_field_line "$f" "$fm_start" "$fm_body_end" "proposed-event" "start")
+            if [ -z "$start_line" ]; then
+                report "$f" "$proposed_event_line" "proposed-event missing required field: start"
+            else
+                start_val=$(mapping_scalar_value "$f" "$start_line" "start")
+                if [ -z "$start_val" ] || [ "$start_val" = "null" ]; then
+                    report "$f" "$start_line" "proposed-event.start must not be empty"
+                fi
+            fi
+
+            end_line=$(find_mapping_field_line "$f" "$fm_start" "$fm_body_end" "proposed-event" "end")
+            if [ -z "$end_line" ]; then
+                report "$f" "$proposed_event_line" "proposed-event missing required field: end"
+            else
+                end_val=$(mapping_scalar_value "$f" "$end_line" "end")
+                if [ -z "$end_val" ] || [ "$end_val" = "null" ]; then
+                    report "$f" "$end_line" "proposed-event.end must not be empty"
+                fi
+            fi
+
+            attendees_line=$(find_mapping_field_line "$f" "$fm_start" "$fm_body_end" "proposed-event" "attendees")
+            if [ -z "$attendees_line" ]; then
+                report "$f" "$proposed_event_line" "proposed-event missing required field: attendees"
+            else
+                attendees_val=$(mapping_scalar_value "$f" "$attendees_line" "attendees")
+                attendee_links=$(printf '%s' "$attendees_val" | grep -oE '\[\[[A-Za-z0-9_-]+\]\]')
+                if [ -z "$attendee_links" ]; then
+                    report "$f" "$attendees_line" "proposed-event.attendees requires at least one [[slug]] attendee"
+                fi
+            fi
+        elif [ "$kind_val" = "event-proposal" ]; then
+            report "$f" "$fm_start" "kind: event-proposal requires a proposed-event mapping"
+        fi
+
+        confirmed_on_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "confirmed-on")
+        confirmed_on_val=""
+        if [ -n "$confirmed_on_line" ]; then
+            confirmed_on_val=$(scalar_value "$f" "$confirmed_on_line" "confirmed-on")
+            if [ -n "$confirmed_on_val" ] && [ "$confirmed_on_val" != "null" ]; then
+                if ! printf '%s' "$confirmed_on_val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+                    report "$f" "$confirmed_on_line" "invalid confirmed-on: '${confirmed_on_val}' (expected ISO 8601 date YYYY-MM-DD)"
+                fi
+            fi
+        fi
+
+        created_event_id_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "created-event-id")
+        created_event_id_val=""
+        if [ -n "$created_event_id_line" ]; then
+            created_event_id_val=$(scalar_value "$f" "$created_event_id_line" "created-event-id")
+        fi
+
+        if [ -n "$created_event_id_val" ] && [ "$created_event_id_val" != "null" ]; then
+            if [ -z "$confirmed_on_val" ] || [ "$confirmed_on_val" = "null" ]; then
+                report "$f" "$created_event_id_line" "created-event-id set without a non-null confirmed-on"
+            fi
+            if [ "$kind_val" != "event-proposal" ]; then
+                report "$f" "$created_event_id_line" "created-event-id set on an entry that is not kind: event-proposal"
             fi
         fi
 

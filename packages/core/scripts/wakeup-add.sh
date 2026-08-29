@@ -5,11 +5,20 @@
 # Usage:
 #   wakeup-add.sh <store-dir> --due YYYY-MM-DD --person <slug> [--person <slug> ...] \
 #       --why "<one-liner>" --origin user-ask|signal|standing \
-#       [--context "<text>"] [--draft "<text>"] [--source-signal <id>]
+#       [--context "<text>"] [--draft "<text>"] [--source-signal <id>] \
+#       [--kind event-proposal --event-title "<s>" --event-start <iso-datetime> \
+#        --event-end <iso-datetime> --event-attendee <slug> [--event-attendee <slug> ...] \
+#        [--event-location "<s>"]]
 #
 # Creates exactly one new file under <store-dir>/wakeups/, status: pending.
 # Never modifies existing files. Creation only — no update/delete/fire modes
 # (lifecycle transitions belong solely to packages/attention).
+#
+# --kind event-proposal (wakeup contract 1.2.0) requires --event-title,
+# --event-start, --event-end, and at least one --event-attendee. The event
+# flags are rejected when --kind is absent or --kind nudge. confirmed-on and
+# created-event-id are never settable at creation — only by attention's
+# lifecycle writes.
 
 set -eu
 
@@ -19,10 +28,17 @@ usage() {
   cat >&2 <<EOF
 Usage: ${SCRIPT_NAME} <store-dir> --due YYYY-MM-DD --person <slug> [--person <slug> ...] \\
     --why "<one-liner>" --origin user-ask|signal|standing \\
-    [--context "<text>"] [--draft "<text>"] [--source-signal <id>]
+    [--context "<text>"] [--draft "<text>"] [--source-signal <id>] \\
+    [--kind event-proposal --event-title "<s>" --event-start <iso-datetime> \\
+     --event-end <iso-datetime> --event-attendee <slug> [--event-attendee <slug> ...] \\
+     [--event-location "<s>"]]
 
 Creates one new wakeups/<id>.md entry conforming to
 packages/core/contracts/wakeup.md. Prints the created path on success.
+
+With --kind event-proposal, the entry carries a proposed-event mapping
+(wakeup contract 1.2.0): title/start/end/attendees are required, location is
+optional. The event flags are rejected unless --kind event-proposal is set.
 EOF
   exit 1
 }
@@ -36,6 +52,13 @@ DRAFT=""
 SOURCE_SIGNAL=""
 PEOPLE=""
 PEOPLE_COUNT=0
+KIND=""
+EVENT_TITLE=""
+EVENT_START=""
+EVENT_END=""
+EVENT_LOCATION=""
+EVENT_ATTENDEES=""
+EVENT_ATTENDEES_COUNT=0
 
 if [ "$#" -lt 1 ]; then
   usage
@@ -89,6 +112,42 @@ $2"
     --source-signal)
       [ "$#" -ge 2 ] || usage
       SOURCE_SIGNAL="$2"
+      shift 2
+      ;;
+    --kind)
+      [ "$#" -ge 2 ] || usage
+      KIND="$2"
+      shift 2
+      ;;
+    --event-title)
+      [ "$#" -ge 2 ] || usage
+      EVENT_TITLE="$2"
+      shift 2
+      ;;
+    --event-start)
+      [ "$#" -ge 2 ] || usage
+      EVENT_START="$2"
+      shift 2
+      ;;
+    --event-end)
+      [ "$#" -ge 2 ] || usage
+      EVENT_END="$2"
+      shift 2
+      ;;
+    --event-attendee)
+      [ "$#" -ge 2 ] || usage
+      if [ -z "${EVENT_ATTENDEES}" ]; then
+        EVENT_ATTENDEES="$2"
+      else
+        EVENT_ATTENDEES="${EVENT_ATTENDEES}
+$2"
+      fi
+      EVENT_ATTENDEES_COUNT=$((EVENT_ATTENDEES_COUNT + 1))
+      shift 2
+      ;;
+    --event-location)
+      [ "$#" -ge 2 ] || usage
+      EVENT_LOCATION="$2"
       shift 2
       ;;
     *)
@@ -150,6 +209,43 @@ if [ "${ORIGIN}" = "signal" ] && [ -z "${SOURCE_SIGNAL}" ]; then
   usage
 fi
 
+# --- kind / event-proposal validation ---
+
+if [ -n "${KIND}" ]; then
+  case "${KIND}" in
+    nudge|event-proposal) ;;
+    *)
+      echo "Invalid --kind: '${KIND}' (expected one of: nudge, event-proposal)" >&2
+      usage
+      ;;
+  esac
+fi
+
+if [ "${KIND}" = "event-proposal" ]; then
+  if [ -z "${EVENT_TITLE}" ]; then
+    echo "Missing required --event-title (required when --kind event-proposal)" >&2
+    usage
+  fi
+  if [ -z "${EVENT_START}" ]; then
+    echo "Missing required --event-start (required when --kind event-proposal)" >&2
+    usage
+  fi
+  if [ -z "${EVENT_END}" ]; then
+    echo "Missing required --event-end (required when --kind event-proposal)" >&2
+    usage
+  fi
+  if [ "${EVENT_ATTENDEES_COUNT}" -eq 0 ]; then
+    echo "Missing required --event-attendee (at least one, required when --kind event-proposal)" >&2
+    usage
+  fi
+else
+  if [ -n "${EVENT_TITLE}" ] || [ -n "${EVENT_START}" ] || [ -n "${EVENT_END}" ] \
+    || [ -n "${EVENT_LOCATION}" ] || [ "${EVENT_ATTENDEES_COUNT}" -gt 0 ]; then
+    echo "Event flags (--event-title/--event-start/--event-end/--event-attendee/--event-location) require --kind event-proposal" >&2
+    usage
+  fi
+fi
+
 if [ ! -d "${STORE_DIR}" ]; then
   echo "Store directory does not exist: '${STORE_DIR}'" >&2
   usage
@@ -174,6 +270,23 @@ for slug in ${PEOPLE}; do
   fi
 done
 IFS="${OLD_IFS}"
+
+# --- Build event-attendees list (YAML array of [[slug]] links), if any ---
+
+EVENT_ATTENDEES_YAML=""
+if [ "${EVENT_ATTENDEES_COUNT}" -gt 0 ]; then
+  OLD_IFS="${IFS}"
+  IFS='
+'
+  for slug in ${EVENT_ATTENDEES}; do
+    if [ -z "${EVENT_ATTENDEES_YAML}" ]; then
+      EVENT_ATTENDEES_YAML="\"[[${slug}]]\""
+    else
+      EVENT_ATTENDEES_YAML="${EVENT_ATTENDEES_YAML}, \"[[${slug}]]\""
+    fi
+  done
+  IFS="${OLD_IFS}"
+fi
 
 # --- Determine unique id / filename per contract's recommended form:
 #     <due-date>-<primary-person-slug>[--<n>]
@@ -201,9 +314,14 @@ escape_yaml() {
 
 WHY_ESCAPED="$(escape_yaml "${WHY}")"
 
+SCHEMA_VERSION="1.0.0"
+if [ "${KIND}" = "event-proposal" ]; then
+  SCHEMA_VERSION="1.2.0"
+fi
+
 {
   echo "---"
-  echo "schema_version: 1.0.0"
+  echo "schema_version: ${SCHEMA_VERSION}"
   echo "id: ${ID}"
   echo "due: ${DUE}"
   echo "people: [${PEOPLE_YAML}]"
@@ -211,6 +329,21 @@ WHY_ESCAPED="$(escape_yaml "${WHY}")"
   echo "status: pending"
   echo "origin: ${ORIGIN}"
   echo "source-signal: ${SOURCE_SIGNAL_VALUE}"
+  if [ "${KIND}" = "event-proposal" ]; then
+    echo "kind: event-proposal"
+    echo "proposed-event:"
+    echo "  title: ${EVENT_TITLE}"
+    echo "  start: ${EVENT_START}"
+    echo "  end: ${EVENT_END}"
+    echo "  attendees: [${EVENT_ATTENDEES_YAML}]"
+    if [ -n "${EVENT_LOCATION}" ]; then
+      echo "  location: ${EVENT_LOCATION}"
+    else
+      echo "  location:"
+    fi
+    echo "confirmed-on:"
+    echo "created-event-id:"
+  fi
   echo "---"
   echo ""
   echo "## Context"

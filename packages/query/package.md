@@ -16,11 +16,11 @@ wrapping them is mechanical.
 - Skills: `skills/query/` (index-first retrieval, citations, honest "no match"),
   `skills/brief/` (one-page pre-meeting brief)
 - The nudge-card render consumed by output adapters
-- **In progress: scaffold only** — `server/` (`packages/query/server/`): an MCP tool
-  surface, six read-only tools over stdio (streamable HTTP behind `--http`, stubbed):
-  `search_people`, `get_person`, `list_interactions`, `get_interaction`,
-  `get_contact_stats`, `suggest_reachouts`. Entry point, transport seam, and empty tool
-  registry are in place; store-reader and tool handlers land in later waves.
+- `server/` (`packages/query/server/`): an MCP tool surface, seven read-only tools over
+  stdio (streamable HTTP behind `--http`, stubbed): `search_people`, `get_person`,
+  `list_interactions`, `get_interaction`, `get_contact_stats`, `suggest_reachouts`,
+  `upcoming_meetings`. Entry point, transport seam, store-reader, and all seven tool
+  handlers are in place and tested (`tests/test-tools.mjs` and friends).
 
 - Eval suite: `evals/` — `eval-case@1` cases (`packages/core/contracts/
   eval-case.md`) under `evals/cases/`, manifest at `evals/suite.txt`. T2
