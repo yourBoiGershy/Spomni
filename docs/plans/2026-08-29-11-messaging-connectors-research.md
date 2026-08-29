@@ -87,6 +87,38 @@ a platform constraint, not a Composio gap.
   granted once.
 - Verdict: **build local, skip Composio entirely for this lane.**
 
+## Personal-account bridges (survey, 2026-08-29, web-verified)
+
+The official APIs above are business-side by construction. A separate ecosystem
+bridges *personal* accounts via unofficial protocols (WhatsApp Web multi-device,
+Matrix puppeting, user tokens). All of it sits outside `tos-clean-signals-only`
+("ban risk on the user's own accounts") — adopting any of it needs a superseding
+DECISIONS entry.
+
+1. **Beeper Desktop API** — the standout. The Beeper client (Matrix-bridge based)
+   ships an official local REST/WebSocket/**MCP** server on `localhost:23373`:
+   read/search/send/stream across WhatsApp, Instagram, Messenger, Discord (DMs
+   included), Signal, Telegram, iMessage, LinkedIn, X, Slack. Reads are fully
+   local and unmetered; bearer-token auth; JS/Python SDKs and a CLI. One
+   integration ≈ every chat network the plan cares about, personal accounts,
+   no business-account contortions. Caveats: ensure on-device/local bridges per
+   network (older cloud bridges transit Beeper's servers); per-network ban risk
+   varies (Meta networks highest); it's an unofficial client on every network.
+2. **Self-hosted Matrix + mautrix bridges** (`mautrix-whatsapp`, `mautrix-meta`
+   for Messenger+Instagram, `mautrix-discord`, `mautrix-imessage`) — the purist
+   version of the same machinery: no third party at all, but real ops burden
+   (homeserver + one bridge per network). Same ToS-gray status.
+3. **Commercial unofficial-API clouds** — Unipile (WhatsApp/IG/Messenger/
+   Telegram/LinkedIn personal accounts), Whapi/Green-API/Periskope, WAHA
+   (self-hosted, WhatsApp-only). Unipile-class is what `tos-clean-signals-only`
+   explicitly rejects, and other people's messages would transit their cloud —
+   worst doctrine fit; WAHA is at least self-hosted but single-network.
+
+Ban-risk shape: WhatsApp-Web-protocol bridges are widely used and generally
+tolerated; Instagram/Messenger puppeting is the most enforcement-prone; Discord
+user-token bridging is explicit self-botting. Any adoption should be per-network
+opt-in so one risky lane doesn't endanger accounts the user values more.
+
 ## Recommended priority (pending user call)
 
 1. **iMessage/SMS via local `chat.db`** — highest relationship-signal density of
