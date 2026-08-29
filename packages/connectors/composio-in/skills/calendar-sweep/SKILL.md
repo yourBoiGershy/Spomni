@@ -204,6 +204,113 @@ false` — that would hand back one record per series (the master) plus
 possibly detached exceptions, which is a different, coarser unit than what
 this skill's dedup and capture logic is built around.
 
+## Backfill mode (one-time, cold-start only)
+
+Not part of the recurring incremental sweep (steps 1-6) — invoked explicitly, either
+by the user asking for it or by onboarding (per plan 11 unit 13, which feeds a
+backfill's captured events into `stats.json` frequency priors so onboarding can
+suggest contact tiers for the user to confirm — never auto-set). Still script-driven
+via the Composio CLI, same as the rest of this skill (per the composio-dual-transport
+decision) — no live-model tool loop.
+
+**Purpose:** pull ~12 months of past Calendar events in one pass so cold-start tier
+suggestions have enough signal, without ever touching the incremental ledger that
+step 4 depends on for its next scheduled run.
+
+**State this mode owns — a separate namespace, never the incremental files above:**
+
+- `data/connectors/googlecalendar/backfill-checkpoint` — a single ISO 8601 UTC
+  timestamp marking backfill progress (the oldest event `start` time successfully
+  processed so far, since backfill walks backward from "now" toward the window
+  start). Absent before the first backfill run; present and updated as an
+  interrupted backfill resumes.
+- `data/connectors/googlecalendar/backfill-processed.log` — dedup ledger for events
+  captured by backfill, same `<event-id>:<updated-timestamp>` line shape as step 4's
+  ledger.
+
+**Backfill never writes `data/connectors/googlecalendar/processed.log`** — that file
+is the incremental sweep's exclusively (single-writer, and backfill is not that
+writer). Backfill only *reads* `processed.log` (read-only) to skip events the
+incremental sweep already captured; it never appends to it, never rewrites it, never
+deletes from it.
+
+### Date-range window
+
+Default: 12 months in the past, ending at "now" (or, if narrower is wanted for a
+resumed run, ending at `backfill-checkpoint`). Unlike the incremental sweep's 30-day
+past window, backfill only looks backward — it does not also pull upcoming events
+(the incremental sweep already covers the future window and remains the sole source
+for those).
+
+```sh
+NOW="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"   # or GOOGLECALENDAR_GET_CURRENT_DATE_TIME
+BACKFILL_CHECKPOINT_FILE="data/connectors/googlecalendar/backfill-checkpoint"
+
+WINDOW_START="$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$NOW" -v-12m '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+  || date -u -d "$NOW -12 months" '+%Y-%m-%dT%H:%M:%SZ')"
+
+if [ -f "$BACKFILL_CHECKPOINT_FILE" ]; then
+  WINDOW_END="$(cat "$BACKFILL_CHECKPOINT_FILE")"   # resume: only what's older than last progress
+else
+  WINDOW_END="$NOW"
+fi
+```
+
+For each calendar `id` (enumerated exactly as step 1 — all calendars, work +
+personal):
+
+```sh
+composio execute GOOGLECALENDAR_EVENTS_LIST -d "{
+  \"calendarId\": \"<calendar-id>\",
+  \"timeMin\": \"$WINDOW_START\",
+  \"timeMax\": \"$WINDOW_END\",
+  \"singleEvents\": true,
+  \"orderBy\": \"startTime\",
+  \"maxResults\": 250
+}"
+```
+
+- Same chunked-fetching discipline as step 2: page via `pageToken`/`nextPageToken`
+  until absent, per-calendar isolation on failure (log and skip to the next
+  calendar), `singleEvents: true` always (per step 6's reasoning — never fetch series
+  masters).
+- Fetch newest-to-oldest within the window and advance `backfill-checkpoint` to the
+  oldest event `start` time successfully processed after each page/calendar — this
+  makes an interrupted backfill resumable: a re-run only queries older than
+  `backfill-checkpoint` instead of re-walking the whole 12 months. Once
+  `WINDOW_START` is reached, the backfill is complete; leaving `backfill-checkpoint`
+  in place afterward is harmless.
+
+### Dedup
+
+For each event surviving the per-calendar fetch:
+
+1. Check `data/connectors/googlecalendar/processed.log` (the incremental ledger)
+   read-only, same `<event-id>:<updated-timestamp>` match rule as step 4 — if
+   present, skip (the incremental sweep already captured it; backfill must not
+   duplicate that capture event).
+2. Check `data/connectors/googlecalendar/backfill-processed.log` — if present, skip
+   (this backfill run, or a prior interrupted one, already captured it).
+3. Otherwise, capture via the same normalizer call as step 5 (unchanged: `--type
+   other`, per-attendee `--hint`s excluding the user's own entry, raw event JSON
+   verbatim as the body), then append `<event-id>:<updated-timestamp>` to
+   `data/connectors/googlecalendar/backfill-processed.log` only.
+
+Capture events land in `inbox/` (and raw payloads in `archive/raw/` where the
+underlying capture pipeline already does that) through the exact same
+`normalize-capture.sh` path as the incremental sweep — backfill is not a different
+pipeline, only a different source-selection and checkpoint namespace in front of it.
+
+### What backfill must never do
+
+- Never append to, rewrite, or delete from
+  `data/connectors/googlecalendar/processed.log` (read-only access only, for dedup).
+- Never advance any state the incremental sweep reads besides
+  `backfill-checkpoint`/`backfill-processed.log` themselves — backfill finishing does
+  not imply the incremental sweep is "caught up" to any point, since backfill walks a
+  historical window independently of the incremental sweep's own 30-day-past/60-day-
+  future window.
+
 ## Failure posture
 
 - **Per-event isolation:** if `normalize-capture.sh` quarantines an event

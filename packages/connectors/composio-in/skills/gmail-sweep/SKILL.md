@@ -246,6 +246,113 @@ verified against the actual Composio-wrapped response, not assumed.)
 Failure posture is identical to step 5: a page that fails normalization is quarantined,
 the seed continues to the next page, nothing is deleted.
 
+## Backfill mode (one-time, cold-start only)
+
+Not part of the recurring incremental sweep (steps 1-5) — invoked explicitly, either
+by the user asking for it or by onboarding (per plan 11 unit 13, which feeds a
+backfill's captured interactions into `stats.json` frequency priors so onboarding can
+suggest contact tiers for the user to confirm — never auto-set). Still script-driven
+via the Composio CLI, same as the rest of this skill (per the composio-dual-transport
+decision) — no live-model tool loop.
+
+**Purpose:** pull ~12 months of Gmail history in one pass so cold-start tier
+suggestions have enough signal, without ever touching the incremental checkpoint that
+step 1 depends on for its next scheduled run.
+
+**State this mode owns — a separate namespace, never the incremental files above:**
+
+- `data/connectors/gmail/backfill-checkpoint` — a single ISO 8601 UTC timestamp
+  marking backfill progress (the oldest `messageTimestamp` successfully processed so
+  far, since backfill walks backward from "now" toward the window start). Absent
+  before the first backfill run; present and updated as an interrupted backfill
+  resumes.
+- `data/connectors/gmail/backfill-processed.log` — dedup ledger for messages captured
+  by backfill, one `messageId` per line, same append-after-success discipline as
+  step 3.
+
+**Backfill never writes `data/connectors/gmail/checkpoint` or
+`data/connectors/gmail/processed.log`** — those are the incremental sweep's files
+exclusively (single-writer, and backfill is not that writer). Backfill only *reads*
+`processed.log` (read-only) to skip messages the incremental sweep already captured;
+it never appends to it, never rewrites it, never deletes from it.
+
+### Date-range window
+
+Default: 12 months back from the current incremental checkpoint (or from "now" if no
+incremental checkpoint exists yet — i.e. backfill running before any incremental sweep
+has ever run).
+
+```sh
+CHECKPOINT_FILE="data/connectors/gmail/checkpoint"
+BACKFILL_CHECKPOINT_FILE="data/connectors/gmail/backfill-checkpoint"
+
+if [ -f "$CHECKPOINT_FILE" ]; then
+  WINDOW_END_EPOCH="$(cat "$CHECKPOINT_FILE")"
+else
+  WINDOW_END_EPOCH="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+fi
+
+WINDOW_START_DATE="$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$WINDOW_END_EPOCH" -v-12m '+%Y/%m/%d' 2>/dev/null \
+  || date -u -d "$WINDOW_END_EPOCH -12 months" '+%Y/%m/%d')"
+
+# Resume point: if backfill-checkpoint exists, it marks how far back we've
+# already walked — narrow the query to still-unfetched older mail.
+if [ -f "$BACKFILL_CHECKPOINT_FILE" ]; then
+  QUERY_UNTIL_DATE="$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$(cat "$BACKFILL_CHECKPOINT_FILE")" '+%Y/%m/%d' 2>/dev/null \
+    || date -u -d "$(cat "$BACKFILL_CHECKPOINT_FILE")" '+%Y/%m/%d')"
+else
+  QUERY_UNTIL_DATE="$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$WINDOW_END_EPOCH" '+%Y/%m/%d' 2>/dev/null \
+    || date -u -d "$WINDOW_END_EPOCH" '+%Y/%m/%d')"
+fi
+
+composio execute GMAIL_FETCH_EMAILS -d "{
+  \"query\": \"after:${WINDOW_START_DATE} before:${QUERY_UNTIL_DATE}\",
+  \"max_results\": 100,
+  \"verbose\": true,
+  \"include_payload\": true
+}"
+```
+
+- Same chunked-fetching discipline as step 1: page via `nextPageToken` until absent,
+  do not stop early on `resultSizeEstimate`.
+- Fetch newest-to-oldest within the 12-month window and advance
+  `backfill-checkpoint` to the oldest `messageTimestamp` successfully processed after
+  each page/batch — this makes an interrupted backfill resumable: a re-run picks up
+  where it left off (older than `backfill-checkpoint`) instead of re-walking the whole
+  12 months. Once the window start is reached, the backfill is complete; leaving
+  `backfill-checkpoint` in place afterward is harmless (a re-invocation of backfill
+  mode would just find nothing older left to do).
+
+### Dedup
+
+For each message in a backfill batch:
+
+1. Check `data/connectors/gmail/processed.log` (the incremental ledger) read-only —
+   if `messageId` already appears there, skip it (the incremental sweep already
+   captured it; backfill must not duplicate that capture event).
+2. Check `data/connectors/gmail/backfill-processed.log` — if `messageId` already
+   appears there, skip it (this backfill run, or a prior interrupted one, already
+   captured it).
+3. Otherwise, normalize and capture (steps 4-5's typing/normalize logic apply
+   unchanged — same `[ra]` voice-note detection, same `--hint`s, same
+   `normalize-capture.sh` call and quarantine-on-failure posture), then append
+   `messageId` to `data/connectors/gmail/backfill-processed.log` only.
+
+Capture events land in `inbox/` (and raw payloads in `archive/raw/` where the
+underlying capture pipeline already does that) through the exact same
+`normalize-capture.sh` path as the incremental sweep — backfill is not a different
+pipeline, only a different source-selection and checkpoint namespace in front of it.
+
+### What backfill must never do
+
+- Never read from or write to `data/connectors/gmail/checkpoint` (the incremental
+  checkpoint).
+- Never append to, rewrite, or delete from `data/connectors/gmail/processed.log`
+  (read-only access only, for dedup).
+- Never advance the incremental checkpoint, even at full completion — backfill
+  finishing does not mean "the incremental sweep is now caught up to some point,"
+  since backfill walks a historical window independently.
+
 ## Failure posture (applies to the whole skill)
 
 - A message (or contacts page) that fails `normalize-capture.sh` is quarantined by the

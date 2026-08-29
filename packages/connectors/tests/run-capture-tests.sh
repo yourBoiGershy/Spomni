@@ -335,6 +335,83 @@ else
   fail "malformed-junk.txt fixture missing: $junk_fixture"
 fi
 
+# --- backfill checkpoint isolation (composio-in gmail-sweep/calendar-sweep
+# backfill mode, per packages/connectors/composio-in/skills/gmail-sweep/SKILL.md
+# and calendar-sweep/SKILL.md's "Backfill mode" sections) ---
+#
+# No live Composio calls here — this simulates the write path the skills
+# describe: pre-seed an incremental checkpoint + processed.log, run a
+# simulated backfill batch, then assert the incremental checkpoint file is
+# byte-identical afterward and only backfill-namespace files were written.
+
+CONNECTOR_STATE_DIR="$(mktemp -d)"
+GMAIL_STATE="$CONNECTOR_STATE_DIR/gmail"
+mkdir -p "$GMAIL_STATE"
+
+INCREMENTAL_CHECKPOINT="$GMAIL_STATE/checkpoint"
+INCREMENTAL_LOG="$GMAIL_STATE/processed.log"
+BACKFILL_CHECKPOINT="$GMAIL_STATE/backfill-checkpoint"
+BACKFILL_LOG="$GMAIL_STATE/backfill-processed.log"
+
+printf '2026-08-01T00:00:00Z\n' > "$INCREMENTAL_CHECKPOINT"
+printf 'msg-already-incremental\n' > "$INCREMENTAL_LOG"
+
+incremental_checkpoint_before="$(mktemp)"
+incremental_log_before="$(mktemp)"
+cp "$INCREMENTAL_CHECKPOINT" "$incremental_checkpoint_before"
+cp "$INCREMENTAL_LOG" "$incremental_log_before"
+
+# simulate a backfill batch: two new message ids, one of which duplicates an
+# already-incrementally-captured id (must be skipped via read-only dedup
+# against processed.log, never written to it).
+simulate_backfill_batch() {
+  batch_ids="msg-already-incremental msg-backfill-only-1 msg-backfill-only-2"
+  for msg_id in $batch_ids; do
+    if grep -qxF "$msg_id" "$INCREMENTAL_LOG" 2>/dev/null; then
+      continue  # already captured incrementally — skip, never re-write processed.log
+    fi
+    if grep -qxF "$msg_id" "$BACKFILL_LOG" 2>/dev/null; then
+      continue  # already captured by a prior backfill pass
+    fi
+    printf '%s\n' "$msg_id" >> "$BACKFILL_LOG"
+  done
+  printf '2025-08-01T00:00:00Z\n' > "$BACKFILL_CHECKPOINT"
+}
+
+simulate_backfill_batch
+
+if diff -q "$incremental_checkpoint_before" "$INCREMENTAL_CHECKPOINT" >/dev/null 2>&1; then
+  pass "backfill isolation: incremental checkpoint file byte-identical after backfill batch"
+else
+  fail "backfill isolation: incremental checkpoint file was modified by backfill"
+fi
+
+if diff -q "$incremental_log_before" "$INCREMENTAL_LOG" >/dev/null 2>&1; then
+  pass "backfill isolation: incremental processed.log byte-identical after backfill batch (read-only dedup)"
+else
+  fail "backfill isolation: incremental processed.log was modified by backfill"
+fi
+
+if [ -f "$BACKFILL_CHECKPOINT" ] && [ -f "$BACKFILL_LOG" ]; then
+  pass "backfill isolation: backfill-namespace files were created"
+else
+  fail "backfill isolation: backfill-namespace files missing"
+fi
+
+if grep -qxF "msg-backfill-only-1" "$BACKFILL_LOG" 2>/dev/null && grep -qxF "msg-backfill-only-2" "$BACKFILL_LOG" 2>/dev/null; then
+  pass "backfill isolation: new message ids landed in backfill-processed.log"
+else
+  fail "backfill isolation: expected new message ids missing from backfill-processed.log"
+fi
+
+if grep -qxF "msg-already-incremental" "$BACKFILL_LOG" 2>/dev/null; then
+  fail "backfill isolation: an already-incrementally-captured id was duplicated into backfill-processed.log"
+else
+  pass "backfill isolation: an already-incrementally-captured id was correctly skipped, not duplicated"
+fi
+
+rm -rf "$CONNECTOR_STATE_DIR" "$incremental_checkpoint_before" "$incremental_log_before"
+
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 
