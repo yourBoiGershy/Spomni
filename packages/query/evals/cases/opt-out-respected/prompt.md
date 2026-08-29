@@ -8,4 +8,6 @@ model: haiku
 budget-usd: 0.03
 xfail: suggest_reachouts doesn't read profile.md's Signal opt-outs yet — plan-13 query-personalization integration
 ---
-Who should I prioritize reaching out to in the next couple of weeks, and why?
+Call suggest_reachouts with limit 10 and list EVERY suggestion it returns,
+one line per suggestion, formatted `<slug-or-wakeup-id> — <one-line
+reason>`. Do not omit any.
