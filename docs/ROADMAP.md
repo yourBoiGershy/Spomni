@@ -21,14 +21,16 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 11 | Messaging-connectors research (Composio coverage, personal-account bridges, Beeper decision) | docs only (feeds 13) | — | Done (2026-08-29, stream-connectors; first 11 to merge — keeps the number) |
 | 12 | Cadence & capacity-aware scheduling (routine map, week-plan contract, capacity-aware nudge selection) | attention + core (week-plan contract) + docs/runtime-cloud.md | 01; amends 05/06 (its amendment unit must land before either is dispatched); integrates 09 | Ready |
 | 13 | Beeper capture connector (personal chats: whatsapp/linkedin/matrix; renumbered from 12 on merge) | connectors/beeper-in (+ shared normalizer) | 01, 10 (normalizer) | Done (2026-08-29, stream-connectors; live-proven: 25 real events, 3 networks, launchd 15-min schedule installed) |
+| 14 | Composio import standard (capture-event 1.1/1.2: typing, occurred_at, <connector>/<lane> source, transport rule; renumbered from 11) | core (contract) + connectors (sweeps, normalizer, beeper alignment) | 01, 10, 13 | Done (2026-08-29, stream-composio-standardization; suites capture 82, beeper 70, store 20 green) |
+| 15 | Preference & personalization layer (renumbered from 11) | core (profile/ranking-weights/wakeup 1.1) + ingestion/attention specs+goldens | 01, 08 | Done (2026-08-29, stream-personalization) |
+| 16 | Eval harness: tool/agent/skill tiers (renumbered from 12) | core (eval-case contract, 4 runners) + query/ingestion/attention cases | 08, 15 | Done (2026-08-29, stream-personalization) |
 
-> **Plan-number collision (2026-08-29, partially resolved):** three parallel streams
-> each minted a "plan 11" on their own branches. `11-messaging-connectors-research`
-> (stream-connectors) merged first and **keeps 11**; its implementation plan
-> (beeper-capture, drafted as 12) renumbered to **13** on merge since cadence &
-> capacity holds 12. Still to renumber at their next session or merge:
-> `11-composio-import-standard` (stream-composio-standardization) and
-> `11-preference-personalization` (stream-personalization) → take **14** and **15**.
+> **Plan-number collision (2026-08-29, RESOLVED at merge):** three parallel streams
+> each minted a "plan 11". `11-messaging-connectors-research` merged first and keeps
+> 11; beeper-capture (drafted 12) took **13**; composio-import-standard took **14**;
+> preference-personalization took **15**; the eval harness (drafted 12 on
+> stream-personalization) took **16**. In-file references to the old numbers inside
+> merged package specs/commits are historical.
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
 attention-merge. Plan 04 spans a thin connector plus ingestion-side matching — see

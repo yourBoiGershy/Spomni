@@ -1,4 +1,4 @@
-# Plan 11: Composio import standard (one shape for every lane)
+# Plan 14: Composio import standard (renumbered from 11 on merge) (one shape for every lane)
 Status: Done (2026-08-29 — both suites green: store 20/20, capture 69/69; conformance checker 7/7 after one collateral repair. Caveat: Gmail To/Cc and calendar organizer/creator payload field names are flagged in the sweep skills as not yet live-verified — confirm on the next live sweep.)
 Package: core (contract bump) + connectors (sweeps, normalizer, fixtures, tests)
 Depends-on: 01, 10

@@ -1,4 +1,4 @@
-# Plan 12: Eval harness (tool / agent / skill tiers)
+# Plan 16: Eval harness (renumbered from 12 on merge) (tool / agent / skill tiers)
 
 Status: Ready
 Package: core (shared runner scripts, eval-case contract) + query (T1 tests,
