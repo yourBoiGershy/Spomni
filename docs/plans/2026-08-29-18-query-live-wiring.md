@@ -1,6 +1,18 @@
 # Plan 18: Query & chat live wiring
 
-Status: Ready
+Status: In progress — waves A + C done (2026-08-29); wave B partially blocked
+
+Execution state (2026-08-29): Wave A landed (root `.mcp.json`; smoke-live 6/6 PASS
+against `packages/core/fixtures/store`, store byte-untouched; chat-setup docs +
+package.md refresh). Wave C hygiene checker: CLEAN, fix unit skipped. Wave B: local
+wiring done (`data/store` → live capture location, npm install); store suite 20/20 and
+query suite 9+2xfail green; T2 evals: 3 pass + 2 xfail matches main, but
+`most-overdue`/`interpretability` are flaky here AND identical-code runs pass on main —
+recorded as pre-existing eval-case sensitivity, advisory, not diff-caused (eval runner
+uses --strict-mcp-config, so the new .mcp.json cannot reach eval sessions). REMAINING,
+blocked on chunk 20's backlog filing (46 inbox events, zero filed people in every live
+store): unit 5 live-store smoke pass, unit 7 live chat verification. Legacy user-scope
+registration removal deferred to merge (a concurrent session may be using it).
 Package: query (server config + smoke) + harness/docs (setup doc, root `.mcp.json`)
 Depends-on: 08 (hard — server built, six tools green); consumes plan 09's data-repo /
 `data/store` symlink convention (does NOT build sync — that is 09/19 territory)
