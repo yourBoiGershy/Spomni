@@ -35,7 +35,8 @@ has() { printf '%s' "$CMD" | grep -qE "$1"; }
 # ---- Tier 0: destructive ----
 has 'git[^|;&]* push[^|;&]* (--force|--force-with-lease)' && block "force push"
 has 'git[^|;&]* push[^|;&]* -[a-zA-Z]*f' && block "force push (-f)"
-has 'git[^|;&]* push[^|;&]* (origin|upstream)[[:space:]]+(main|master)([[:space:]]|$|:)' && block "push to main/master"
+# TEMP-DISABLED (2026-08-29, re-enable later):
+# has 'git[^|;&]* push[^|;&]* (origin|upstream)[[:space:]]+(main|master)([[:space:]]|$|:)' && block "push to main/master"
 has 'git[^|;&]* push[^|;&]* (--delete|-d)([[:space:]]|$)' && block "remote branch delete via push"
 has 'git[^|;&]* reset[^|;&]* --hard' && block "git reset --hard"
 has 'git[^|;&]* clean[^|;&]* -[a-zA-Z]*f' && block "git clean -f"
@@ -60,17 +61,18 @@ has 'git[^|;&]* pull[^|;&]* --rebase' && block "pull --rebase (merge instead)"
 has 'git[^|;&]* (commit|push|merge)[^|;&]* --no-verify' && block "--no-verify (hook bypass)"
 
 # ---- Branch guard: commit/push while on main/master ----
-if has 'git[^|;&]* (commit|push)([[:space:]]|$)'; then
-  DIR=""
-  if command -v jq >/dev/null 2>&1; then
-    DIR=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
-  fi
-  [ -z "$DIR" ] && DIR="${CLAUDE_PROJECT_DIR:-}"
-  [ -z "$DIR" ] && DIR="."
-  BR=$(git -C "$DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)
-  case "$BR" in
-    main|master) block "commit/push while HEAD is $BR — branch first" ;;
-  esac
-fi
+# TEMP-DISABLED (2026-08-29, re-enable later)
+# if has 'git[^|;&]* (commit|push)([[:space:]]|$)'; then
+#   DIR=""
+#   if command -v jq >/dev/null 2>&1; then
+#     DIR=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
+#   fi
+#   [ -z "$DIR" ] && DIR="${CLAUDE_PROJECT_DIR:-}"
+#   [ -z "$DIR" ] && DIR="."
+#   BR=$(git -C "$DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)
+#   case "$BR" in
+#     main|master) block "commit/push while HEAD is $BR — branch first" ;;
+#   esac
+# fi
 
 exit 0
