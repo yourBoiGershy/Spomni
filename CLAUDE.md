@@ -99,9 +99,15 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   (override via `HARNESS_PROTECTED_PREFIXES` in the hook's environment).
 - One package = one focused agent/session's territory; cross-package needs are
   met via the other package's `package.md` + core contracts, never its files.
-- Test commands (bash 3.2, no npm/jest — run both before any merge):
-  `bash packages/core/tests/run-store-tests.sh` and
-  `bash packages/connectors/tests/run-capture-tests.sh`.
+- Test commands (bash 3.2, no npm/jest — run all before any merge):
+  `bash packages/core/tests/run-store-tests.sh`,
+  `bash packages/connectors/tests/run-capture-tests.sh`, and
+  `bash packages/connectors/tests/run-beeper-capture-tests.sh`.
   Store sanity: `bash packages/core/scripts/validate-store.sh <store-dir>`
   (checks people/interactions/wakeups only — not inbox/).
+  Capture-sync audit: `bash packages/connectors/scripts/check-sync.sh <store-dir>`
+  (inbox/ conformance to capture-event 1.2.0 — per-lane rules, wrapper leaks, dups).
+  Filing goldens: `bash packages/ingestion/scripts/check-golden.sh --all
+  packages/ingestion/tests/goldens/debrief <worked-root>`; eval suites:
+  `bash packages/core/scripts/eval-suite.sh packages/<pkg>/evals/suite.txt`.
   <!-- PARAMETERIZE: extend as more packages grow suites -->

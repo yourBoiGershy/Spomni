@@ -33,9 +33,11 @@ composio execute <TOOL_SLUG> -d '{...}'
 
 ## Provides
 
-- Raw capture events in `inbox/` for the gmail, calendar, and linkedin lanes (subject
-  to the capture-event contract's `type` enum — `voice-note`,
-  `linkedin-notification`, `event-confirmation`, `other`)
+- Raw capture events in `inbox/` for the gmail, calendar, and linkedin lanes, using
+  these `type` values from the capture-event contract's enum: `email`,
+  `voice-note`, `linkedin-notification`, `calendar-event`, `profile-snapshot`,
+  `post`, `contact-record` (`other` remains the escape hatch for genuinely
+  unclassifiable items)
 - Per-lane sweep skills (`skills/gmail-sweep`, `skills/calendar-sweep`,
   `skills/linkedin-sweep`) that dedup against a connector-local ledger, never the
   shared store
@@ -44,7 +46,7 @@ composio execute <TOOL_SLUG> -d '{...}'
 
 ## Consumes
 
-- `capture-event@^1`, `connector-interface@^1` (core)
+- `capture-event@^1.1`, `connector-interface@^1` (core)
 - The user's Composio CLI session (`composio login` / `composio link` done
   out-of-band by the user; this package assumes an already-linked, ACTIVE session for
   `gmail`, `googlecalendar`, `linkedin`)

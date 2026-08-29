@@ -231,6 +231,26 @@ stays local — no third party ever holds the graph, only the pipes.
 Revisit if: Composio's retention answer is bad, repricing bites, or a needed lane has
 no Composio path (iMessage → local chat.db bridge, LinkedIn depth → archive export).
 
+**beeper-personal-bridge** · 2026-08-29
+Partially supersedes tos-clean-signals-only — for the user's OWN inboxes only.
+Personal-chat capture runs through Beeper Desktop's local API (localhost:23373,
+REST/WebSocket/MCP, reads local and unmetered): WhatsApp, Instagram, Messenger,
+Discord DMs, Signal, Telegram, iMessage via the user's own Beeper account. Why: no
+official API reads personal inboxes on any of these networks (structural — plan 11
+research); official alternatives are business-identity contortions (Creator accounts,
+Business-app coexistence, Page inboxes) covering a fraction of the lanes; Beeper's
+local reads fit other-people's-data-stays-local better than Meta's cloud APIs.
+Accepted costs: every bridge is an unofficial client under each network's ToS — ban
+risk on the user's own accounts, so network enablement is PER-NETWORK OPT-IN (Meta
+puppeting is the most enforcement-prone lane); Beeper Desktop must be running for the
+API to answer; bridges must run in on-device mode (older cloud bridges transit
+Beeper's servers). tos-clean-signals-only STANDS for other people's data: still no
+scraping, no enrichment APIs. draft-never-send STANDS: the API's send capability is
+never used for auto-outreach.
+Revisit if: a bridged account gets warned/banned, Beeper meters or breaks the local
+API, or an official personal-inbox API appears for any lane (move that lane off the
+bridge).
+
 **preference-provenance** · 2026-08-29
 Preferences carry provenance like facts do: `stated-by-user` vs. `observed-from-behavior`,
 labeled per entry, never mixed. Stated always outranks revealed; revealed preferences

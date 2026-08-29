@@ -1,7 +1,7 @@
 ---
 name: linkedin-sweep
 description: Snapshot the user's own LinkedIn surface (profile, known posts, share statistics where available) into inbox/ capture events via the Composio CLI. Low-frequency, read-only, official-API-only.
-version: 0.1.0
+version: 0.2.0
 ---
 
 # linkedin-sweep
@@ -89,8 +89,11 @@ arguments to pass.
 
 As with other lanes, large results may come back as
 `{ "storedInFile": true, "outputFilePath": "/tmp/..." }` — read that file for
-the payload; the shape is otherwise equivalent to the inline `data` form (see
-`fixtures/linkedin-post.json` for the representative fixture shape).
+the payload; the shape is otherwise equivalent to the inline `data` form.
+`fixtures/linkedin-post.json` models the unwrapped `.data` resource — the
+shape this skill's body takes once the CLI wrapper (`successful`, `error`,
+`logId`) is stripped, per "Per-item capture" below — not the raw
+`composio execute` wrapper.
 
 ## Cadence
 
@@ -133,35 +136,60 @@ timestamp>` to the ledger.
   (including `logId`) and dedup breaks forever, since every call would look
   "changed." Always hash `.data` (after resolving `storedInFile` if
   applicable), never the wrapper.
-- **Capture-event body scope: the full raw wrapper, verbatim.** This is
-  unchanged from "Per-item capture" below — the body written to `inbox/` is
-  the entire `composio execute` response object (`successful`, `data`,
-  `error`, `logId`, everything), byte-for-byte. Only the dedup-key computation
-  is narrowed to `data`; the stored capture event is not.
+- **Capture-event body scope: the unwrapped provider resource only.** This is
+  updated from an earlier draft of this skill — the body written to `inbox/`
+  is `.data` (after resolving `storedInFile` if applicable), pretty-printed as
+  JSON, with the CLI wrapper (`successful`, `error`, `logId`) stripped before
+  the body is formed; see "Per-item capture" below. The untouched wrapper is
+  never discarded — it goes to `archive/raw/<capture-id>.json` per
+  `docs/data-layout.md`, so the provenance trail survives even though the
+  wrapper never enters `inbox/`.
 
 ## Per-item capture
 
 Every new-or-changed item becomes exactly one capture event, written through
 the shared normalizer, per `connector-interface.md`'s single-writer rule for
-`inbox/`:
+`inbox/`. Before the normalizer is called, this skill unwraps the Composio
+CLI response — resolving `outputFilePath` if the result was file-backed —
+and keeps only `.data`, the provider resource itself; the wrapper
+(`successful`, `error`, `logId`) is never handed to the normalizer as body.
+The untouched, still-wrapped `composio execute` response is archived
+separately to `archive/raw/<capture-id>.json` (per `docs/data-layout.md`)
+before it is discarded from the in-flight payload — that archive copy is the
+provenance trail for this capture event.
+
+Own profile (`LINKEDIN_GET_MY_INFO`) → a `profile-snapshot`:
 
 ```
 packages/connectors/scripts/normalize-capture.sh <store-dir> \
-  --source linkedin \
-  --type other \
+  --source composio-in/linkedin \
+  --type profile-snapshot \
   --captured-at <ISO8601Z> \
-  <<< '<raw JSON payload, verbatim>'
+  <<< '<unwrapped .data, pretty-printed JSON>'
 ```
 
-- `--type other`: neither the profile snapshot nor a post-content refresh is
-  a `linkedin-notification` (those come from Gmail) or any other enumerated
-  type — `other` is the correct escape hatch per `capture-event.md`.
-- `--captured-at` is when this skill fetched the item, not any timestamp
-  inside the payload (e.g. the post's original `createdAt`).
-- The body is the raw JSON returned by `composio execute` (or the contents
-  of its `outputFilePath`), byte-for-byte, unmodified — no summarizing, no
-  reformatting, no extracting fields. The filing engine reads the raw JSON
-  later; this skill's only job is faithful capture.
+- No `occurred_at` — a profile snapshot has no inherent occurrence time; per
+  the contract, omit the flag entirely rather than guessing one.
+
+Known post refresh (`LINKEDIN_GET_POST_CONTENT`) → a `post`:
+
+```
+packages/connectors/scripts/normalize-capture.sh <store-dir> \
+  --source composio-in/linkedin \
+  --type post \
+  --captured-at <ISO8601Z> \
+  --occurred-at <post publish time, ISO8601Z> \
+  <<< '<unwrapped .data, pretty-printed JSON>'
+```
+
+- `--occurred-at` is the post's own publish timestamp from the payload
+  (e.g. `createdAt`), distinct from `--captured-at` (when this sweep ran).
+- `--captured-at` is always when this skill fetched the item, never a
+  timestamp from inside the payload.
+- The body is the unwrapped provider resource (`.data`), pretty-printed as
+  JSON — no summarizing, no reformatting, no extracting fields, no Composio
+  CLI wrapper. The filing engine reads this JSON later; this skill's only
+  job is faithful capture of the provider resource, not the transport.
 - No `--hint` / `participant-hints`: these are the user's own artifacts
   (their own profile, their own posts) with no third-party participant to
   hint at.

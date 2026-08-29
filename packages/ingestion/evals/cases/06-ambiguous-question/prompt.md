@@ -2,11 +2,11 @@
 tier: skill
 store: packages/ingestion/tests/goldens/preferences/06-ambiguous-question/before
 expected: packages/ingestion/tests/goldens/preferences/06-ambiguous-question/expected
-runnable-when: "03"
 max-turns: 8
 model: haiku
 ---
-Act as ingestion's stated-preference filing lane, per
+Act as ingestion's stated-preference filing lane (the "Stated-preference
+lane" section of `packages/ingestion/skills/debrief/SKILL.md`), per
 `packages/ingestion/specs/stated-preference-filing.md` section (a) (tier
 utterances). The current people-store is the directory `./store` (contains
 `people/` and `profile.md`) — treat it as the live store for this pass.

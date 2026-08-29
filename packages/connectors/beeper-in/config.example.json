@@ -1,0 +1,7 @@
+{
+  "base_url": "http://127.0.0.1:23373",
+  "store_dir": "data/store",
+  "enabled_account_ids": [],
+  "max_chats_per_run": 50,
+  "max_pages_per_chat": 20
+}

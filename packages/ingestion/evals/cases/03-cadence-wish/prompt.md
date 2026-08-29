@@ -2,11 +2,11 @@
 tier: skill
 store: packages/ingestion/tests/goldens/preferences/03-cadence-wish/before
 expected: packages/ingestion/tests/goldens/preferences/03-cadence-wish/expected
-runnable-when: "03"
 max-turns: 8
 model: haiku
 ---
-Act as ingestion's stated-preference filing lane, per
+Act as ingestion's stated-preference filing lane (the "Stated-preference
+lane" section of `packages/ingestion/skills/debrief/SKILL.md`), per
 `packages/ingestion/specs/stated-preference-filing.md` section (c)
 (cadence wishes). The current people-store is the directory `./store`
 (contains `profile.md`) — treat it as the live store for this pass.

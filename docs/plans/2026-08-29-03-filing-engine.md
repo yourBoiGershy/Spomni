@@ -1,5 +1,5 @@
 # Plan 03: Filing engine (the librarian)
-Status: Ready
+Status: Done (2026-08-29, stream-filing — all 10 debrief goldens + 6 preference goldens PASS via check-golden.sh, zero fact loss; eval suite wired: 16 T3 cases runnable)
 Package: ingestion
 Depends-on: 01, 02
 

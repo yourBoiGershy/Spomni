@@ -1,4 +1,4 @@
-# Plan 11: Preference & personalization layer
+# Plan 15: Preference & personalization layer (renumbered from 11 on merge)
 
 Status: Done (2026-08-29) — all waves landed (contracts, validator + fixtures,
 specs, goldens, calibrate.sh, backfill mode); plans 05/06 implement the specs

@@ -23,10 +23,17 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   unbuilt)
 - Conventions: `needs-confirmation` and `needs-follow-up` markers, met-at /
   will-meet-at / same-event-as links
-- Evals: `evals/cases/` — T3 (skill-tier) cases wrapping the six
-  `tests/goldens/preferences/*` stated-preference goldens (`eval-case@1`,
-  `packages/core/scripts/eval-run-skill.sh`); all `runnable-when: "03"` until
-  the filing engine lands; `evals/suite.txt` lists them
+- Evals: `evals/cases/` — 16 T3 (skill-tier) cases (`eval-case@1`,
+  `packages/core/scripts/eval-run-skill.sh`): cases 01-06 wrap the six
+  `tests/goldens/preferences/*` stated-preference goldens (now runnable —
+  plan 03's filing engine/debrief skill has landed and the
+  `runnable-when: "03"` flip lands with it, per the eval-case contract's
+  flip-with-the-change discipline); cases 07-16 wrap the ten
+  `tests/goldens/debrief/*` full filing-path goldens, exercising
+  `skills/debrief/SKILL.md` end to end (person creation/update, interaction
+  filing, commitment extraction, reminder-ask wake-up creation, ambiguous-
+  name question handling, and the append-only contradicting-fact case).
+  `evals/suite.txt` lists all 16.
 
 ## Consumes
 

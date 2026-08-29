@@ -1,4 +1,4 @@
-# Plan 12: Eval harness (tool / agent / skill tiers)
+# Plan 16: Eval harness (renumbered from 12 on merge) (tool / agent / skill tiers)
 
 Status: Done (2026-08-29) — all waves + live-run fix pass landed. Live proof:
 query suite pass=3 xfail=2 xpass=0 in 2:01 wall / $0.20 on subscription auth;
