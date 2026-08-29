@@ -1,0 +1,57 @@
+{
+  "items": [
+    {
+      "id": "msg-sample-001",
+      "chatID": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "senderID": "@bea-sample:example.org",
+      "senderName": "Bea Sample",
+      "timestamp": "2026-08-29T14:30:00.000Z",
+      "sortKey": "0000000001",
+      "type": "TEXT",
+      "text": "Sample message: hey, are we still on for coffee Friday?",
+      "isSender": false,
+      "attachments": [],
+      "linkedMessageID": null,
+      "reactions": []
+    },
+    {
+      "id": "msg-sample-002",
+      "chatID": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "senderID": "@ada-test:example.org",
+      "senderName": "Ada Test",
+      "timestamp": "2026-08-29T14:31:20.250Z",
+      "sortKey": "0000000002",
+      "type": "TEXT",
+      "text": "Sample message: yep, 10am works for me",
+      "isSender": true,
+      "attachments": [],
+      "linkedMessageID": null,
+      "reactions": []
+    },
+    {
+      "id": "msg-sample-003",
+      "chatID": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "senderID": "@bea-sample:example.org",
+      "senderName": "Bea Sample",
+      "timestamp": "2026-08-29T14:32:10.500Z",
+      "sortKey": "0000000003",
+      "type": "IMAGE",
+      "text": "Sample message: here's the cafe location",
+      "isSender": false,
+      "attachments": [
+        {
+          "url": "mxc://example.org/sampleMediaId123",
+          "type": "image"
+        }
+      ],
+      "linkedMessageID": null,
+      "reactions": []
+    }
+  ],
+  "hasMore": false,
+  "oldestCursor": "cursor-msgs-oldest-sample",
+  "newestCursor": "cursor-msgs-newest-sample"
+}

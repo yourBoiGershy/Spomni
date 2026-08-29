@@ -1,0 +1,38 @@
+{
+  "items": [
+    {
+      "id": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "network": "matrix",
+      "title": "Bea Sample",
+      "type": "single",
+      "participants": {
+        "items": [
+          { "name": "Ada Test", "ids": ["@ada-test:example.org"] },
+          { "name": "Bea Sample", "ids": ["@bea-sample:example.org"] }
+        ]
+      },
+      "lastActivity": "2026-08-29T14:32:10.500Z",
+      "unreadCount": 1
+    },
+    {
+      "id": "local-whatsapp_ba_test1_group-sample",
+      "accountID": "local-whatsapp_ba_test1",
+      "network": "whatsapp",
+      "title": "Sample Project Group",
+      "type": "group",
+      "participants": {
+        "items": [
+          { "name": "Ada Test", "ids": ["test-user-1"] },
+          { "name": "Cy Sample", "ids": ["whatsapp-cy-sample"] },
+          { "name": "Dee Sample", "ids": ["whatsapp-dee-sample"] }
+        ]
+      },
+      "lastActivity": "2026-08-29T13:05:44.120Z",
+      "unreadCount": 0
+    }
+  ],
+  "hasMore": false,
+  "oldestCursor": "cursor-chats-oldest-sample",
+  "newestCursor": "cursor-chats-newest-sample"
+}
