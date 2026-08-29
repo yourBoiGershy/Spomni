@@ -32,7 +32,7 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 17 | Composio retirement & direct Google lanes (gmail-in, calendar-in on first-party claude.ai connectors) | connectors (composio-in teardown; gmail-in, calendar-in) + docs | 01, 14; decision composio-retired | Planned — plan file to author |
 | 18 | Query & chat live wiring (register the MCP server against the live store; chat with your own data) | query (server config) + harness docs | 08 | Planned — FIRST priority, plan file to author |
 | 19 | Scheduled syncs runner (one configurable scheduler for all capture lanes; restart-safe) | connectors/scripts + infrastructure docs | 13, 17 | Planned — plan file to author |
-| 20 | Live capture & organization trial (chats + emails, end to end, on real data) | cross-package (runs the machinery, builds none) | 03, 13, 17, 18, 19 | Planned — plan file to author |
+| 20 | Backfill blitz & ship-day shakedown (file the real backlog, prove the loop end to end, TODAY) | cross-package (runs the machinery, builds none) | 03, 13, 18 | Planned — SHIP GATE, runs today |
 | 21 | Calendar intelligence & event proposals (tell/schedule from messages; propose events, draft-only) | attention + query + connectors/calendar | 04, 05, 06, 17, 18 | Planned — plan file to author |
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
@@ -105,23 +105,30 @@ runner+config vs. installer+migration; checker verifies job files.
 jobs fire again with no manual step; beeper's legacy job removed; config change
 (interval/disable) takes effect without editing code.
 
-### 20 — Live capture & organization trial
+### 20 — Backfill blitz & ship-day shakedown (SHIP GATE)
 
-**Context.** The real test of the middle of the spine: run the whole capture→file→query
-loop on the user's actual chats and emails for a trial window and judge whether the
-store organizes reality well. Capture is optional and lossy-tolerant — the trial
-measures machinery quality, never user diligence.
-**Work.** No new machinery. Operate: lanes syncing on schedule (19), debriefs filed
-(03), store validated, queries asked daily (18). Keep a trial log in the data repo;
-file defects against the owning package as they surface.
-**Agent path.** Orchestrator-led operations, not dev-workers: scheduled syncs run
-themselves; a periodic checker audits `check-sync.sh` + `validate-store.sh`; defects
-found get dispatched as normal fix briefs to the owning package.
-**Deliverables / proof of done.** ≥7 consecutive days of real capture with zero data
-loss (check-sync clean each day); filed people/interactions passing validate-store;
-a written organization-quality review from the user (what filed well, what mis-filed,
-what's missing); defect list triaged into plan updates. This trial feeds the v1 exit
-criteria below.
+**Context.** Ship deadline is 2026-08-30 — there is no window for a soak test. The
+store already holds a real backlog (46 inbox events: 25 beeper, 15 gmail, 4 calendar,
+1 linkedin, 1 quarantine) that has never been filed. Filing that backlog and proving
+the whole capture→file→query loop on it, today, is the compressed live test: real
+data, full pipeline, immediate verdict. Longitudinal quality watching moves to
+post-ship monitoring (below) — it is no longer a pre-ship gate.
+**Work.** No new machinery. (a) Run the debrief/filing skill over the full real
+inbox backlog; quarantined/unfileable events get triaged, not dropped. (b) Audit:
+`check-sync.sh` clean (zero loss), `validate-store.sh` green on the filed store.
+(c) Fresh-sweep round-trip: trigger one live beeper + one gmail sweep, file the new
+events, confirm they land end to end. (d) Query shakedown: hit all six `spomni-query`
+tools against the filed store; answers must cite real captured interactions.
+(e) A fast user pass over the filed people list: obvious mis-merges/dupes fixed or
+logged as known-issues for the ship notes.
+**Agent path.** Orchestrator-led, same day: filing runs via the ingestion debrief
+skill (batched, parallel checkers audit after each batch); defects found get ONE
+fix-dispatch round max (fix policy) — anything deeper becomes a known-issue, not a
+ship blocker unless it loses data.
+**Deliverables / proof of done (all TODAY).** Backlog 100% filed or explicitly
+quarantined with reasons; both audit scripts green; fresh-sweep round-trip proven on
+both lanes; all six query tools returning real cited answers; a short ship-notes list
+of known issues. Zero data loss is the only hard blocker.
 
 ### 21 — Calendar intelligence & event proposals
 
@@ -147,15 +154,21 @@ confirmation (eval-guarded).
 
 ## Execution order (current)
 
-1. **18** — query/chat live wiring (small, immediate payoff, nothing blocks it).
-2. **17** — composio teardown + direct gmail/calendar lanes.
-3. **19** — scheduled syncs runner (needs 17's lanes to exist).
-4. **20** — live capture trial starts as soon as 17+19 are live; runs in the background
-   for ≥7 days while build work continues.
-5. **12 (amendment unit) → 05 + 06 → 07** — the attention layer, honoring plan 15
+**Ship deadline: 2026-08-30.** Pre-ship (today): 18 is done enough to chat (server
+registered as `spomni-query`); **20 runs NOW** — backfill filed, loop proven, ship
+notes written. 17 and 19 squeeze in today only if 20 clears early; otherwise they are
+day-one post-ship items (the beeper lane and composio lanes keep capturing meanwhile,
+so nothing is lost by shipping first).
+
+Post-ship order:
+1. **17** — composio teardown + direct gmail/calendar lanes.
+2. **19** — scheduled syncs runner (needs 17's lanes to exist).
+3. **Post-ship monitoring** — the longitudinal organization-quality watch that used to
+   be 20's trial: periodic check-sync/validate-store audits, defects filed per package.
+4. **12 (amendment unit) → 05 + 06 → 07** — the attention layer, honoring plan 15
    personalization touchpoints.
-6. **21** — calendar intelligence, once 05/06 exist to carry its signals and cards.
-7. **09** — infrastructure continues alongside; **04**'s matching half rides with 05's
+5. **21** — calendar intelligence, once 05/06 exist to carry its signals and cards.
+6. **09** — infrastructure continues alongside; **04**'s matching half rides with 05's
    co-attendance needs.
 
 ## Streams (parallel-session worktrees)
@@ -192,13 +205,13 @@ stream's packages.
   world-readable, merged or not. Data safety lives at the push boundary (pii-guard,
   plan 09), never in merge speed.
 
-## Live trial → v1 (exit criteria)
+## Post-ship monitoring → v1 (exit criteria)
 
-Chunk 20 starts the clock: two weeks on real data once the attention layer joins.
-Exit criteria (from the build plan): phone-to-filed with zero manual steps; ≥80%
-meeting auto-match; ≥1 useful signal nudge/week with zero bare cadence reminders;
-ad-hoc reminders fire on time; ≥3:1 give-to-ask ratio; zero data loss. All six hold →
-tag v1, open the repo.
+Shipping (2026-08-30) is not v1. After ship, the monitoring loop watches real usage;
+once the attention layer joins, the original exit criteria gate the v1 tag:
+phone-to-filed with zero manual steps; ≥80% meeting auto-match; ≥1 useful signal
+nudge/week with zero bare cadence reminders; ad-hoc reminders fire on time; ≥3:1
+give-to-ask ratio; zero data loss. All six hold → tag v1, open the repo.
 
 ## Later (explicitly deferred)
 
