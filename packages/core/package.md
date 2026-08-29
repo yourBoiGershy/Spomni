@@ -22,9 +22,11 @@ nothing.
   `contracts/ranking-weights.md` (`data/store/ranking-weights.json`, signal-type
   and tag calibration weights, per plan 11), `contracts/eval-case.md` (the
   `packages/<pkg>/evals/cases/<name>/` format — prompt.md frontmatter,
-  graders/ protocol, xfail discipline, suite manifests — per plan 12)
+  graders/ protocol, xfail discipline, suite manifests — per plan 12),
+  `contracts/sync-lanes.md` (`<data-dir>/connectors/sync-scheduler/lanes.tsv`, the
+  scheduled-syncs runner's lane config, per plan 19)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
-  `templates/profile.md`
+  `templates/profile.md`, `templates/sync-lanes.tsv`
 - Store scripts: `scripts/build-index.sh` (people/ → index.json),
   `scripts/build-stats.sh` (people/ + interactions/ → stats.json, per
   `contracts/derived-index.md`), `scripts/validate-store.sh`, `scripts/wakeup-add.sh`

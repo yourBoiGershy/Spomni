@@ -1,0 +1,5 @@
+{"calendars": [
+  {"id": "user@example.com", "summary": "user@example.com", "timeZone": "America/Toronto"},
+  {"id": "abc123def456@group.calendar.google.com", "summary": "School", "timeZone": "America/Toronto"},
+  {"description": "Holidays and Observances in Canada", "id": "en.canadian#holiday@group.v.calendar.google.com", "summary": "Holidays in Canada", "timeZone": "America/Toronto"}
+]}

@@ -15,8 +15,11 @@ match, rank, or file — that intelligence lives in `ingestion` and `attention`
 Each subdirectory is a sub-package and gets its own mini `package.md` when built:
 
 - `gmail-in/` — subject-tagged self-emails (voice notes), LinkedIn notification emails,
-  event-confirmation emails → typed capture events
-- `calendar-in/` — multi-calendar read-only pull → normalized event artifacts
+  event-confirmation emails → typed capture events; transport is the first-party
+  claude.ai Gmail connector (session-driven MCP tools), read-only
+- `calendar-in/` — multi-calendar read-only pull → normalized event artifacts;
+  transport is the first-party claude.ai Google Calendar connector
+  (session-driven MCP tools), read-only
 - `contacts-in/` — Google Contacts (birthdays, emails) → contact artifacts
 - `file-out/` — renders batches to `data/outbox/` + in-session display
 - `gmail-out/` — emails batches to the user's OWN address only (hard-constrained;
@@ -24,7 +27,8 @@ Each subdirectory is a sub-package and gets its own mini `package.md` when built
 - `beeper-in/` — the user's own Beeper Client API (personal chats across bridged
   networks, opt-in per network) → normalized capture events
 
-Shared input tooling (e.g. `scripts/normalize-capture.sh`) lives at the package root.
+Shared input tooling (e.g. `scripts/normalize-capture.sh`, and the sync scheduler
+`scripts/sync-scheduler.sh` + `scripts/sync-lib.sh`) lives at the package root.
 
 ## Provides
 
@@ -32,10 +36,13 @@ Shared input tooling (e.g. `scripts/normalize-capture.sh`) lives at the package 
   processed-message ledger
 - Normalized calendar-event and contact artifacts for `ingestion`
 - The output-adapter delivery lanes
+- The shared sync scheduler (`scripts/sync-scheduler.sh` + `scripts/sync-lib.sh`,
+  plan 19) — one configurable, restart-safe launchd runner for all input-lane
+  sweeps, replacing per-lane bespoke installers (e.g. beeper-in's plan-13 one)
 
 ## Consumes
 
-- `capture-event@^1`, `connector-interface@^1` (core)
+- `capture-event@^1`, `connector-interface@^1`, `sync-lanes@^1` (core)
 - First-party MCP servers / Claude connectors only (see DECISIONS.md:
   first-party-mcp-only)
 
@@ -46,5 +53,5 @@ outbound delivery.
 
 ## Built by
 
-Plans 02 (gmail-in), 04 (calendar-in, connector half), 07 (file-out, gmail-out),
-13 (beeper-in).
+Plans 07 (file-out, gmail-out), 13 (beeper-in), 17 (gmail-in, calendar-in;
+docs/plans/2026-08-29-17-composio-retirement-direct-google-lanes.md).

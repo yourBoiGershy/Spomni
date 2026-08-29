@@ -2,12 +2,18 @@
 
 Status: spec (plan 11 unit 13, cold-start phase). Package: `packages/ingestion`
 (the confirmation write, per the single-writer rule) triggered once at
-first-run onboarding, downstream of `packages/connectors/composio-in`'s
-backfill mode (plan 11 unit 12, spec-level as of this writing) and
-`packages/core/scripts/build-stats.sh`. This spec does not redefine backfill
-mode or the filing-confirmation write path — it only fixes the sequence, the
-frequency-to-tier mapping, and the presentation/no-guilt rules that sit
-between them.
+first-run onboarding, downstream of `packages/connectors/gmail-in` /
+`packages/connectors/calendar-in`'s backfill mode (plan 11 unit 12,
+spec-level as of this writing) and `packages/core/scripts/build-stats.sh`.
+This spec does not redefine backfill mode or the filing-confirmation write
+path — it only fixes the sequence, the frequency-to-tier mapping, and the
+presentation/no-guilt rules that sit between them.
+
+**Backfill deferral note:** backfill mode itself is deferred by plan 17 (the
+2026-08-29 direct-Google-lanes plan under `docs/plans/`) pending its Phase 3
+tool-surface check on the new first-party `gmail-in` / `calendar-in` lanes —
+this spec's sequence is otherwise unchanged and takes effect once that
+backfill mode ships.
 
 ## Scope
 
@@ -24,12 +30,13 @@ not a new write path.
 
 ## Sequence
 
-1. **Backfill sweeps run.** `packages/connectors/composio-in`'s backfill mode
-   (gmail-sweep / calendar-sweep, date-range window, isolated checkpoint
-   namespace per plan 11 unit 12) runs once against the connected accounts,
-   producing normalized `inbox/` capture events the same shape incremental
-   sweeps produce — this spec does not change capture-event shape or the
-   backfill window default.
+1. **Backfill sweeps run.** `packages/connectors/gmail-in` / `calendar-in`'s
+   backfill mode (gmail-sweep / calendar-sweep, date-range window, isolated
+   checkpoint namespace per plan 11 unit 12) runs once against the connected
+   accounts, producing normalized `inbox/` capture events the same shape
+   incremental sweeps produce — this spec does not change capture-event shape
+   or the backfill window default. (Backfill mode is deferred pending plan
+   17's Phase 3 tool-surface check — see the deferral note above.)
 2. **Filing produces interactions.** The filing engine ingests those capture
    events through its normal path, creating `people/<slug>.md` (new-person
    flow, per `stated-preference-filing.md` (a).4) and `interactions/*.md`

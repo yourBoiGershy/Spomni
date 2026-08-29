@@ -19,8 +19,15 @@ wrapping them is mechanical.
 - `server/` (`packages/query/server/`): an MCP tool surface, seven read-only tools over
   stdio (streamable HTTP behind `--http`, stubbed): `search_people`, `get_person`,
   `list_interactions`, `get_interaction`, `get_contact_stats`, `suggest_reachouts`,
-  `upcoming_meetings`. Entry point, transport seam, store-reader, and all seven tool
-  handlers are in place and tested (`tests/test-tools.mjs` and friends).
+  `upcoming_meetings`. Entry point `server/src/index.ts` (run via `node
+  --experimental-strip-types`, `--store` flag), transport seam, store-reader, and all
+  seven tool handlers are in place and tested (`tests/test-tools.mjs` and
+  `tests/test-upcoming-meetings.mjs`). Registered project-wide via the repo root
+  `.mcp.json`, which defaults `--store` to `data/store` — the convention every checkout
+  points at its own private store through (see `docs/chat-setup.md`). If the store's
+  `index.json`/`stats.json` are missing or stale, the server regenerates them into
+  `${RA_CACHE_DIR:-~/.cache/relationship-agent}` and serves from there; the store itself
+  is never written to (single-writer holds). Smoke test: `tests/smoke-live.sh`.
 
 - Eval suite: `evals/` — `eval-case@1` cases (`packages/core/contracts/
   eval-case.md`) under `evals/cases/`, manifest at `evals/suite.txt`. T2
@@ -52,4 +59,6 @@ wrapping them is mechanical.
 
 Plan 07 (query + brief halves). Plan 08
 (docs/plans/2026-08-29-08-chat-mcp-query-layer.md) — the MCP server (`server/`) and the
-`stats.json@1` contract it consumes.
+`stats.json@1` contract it consumes. Plan 18
+(docs/plans/2026-08-29-18-query-live-wiring.md) — live wiring: the root `.mcp.json`
+registration, `data/store` targeting, and `tests/smoke-live.sh`.
