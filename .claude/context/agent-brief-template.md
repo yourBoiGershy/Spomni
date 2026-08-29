@@ -14,7 +14,12 @@ than one unit — split before spawning.
 
 ## §2 Contract
 
-- **Inputs:** files/types/artifacts the worker starts from (paths).
+- **Inputs:** what the worker starts from — carried **inline**, not as bare
+  paths. The orchestrator (or a checker) has already read the contract, type
+  shape, or signature; paste the relevant excerpt into the brief verbatim,
+  with the path attached only so the worker knows where it lives. Litmus: a
+  worker that must open more than ~2 files before its first edit got an
+  underspecified brief — go gather the content and paste it.
 - **Outputs:** what must exist when done (files created/changed, shapes of any
   new types), and what must NOT change.
 
@@ -26,6 +31,7 @@ constraint ("do not touch the public API surface").
 
 ## §4 References & decisions
 
-- Patterns to follow (`path:line` of an exemplar).
+- Exemplars pasted verbatim (the ~10 relevant lines), with `path:line` for
+  provenance — the worker follows the snippet, never a pointer hunt.
 - Decisions already made, with the one-line why — the worker never re-litigates.
 - For retries: the prior attempt's diff and failure output, verbatim.

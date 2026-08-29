@@ -35,6 +35,7 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 20 | Backfill blitz & ship-day shakedown (file the real backlog, prove the loop end to end, TODAY) | cross-package (runs the machinery, builds none) | 03, 13, 18 | Planned — SHIP GATE, runs today |
 | 21 | Calendar intelligence & event proposals (tell/schedule from messages; propose events, draft-only) | attention + query + connectors/calendar | 04, 05, 06, 17, 18 | Planned — plan file to author |
 | 22 | Live-data query sync & verification (plan 18 close-out: smoke 6/6 over the filed live store, real chat with citations, legacy user-scope registration removed) | query (verification only — runs the machinery, builds none) | 18, 20 (filed backlog) | Blocked on 20 — run as soon as the backlog is filed |
+| 23 | Harness context economy (content-bearing briefs; warm per-package workers via SendMessage; fork guidance; capsule-sized manifests) | harness docs (`.claude/rules`, `.claude/context`) — no machinery | — | Done (2026-08-29, worktree-harness-context-economy) |
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
 attention-merge. Historical plan-number collisions (11/12 renumbered to 13–16 at merge)
@@ -179,6 +180,20 @@ scope) so exactly one registration exists.
 **Deliverables / proof of done.** Smoke exit 0 over the filed store; chat citations
 verified; exactly one registration; plan 18's "Proof of done" checklist fully closed
 out in its plan file.
+
+### 23 — Harness context economy
+
+**Context.** Worker agents were spawning cold and regaining context — re-reading
+CLAUDE.md, package manifests, and contracts — before every edit; context regain,
+not the edits themselves, dominated run time.
+**Work.** Doctrine-only, no machinery: briefs carry content inline instead of bare
+paths (brief template §2/§4, with the >2-files-before-first-edit litmus); serial
+same-package units continue a warm dev-worker via SendMessage instead of spawning
+fresh; `fork` for units whose investigation already lives in the orchestrator
+conversation; `package.md` manifests kept capsule-sized. Codified as the new
+"Context economy" section of `.claude/rules/orchestration.md`.
+**Deliverables / proof of done.** Template, orchestration rules, and rules index
+updated; roadmap row 23 added. No package code touched.
 
 ## Execution order (current)
 
