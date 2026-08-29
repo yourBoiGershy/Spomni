@@ -34,15 +34,38 @@ The script is idempotent (rebuilds from scratch each run) and prints the
 resulting path, which matches this case's `store:` field by construction
 (same default output dir).
 
+## Prompt
+
+The prompt forces full enumeration — "call suggest_reachouts with limit 10
+and list EVERY suggestion it returns, one line per suggestion... Do not
+omit any" — rather than the open-ended "who should I prioritize" framing
+this case originally used. The open-ended framing let the agent XPASS
+spuriously: an absence-only grader (does the answer omit the opted-out
+wake-up?) passes trivially whenever the agent's prose just doesn't happen
+to enumerate every suggestion, which says nothing about whether
+`suggest_reachouts` itself respected the opt-out. Forcing enumeration makes
+the absence check meaningful — if the wake-up isn't mentioned in a full,
+required listing, it's a real signal that the tool suppressed it.
+
 ## Grader
 
 `graders/01-birthday-opt-out-absent.sh` — hand-derived from
 `packages/query/tests/fixtures/personalization-overlay/README.md`'s
 "Hand-derived expectations" #1: the overlay's birthday wake-up for
 `marcus-chen` (`2026-09-10-marcus-chen--2`, `signal-type: birthday`) sits
-well inside `suggest_reachouts`'s default top-5-by-due-date window, so
+well inside `suggest_reachouts`'s default top-5-of-10-by-due-date window, so
 absent opt-out handling it is surfaced today — the grader fails, and because
 the case is `xfail`, the runner reports XFAIL (suite-green), not FAIL.
+
+The grader also carries an anti-XPASS guard: it requires the result contain
+at least 3 enumerated-looking suggestion lines before it will accept an
+absence result as a pass. Without this guard, an agent that answered too
+briefly to enumerate anything (or errored, or hit a permission denial)
+would trivially satisfy "does not contain the opted-out id" — an XPASS that
+reflects nothing about `suggest_reachouts`'s actual behavior. The guard
+makes that vacuous path fail instead, so a genuine XPASS (once plan-13
+lands) can only happen when the tool actually suppressed the opted-out
+wake-up in a real, full listing.
 
 ## xfail
 

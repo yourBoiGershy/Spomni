@@ -221,10 +221,11 @@ fi
 ) > "$RESULT_JSON" 2>"${TMP_DIR}/stderr.log" &
 CLAUDE_PID=$!
 
-( sleep "$TIMEOUT_SECS"; kill -9 "$CLAUDE_PID" 2>/dev/null ) &
+( sleep "$TIMEOUT_SECS"; kill -9 "$CLAUDE_PID" 2>/dev/null ) >/dev/null 2>&1 &
 GUARD_PID=$!
 
 wait "$CLAUDE_PID" 2>/dev/null
+pkill -P "$GUARD_PID" 2>/dev/null || true
 kill "$GUARD_PID" 2>/dev/null
 wait "$GUARD_PID" 2>/dev/null
 
