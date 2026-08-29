@@ -1,14 +1,49 @@
 # First-run setup (macOS)
 
 Everything a new user must do ONCE to get Spomni capturing, filing, and
-answering. Work top to bottom; each step says how to verify itself before you
-move on.
+answering. **The fastest path: don't work through this by hand — open a
+Claude Code session in the cloned repo and say "run first-run setup from
+docs/SETUP.md".** The assistant executes everything it can on its own and
+hands you one short list of the things only you can do. Working manually
+top-to-bottom works too; each step says how to verify itself.
 
 > **Maintenance rule (for the assistant as much as for humans):** this file is
 > the single home for machine-level setup. Any session that discovers a new
 > required setup step — a permission, an auth flow, a config file, a gotcha —
 > adds it here in the same commit as the fix. Setup knowledge never lives only
 > in a session transcript or a plan file.
+
+## Instructions to the assistant running this setup
+
+- **Do everything you can yourself, first.** Never hand the user a step this
+  file marks as agent-side. Never mark a step done without running its
+  verification.
+- **Batch the human-only items into ONE consolidated prompt** (auth clicks,
+  app installs, the TCC grant, account choices) — don't drip questions one at
+  a time. While the user works through that list, keep executing agent-side
+  steps that aren't blocked on it.
+- **Most of this runs in parallel.** The Google lane, the Beeper lane, and
+  the scheduler prep (steps 3a, 3b, 5) are independent of each other — fan
+  them out concurrently; only their verifications wait on the matching human
+  action. Hard ordering: step 1's location decision before step 5's live
+  verification; step 2's store before anything writes data.
+- **Probe, don't assume, on step 1:** detect whether the repo sits under a
+  TCC-protected folder and prove launchd access with a throwaway probe job
+  (a launchd agent that just `ls`-es the repo dir) BEFORE installing lanes —
+  scheduled jobs fail invisibly otherwise (exit 126 in the lane's
+  launchd.log while manual terminal runs succeed).
+- Finish by running the full step-6 battery and showing the user a single
+  done/blocked summary.
+
+| Step | Agent does alone | Needs the human |
+|---|---|---|
+| 1 Location/TCC | Detect protected path, run launchd probe, verify after grant | Choose location; grant `/bin/bash` Full Disk Access (System Settings) |
+| 2 Clone + store | Clone repo, create dirs, wire `data/store` | Supply the private-repo URL (and push access) |
+| 3a Google | Verify connector tools respond after auth | `/mcp` OAuth for Gmail + Google Calendar |
+| 3b Beeper | Register MCP, write config.json from the example, chmod token, `--list-accounts` verify | Install Beeper Desktop, sign in, connect networks, paste token, toggle remote access OFF |
+| 4 Query layer | Verify the 6 query tools against the store | Approve the repo `.mcp.json` prompt |
+| 5 Scheduler | Copy template, fill absolute paths, `install`, kickstart, check `LAST_EXIT 0` | — (only step 1's grant, if that path was chosen) |
+| 6 Prove it | Entire test battery + check-sync + validate-store | — |
 
 ## 0. Prerequisites
 
