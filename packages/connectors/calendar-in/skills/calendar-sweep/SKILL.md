@@ -88,6 +88,12 @@ Events are under the top-level `events` array. Paginate via `pageToken`
 (pass the previous response's `nextPageToken`) until a response has no
 `nextPageToken` — that is the last page for that calendar.
 
+**Empty calendar — live-verified 2026-08-29:** a calendar with no events in
+the window returns an envelope with **no `events` key at all** (not an empty
+array), e.g. `{"accessRole":"owner","summary":"School","timeZone":"America/Toronto","updated":"..."}`.
+This is a valid no-results state, not an error — iterate `.events[]?` (or
+equivalent null-safe access) rather than assuming `events` is always present.
+
 **Per-calendar failure isolation:** if a call for a given calendar id
 errors (auth, not-found, rate limit, anything), log a line to
 `data/connectors/calendar/skipped-calendars.log` (calendar id + timestamp +
@@ -98,7 +104,8 @@ because one calendar failed.
 recurring series into concrete in-window instances (each with its own `id`
 and `start`/`end`) rather than returning the series master once, but this
 has not yet been confirmed against a real recurring event on a live sweep.
-Confirm on the first live run against a calendar with a recurring series
+The 2026-08-29 live sweep had no recurring event in-window, so this remains
+open — confirm on the first live run that does surface a recurring series
 and record the finding here (replacing this paragraph) before relying on
 it: if instances are NOT expanded, this skill needs an explicit instance-
 expansion step added before §4; if they ARE expanded, this note can be
@@ -131,26 +138,36 @@ Each event object observed live (2026-08-29, via `list_events`):
 }
 ```
 
-- `organizer`/`creator` are objects with at least `email` (no `displayName`
-  observed live; treat `displayName` as optional on both).
+- `organizer`/`creator` are objects with at least `email`; `displayName` and
+  `self: true` were also observed live on both — treat `displayName` as
+  optional on either.
 - The organizer is also flagged inside `attendees` via `"organizer": true`
   on that attendee entry; the user's own entry carries `"self": true`.
   Neither `self` nor `organizer` flags are used to filter hints — see §6.
-- `attendees[].displayName` was not present in the live sample; hints fall
-  back to bare email when no name is available.
+- `attendees[].displayName` was observed live (not present on every
+  attendee); hints fall back to bare email when no name is available.
+- Other fields seen live but requiring no handling change (the body is the
+  whole resource as-is): `attachments[]`, `conferenceUrl`,
+  `overrideReminders`, `availability`, `transparency`, `visibility`,
+  `guestPermissions`, `eventType: "FROM_GMAIL"`.
 - `start`/`end` normally carry `{dateTime, timeZone}` with a UTC-offset ISO
-  8601 timestamp. **Assumed, not live-verified:** all-day events use
-  `{date: "YYYY-MM-DD"}` instead of `dateTime` — this shape was not observed
-  on the live sweep (every sampled event was timed); handle it per §5 below,
-  but treat the exact field name/form as an assumption until a live all-day
-  event is captured and this note can be updated.
+  8601 timestamp. **Live-verified 2026-08-29:** all-day events use
+  `{date: "..."}` instead of `dateTime`, and through this connector the
+  `date` field arrives **already carrying the `T00:00:00Z` suffix**
+  (`"date": "2026-08-03T00:00:00Z"`), not the bare `YYYY-MM-DD` form the
+  general Google Calendar API convention would suggest. Handle both forms
+  per §5 below — the bare form remains possible per that convention even
+  though only the suffixed form was observed live.
 
 ## 5. occurred_at
 
 Event start normalized to UTC ISO 8601 (`YYYY-MM-DDTHH:MM:SSZ`):
 
 - Timed event (`start.dateTime` with a UTC offset) — convert to UTC.
-- All-day event (`start.date`, assumed shape per §4) — `<date>T00:00:00Z`.
+- All-day event (`start.date`, per §4) — if `start.date` already contains a
+  `T` (the live-observed form, e.g. `2026-08-03T00:00:00Z`), use it as-is;
+  otherwise (bare `YYYY-MM-DD`, per the general API convention) append
+  `T00:00:00Z`.
 
 `captured_at` is the sweep run's own current UTC time (same value reused for
 every item in the run, or per-item if the run is long — either is

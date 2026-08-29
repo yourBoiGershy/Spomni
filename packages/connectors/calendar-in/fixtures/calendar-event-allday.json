@@ -9,8 +9,8 @@
   "updated": "2026-08-20T09:00:00Z",
   "creator": {"email": "ops@example.org"},
   "organizer": {"email": "ops@example.org"},
-  "start": {"date": "2026-09-15"},
-  "end": {"date": "2026-09-16"},
+  "start": {"date": "2026-09-15T00:00:00Z"},
+  "end": {"date": "2026-09-16T00:00:00Z"},
   "attendees": [
     {"email": "ops@example.org", "organizer": true, "responseStatus": "accepted"},
     {"email": "user@example.com", "self": true, "responseStatus": "accepted"}
