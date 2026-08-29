@@ -1,6 +1,6 @@
 # package: core
 
-version: 0.3.0
+version: 0.4.0
 
 ## Purpose
 
@@ -18,7 +18,9 @@ nothing.
   `contracts/derived-index.md` (index.json + stats.json), `contracts/profile.md`
   (`data/store/profile.md`, the stated-preference singleton, per plan 11),
   `contracts/ranking-weights.md` (`data/store/ranking-weights.json`, signal-type
-  and tag calibration weights, per plan 11)
+  and tag calibration weights, per plan 11), `contracts/eval-case.md` (the
+  `packages/<pkg>/evals/cases/<name>/` format — prompt.md frontmatter,
+  graders/ protocol, xfail discipline, suite manifests — per plan 12)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
   `templates/profile.md`
 - Store scripts: `scripts/build-index.sh` (people/ → index.json),
@@ -26,7 +28,12 @@ nothing.
   `contracts/derived-index.md`), `scripts/validate-store.sh`, `scripts/wakeup-add.sh`
   (the one sanctioned way any package appends a wake-up entry),
   `scripts/gen-scale-store.sh` (generates an uncommitted synthetic large store for
-  perf runs)
+  perf runs), `scripts/eval-run.sh` (T2 agent-tier eval runner, forward-declared —
+  written by plan 12), `scripts/eval-run-skill.sh` (T3 skill-tier eval runner,
+  forward-declared — written by plan 12), `scripts/eval-judge.sh`
+  (structured-output haiku judge for eval graders, forward-declared — written by
+  plan 12), `scripts/eval-suite.sh` (eval suite-manifest runner + cost-capped
+  summary, forward-declared — written by plan 12)
 - Fixtures: `fixtures/store/` (synthetic personas), `fixtures/corrupted/`
 
 ## Consumes
@@ -47,4 +54,7 @@ Plan 01 (docs/plans/2026-08-29-01-contracts-and-store.md). `contracts/derived-in
 (docs/plans/2026-08-29-08-chat-mcp-query-layer.md). `contracts/profile.md`,
 `contracts/ranking-weights.md`, `templates/profile.md`, and the `wakeup.md`
 1.1.0 bump by plan 11
-(docs/plans/2026-08-29-11-preference-personalization.md).
+(docs/plans/2026-08-29-11-preference-personalization.md). `contracts/eval-case.md`
+by plan 12 (docs/plans/2026-08-29-12-eval-harness.md); the forward-declared
+`scripts/eval-run.sh` / `scripts/eval-run-skill.sh` / `scripts/eval-judge.sh` /
+`scripts/eval-suite.sh` are also plan 12, written in that plan's later work units.
