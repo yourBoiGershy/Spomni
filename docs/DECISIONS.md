@@ -108,6 +108,26 @@ rather than by feature noun.
 Revisit if: attention grows past ~2 plans of scope — split detection from delivery
 only if the feedback loop can become a contract.
 
+**mcp-stack** · 2026-08-29
+The chat MCP server (plan 08) is TypeScript with the official
+`@modelcontextprotocol/sdk`, run zero-build via Node ≥22 native type-stripping;
+`gray-matter` for frontmatter parsing. First real runtime code in the repo. Why: the TS
+SDK is the reference implementation with first-class stdio + streamable-HTTP transports;
+every Claude Code user already has Node (no second runtime); handlers are plain
+functions, testable against the fixture store.
+Revisit if: Node type-stripping proves flaky in the wild — add a build step, not a
+different language.
+
+**staleness-cache** · 2026-08-29
+The query MCP server never writes into the store. It detects stale index/stats
+(generated_at + mtime vs. newest store mtime) and regenerates via core's scripts into
+`${RA_CACHE_DIR:-$HOME/.cache/relationship-agent}/derived/`, serving from there; store
+copies of index.json/stats.json remain ingestion's to write. Every tool result carries
+`generated_at`. Why: preserves the single-writer rule while keeping answers fresh
+without depending on sweep timing.
+Revisit if: cache/store divergence confuses users — surface a reconcile hint, don't
+grant query write access.
+
 **delegation-without-gates** · 2026-08-29
 The repo runs the simplified harness: orchestration doctrine, worker/checker split,
 enforcement hooks, brief template, completion reports — but no gate system, attestation,
