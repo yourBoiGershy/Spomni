@@ -13,8 +13,10 @@ nothing.
 
 - Contracts (semver'd, each with a `schema_version`): `contracts/capture-event.md`,
   `contracts/person.md`, `contracts/interaction.md`, `contracts/signal-event.md`,
-  `contracts/wakeup.md` (1.1.0 — `fired-on`/`dismiss-reason`/`acted-on`/
-  `snooze-count` additions, per plan 11), `contracts/connector-interface.md`,
+  `contracts/wakeup.md` (1.2.0 — `kind`/`proposed-event`/`confirmed-on`/
+  `created-event-id` event-proposal additions, per plan 21; 1.1.0 added
+  `fired-on`/`dismiss-reason`/`acted-on`/`snooze-count`, per plan 11),
+  `contracts/connector-interface.md`,
   `contracts/derived-index.md` (index.json + stats.json), `contracts/profile.md`
   (`data/store/profile.md`, the stated-preference singleton, per plan 11),
   `contracts/ranking-weights.md` (`data/store/ranking-weights.json`, signal-type
@@ -58,3 +60,6 @@ Plan 01 (docs/plans/2026-08-29-01-contracts-and-store.md). `contracts/derived-in
 by plan 12 (docs/plans/2026-08-29-12-eval-harness.md); the forward-declared
 `scripts/eval-run.sh` / `scripts/eval-run-skill.sh` / `scripts/eval-judge.sh` /
 `scripts/eval-suite.sh` are also plan 12, written in that plan's later work units.
+The `wakeup.md` 1.2.0 event-proposal bump is by plan 21
+(docs/plans/2026-08-29-21-calendar-intelligence.md); `wakeup-add.sh`'s
+event-proposal creation flags are a later work unit of the same plan.
