@@ -263,11 +263,12 @@ CLAUDE_PID=$!
   if kill -0 "$CLAUDE_PID" 2>/dev/null; then
     kill -9 "$CLAUDE_PID" 2>/dev/null
   fi
-) &
+) >/dev/null 2>&1 &
 WATCHDOG_PID=$!
 
 wait "$CLAUDE_PID"
 CLAUDE_EXIT=$?
+pkill -P "$WATCHDOG_PID" 2>/dev/null || true
 kill "$WATCHDOG_PID" 2>/dev/null
 wait "$WATCHDOG_PID" 2>/dev/null
 

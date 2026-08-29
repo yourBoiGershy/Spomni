@@ -11,9 +11,15 @@ store, due 2026-09-05 — the earliest due date, so it is the single most
 overdue reach-out `suggest_reachouts` should surface first. The agent's
 answer must name James Okafor.
 
-Exits 0 (pass) if is_error is false and the result text contains "james
-okafor" in either slug form (james-okafor) or display form (James Okafor),
-case-insensitive. Exits 1 (fail) otherwise, printing what it found.
+Exits 0 (pass) if is_error is false and the result text contains EITHER the
+explicit `slug: james-okafor` line the prompt now requires, OR (fallback,
+for prior-format tolerance) "james okafor" in either slug form
+(james-okafor) or display form (James Okafor), case-insensitive. The slug
+line is checked first because it is the least ambiguous signal — haiku
+sometimes phrases the prose answer without a clean "James Okafor" token
+(e.g. splitting across a citation), which is why the prompt now asks for an
+unambiguous trailing slug line. Exits 1 (fail) otherwise, printing what it
+found.
 """
 
 import json
@@ -46,8 +52,18 @@ def main() -> int:
         print(f"FAIL: result field missing or not a string in {result_path}")
         return 1
 
-    # Accept slug form (james-okafor) or display form (James Okafor),
-    # case-insensitive, tolerant of either hyphen or space between names.
+    # Preferred: the explicit `slug: james-okafor` trailing line the prompt
+    # now requires — the least ambiguous signal, immune to prose phrasing.
+    slug_pattern = re.compile(r"slug:\s*james-okafor", re.IGNORECASE)
+    slug_match = slug_pattern.search(result_text)
+
+    if slug_match:
+        print(f"PASS: found expected slug line '{slug_match.group(0)}' in result text")
+        return 0
+
+    # Fallback: slug form (james-okafor) or display form (James Okafor)
+    # anywhere in the prose, case-insensitive, tolerant of either hyphen or
+    # space between names.
     pattern = re.compile(r"james[-\s]okafor", re.IGNORECASE)
     match = pattern.search(result_text)
 

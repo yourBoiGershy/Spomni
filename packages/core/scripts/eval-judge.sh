@@ -183,7 +183,7 @@ trap 'rm -f "$prompt_file"' EXIT
 judge_prompt=$(cat "$prompt_file")
 
 if [ -n "${RA_EVAL_DRY_RUN:-}" ]; then
-    printf 'claude -p <judge-prompt> --output-format json --json-schema %s --model %s --max-turns 1\n' "$JUDGE_SCHEMA" "$model"
+    printf 'claude -p <judge-prompt> --output-format json --json-schema %s --model %s --max-turns 3\n' "$JUDGE_SCHEMA" "$model"
     exit 0
 fi
 
@@ -197,7 +197,7 @@ trap 'rm -f "$prompt_file" "$result_file"; rm -rf "$work_dir"' EXIT
         --output-format json \
         --json-schema "$JUDGE_SCHEMA" \
         --model "$model" \
-        --max-turns 1 \
+        --max-turns 3 \
         > "$result_file" 2>&1
 ) &
 claude_pid=$!
@@ -205,12 +205,13 @@ claude_pid=$!
 (
     sleep "$timeout_secs"
     kill -0 "$claude_pid" 2>/dev/null && kill -9 "$claude_pid" 2>/dev/null
-) &
+) >/dev/null 2>&1 &
 watchdog_pid=$!
 
 wait "$claude_pid"
 claude_status=$?
 
+pkill -P "$watchdog_pid" 2>/dev/null || true
 kill -0 "$watchdog_pid" 2>/dev/null && kill "$watchdog_pid" 2>/dev/null
 wait "$watchdog_pid" 2>/dev/null
 
