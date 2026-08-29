@@ -32,8 +32,9 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 17 | Composio retirement & direct Google lanes (gmail-in, calendar-in on first-party claude.ai connectors) | connectors (composio-in teardown; gmail-in, calendar-in) + docs | 01, 14; decision composio-retired | Planned — plan file to author |
 | 18 | Query & chat live wiring (register the MCP server against the live store; chat with your own data) | query (server config) + harness docs | 08 | Planned — FIRST priority, plan file to author |
 | 19 | Scheduled syncs runner (one configurable scheduler for all capture lanes; restart-safe) | connectors/scripts + infrastructure docs | 13, 17 | Planned — plan file to author |
-| 20 | Backfill blitz & ship-day shakedown (file the real backlog, prove the loop end to end, TODAY) | cross-package (runs the machinery, builds none) | 03, 13, 18 | Planned — SHIP GATE, runs today |
+| 20 | Backfill blitz & ship-day shakedown (file the real backlog, prove the loop end to end, TODAY) | cross-package (runs the machinery, builds none) | 03, 13, 18 | Done (2026-08-29, chunk-20-backfill-shakedown; 45/45 accounted, 15 filed / 27 held / 3 quarantined, both audits green, beeper round-trip proven, query 6/6; gmail filed→query leg user-accepted as known gap; ship notes `docs/ship-notes-2026-08-30.md`) |
 | 21 | Calendar intelligence & event proposals (tell/schedule from messages; propose events, draft-only) | attention + query + connectors/calendar | 04, 05, 06, 17, 18 | Planned — plan file to author |
+| 22 | Onboarding deep backfill & priority seeding (backfill history on first run, seed tiers from participation signals) | connectors (backfill mode on direct lanes) + ingestion (seed pass, extends `specs/onboarding-tiering-seed.md`) + core (config) | 03, 15, 17 | Planned — plan file to author |
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
 attention-merge. Historical plan-number collisions (11/12 renumbered to 13–16 at merge)
@@ -152,23 +153,55 @@ proposal in the wake-up queue (golden-tested); confirming a proposal creates the
 via the connector, declining files silently; zero events ever created without explicit
 confirmation (eval-guarded).
 
+### 22 — Onboarding deep backfill & priority seeding
+
+**Context (from the chunk-20 live run, 2026-08-29).** The ship-gate backfill only
+filed what the incremental sweeps had already captured — a fresh install must
+instead backfill real history on first onboarding, then seed priorities. The
+existing spec `packages/ingestion/specs/onboarding-tiering-seed.md` already
+defines the sequence (backfill sweeps → filing → `build-stats.sh` → suggested
+tiers → user-confirmed writes, untiered is valid) but is frequency-only and
+still references the retired composio backfill mode.
+**Work.** (a) Port backfill mode to the direct lanes (gmail-in, calendar-in,
+beeper-in): date-range window, isolated checkpoint namespace, default window
+**6 months back, configurable on user request** (core config contract).
+(b) Extend the tier-suggestion mapping beyond frequency to **participation
+signals**: user replied/initiated → strong initial boost; co-attendance at an
+event with the user → boost; captured-but-never-answered senders (cold pitches,
+unanswered invites) → very low; group chats where the user never participates →
+low. Chunk-20 live examples recorded in the private ship note. (c) Keep every
+write user-confirmed per the spec's no-guilt presentation rules — signals
+suggest, the human tiers.
+**Agent path.** After 17: connectors worktree for backfill mode, ingestion for
+the seed pass amendment; plan-architect reconciles with plan 15's
+stated-preference provenance (stated always outranks derived).
+**Deliverables / proof of done.** Fresh-store onboarding run backfills the
+configured window on all three lanes (capture suites green, check-sync clean on
+backfilled events); tier suggestions carry a score breakdown naming their
+signals; the chunk-20 examples rank correctly (unanswered pitch = very low,
+non-participating group = low, active thread = boosted); zero tier writes
+without confirmation (eval-guarded); window override honored end to end.
+
 ## Execution order (current)
 
-**Ship deadline: 2026-08-30.** Pre-ship (today): 18 is done enough to chat (server
-registered as `spomni-query`); **20 runs NOW** — backfill filed, loop proven, ship
-notes written. 17 and 19 squeeze in today only if 20 clears early; otherwise they are
-day-one post-ship items (the beeper lane and composio lanes keep capturing meanwhile,
-so nothing is lost by shipping first).
+**Shipped 2026-08-30** (chunk 20 gate: GO — see `docs/ship-notes-2026-08-30.md`;
+zero data loss, audits green; gmail filed→query leg accepted as a known gap,
+closes with 17's lanes + first human email).
 
 Post-ship order:
-1. **17** — composio teardown + direct gmail/calendar lanes.
-2. **19** — scheduled syncs runner (needs 17's lanes to exist).
-3. **Post-ship monitoring** — the longitudinal organization-quality watch that used to
+1. **Query-chat live test** — reconnect `spomni-query` (fresh boot snapshot —
+   known issue 1 in the ship notes) and exercise chat over the filed store;
+   file defects against query.
+2. **17** — composio teardown + direct gmail/calendar lanes (in progress).
+3. **19** — scheduled syncs runner (needs 17's lanes to exist).
+4. **Post-ship monitoring** — the longitudinal organization-quality watch that used to
    be 20's trial: periodic check-sync/validate-store audits, defects filed per package.
-4. **12 (amendment unit) → 05 + 06 → 07** — the attention layer, honoring plan 15
+5. **22** — onboarding deep backfill & priority seeding (needs 17's lanes; extends
+   the onboarding-tiering-seed spec with participation signals + configurable window).
+6. **12 (amendment unit) → 05 + 06 → 07** — the attention layer, honoring plan 15
    personalization touchpoints.
-5. **21** — calendar intelligence, once 05/06 exist to carry its signals and cards.
-6. **09** — infrastructure continues alongside; **04**'s matching half rides with 05's
+7. **21** — calendar intelligence, once 05/06 exist to carry its signals and cards.
+8. **09** — infrastructure continues alongside; **04**'s matching half rides with 05's
    co-attendance needs.
 
 ## Streams (parallel-session worktrees)
