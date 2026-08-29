@@ -1,6 +1,6 @@
 # Contract: eval case
 
-`schema_version: 1.0.0`
+`schema_version: 1.1.0`
 
 The shared format every package authors quality-eval cases in, so one set of
 runner scripts (owned by `packages/core`) can execute cases from any package
@@ -93,11 +93,15 @@ harness extends.
 ## Suite manifest
 
 `packages/<pkg>/evals/suite.txt` — one case directory (repo-relative path)
-per line; `#`-prefixed lines are comments, blank lines ignored:
+per line; `#`-prefixed lines are comments, blank lines ignored. A line may
+also carry an inline trailing `# smoke` tag marking it part of the smoke
+subset (`RA_EVAL_SMOKE=1`, see below) — everything from the first `#`
+onward is stripped and trimmed before the path is resolved, so untagged
+lines and full-line comments are unaffected:
 
 ```
 # packages/query/evals/suite.txt
-packages/query/evals/cases/most-overdue
+packages/query/evals/cases/most-overdue        # smoke
 packages/query/evals/cases/interpretability
 packages/query/evals/cases/opt-out-respected
 packages/query/evals/cases/stated-outranks-revealed
@@ -105,7 +109,13 @@ packages/query/evals/cases/draft-never-send-read-only
 ```
 
 `eval-suite.sh` reads one or more manifests, dispatches each case to the
-runner matching its `tier`, and prints a summary.
+runner matching its `tier` in waves of `RA_EVAL_PARALLEL` concurrent
+cases (default 4; `RA_EVAL_PARALLEL=1` reproduces the original strictly
+serial behavior), and prints a summary. RESULT lines are always emitted
+in manifest order regardless of wave finish order. Parallel dispatch is
+safe because both runners (`eval-run.sh`, `eval-run-skill.sh`) mktemp
+their own worked directory and copy the fixture store before touching
+it, so concurrent cases never share mutable state.
 
 ## Result-line vocabulary
 
@@ -156,7 +166,10 @@ noted default.
 
 | Variable | Honored by | Effect |
 |---|---|---|
-| `RA_EVAL_MAX_COST_USD` | `eval-suite.sh` | Suite-wide cost cap; suite exits non-zero if the summed `total_cost_usd` across all run cases exceeds it. Default `2.00`. |
+| `RA_EVAL_MAX_COST_USD` | `eval-suite.sh` | Suite-wide cost cap in USD. Checked between waves (see `RA_EVAL_PARALLEL`); once the running total exceeds it, not-yet-dispatched cases are marked `RESULT SKIP reason=cost-cap` without running — up to one full wave of already in-flight cases may complete past the cap before it's checked. Default `2.00`. |
+| `RA_EVAL_PARALLEL` | `eval-suite.sh` | Number of cases dispatched concurrently per wave. Default `4`; `1` reproduces the original serial per-case dispatch. |
+| `RA_EVAL_SMOKE` | `eval-suite.sh` | Set to `1` to run only manifest lines carrying an inline trailing `# smoke` tag. A manifest with zero tagged lines prints a `SUITE NOTE:` and is skipped; if every manifest yields zero smoke lines the suite exits `2`. |
+| `RA_EVAL_RUNNER_AGENT` / `RA_EVAL_RUNNER_SKILL` | `eval-suite.sh` | Test hooks: absolute paths overriding the `eval-run.sh` / `eval-run-skill.sh` runner script paths. Default unchanged. |
 | `RA_EVAL_TIMEOUT_SECS` | `eval-run.sh`, `eval-run-skill.sh` | Wall-clock guard per case (backgrounded sleep-and-kill, no `timeout(1)`). Default `300`; `eval-judge.sh` defaults to `120`. |
 | `RA_EVAL_DRY_RUN` | `eval-run.sh`, `eval-run-skill.sh` | Set to `1` to print the `claude` invocation instead of running it, and emit `RESULT SKIP case=<name> reason=dry-run` in place of an actual result. |
 | `RA_EVAL_FORCE` | `eval-run.sh`, `eval-run-skill.sh` | Set to `1` to run a case despite it declaring `runnable-when` (bypasses the `SKIP`). |

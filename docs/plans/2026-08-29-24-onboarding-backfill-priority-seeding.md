@@ -342,6 +342,24 @@ fixture is doctored to pre-write a tier.
    Done with evidence. Fix rounds per doctrine (max 2, retry briefs carry
    diffs + failure output).
 
+### Scope addition (user-requested mid-chunk, 2026-08-29)
+
+**U15 [worker, core]. Eval-suite wave-parallel dispatch + smoke selector.**
+Depends-On: — (independent of U1–U14; rides in this PR by user request)
+The eval suite had grown to 26 serial model-session cases; wall-clock was the
+dispatch loop waiting on the API one case at a time. `eval-suite.sh` gains:
+wave-parallel dispatch (`RA_EVAL_PARALLEL`, default 4; cost cap checked
+between waves, overshoot ≤ one wave, `=1` reproduces serial semantics; safe
+because both runners already mktemp isolated worked dirs), an inline
+`# smoke` manifest tag + `RA_EVAL_SMOKE=1` subset selector for fast
+iteration, and `RA_EVAL_RUNNER_AGENT`/`RA_EVAL_RUNNER_SKILL` test hooks.
+eval-case.md's manifest section documents the tag. RESULT grammar, summary
+format, and exit codes unchanged. Verified with dry-run over the real
+manifests plus stub-runner tally/ordering/cost-cap/smoke proofs — no paid
+eval runs. Deferred: tagging `# smoke` lines in query/attention suite.txt
+files (their packages' territory — future chunks); a redundancy audit
+demoting deterministic eval cases to plain bash tests.
+
 ## Proof of done (mirrors ROADMAP §24)
 
 1. Fresh-store onboarding run backfills the configured window on all three
