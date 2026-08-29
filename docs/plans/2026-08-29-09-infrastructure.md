@@ -45,11 +45,15 @@ any device ◀──(Gmail drafts, rendered repo files — plan 07)── connec
   against the data repo: `pull` (fetch+merge, loud on conflict), `commit` (validate
   store → rebuild index → commit), `push` (with one pull-merge retry for concurrent
   session races). No-op cleanly when the store isn't a git repo.
-- Cloud environment spec (in `docs/runtime-cloud.md`): the setup script (install
-  Composio CLI, clone machinery repo), required env vars (`COMPOSIO_API_KEY` — with the
-  no-secrets-store caveat and rotation guidance), network access level, and the
-  routine definition for sweeps (cadence config; integrates plan 06's sweep skill,
-  skipping gracefully until it lands).
+- Cloud environment spec (in `docs/runtime-cloud.md`), recording the VERIFIED
+  2026-08-29 configuration (see composio-dual-transport): network access **full**
+  (Trusted 403s composio.dev); setup script installs the CLI pinned to
+  `COMPOSIO_INSTALL_VERSION=0.4.0` only — no login line (the Composio claude.ai
+  connector is the session transport; CLI login waits on a fresh dashboard-minted
+  `uak_` key and is optional until the sandbox proxy quirk resolves); env var
+  `COMPOSIO_API_KEY` documented with the no-secrets-store caveat and rotation
+  guidance; the routine definition for sweeps (cadence config; must verify routines
+  carry connectors — if not, the CLI lane becomes mandatory).
 - Heartbeat/deadman: each sweep stamps `last-sweep` in the data repo; staleness > 2×
   cadence surfaces as a wake-up entry — a dead schedule announces itself.
 - git-guard repo-scoping: the machinery repo's branch/push guard must not block the

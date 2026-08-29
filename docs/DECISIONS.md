@@ -170,6 +170,23 @@ privacy-purist variant, with hybrid-runtime's on-session-open sweeps as the floo
 Revisit if: Claude cloud ships a secrets store (move the key immediately), or the
 sandbox posture changes.
 
+**composio-dual-transport** · 2026-08-29
+Refines composio-hub (ingestion stream). Two transports to the same Composio account:
+(1) the claude.ai Composio connector (hosted MCP, one-time OAuth) is the transport for
+model-driven sessions — verified live in a cloud session on the data repo 2026-08-29,
+Gmail/Calendar/LinkedIn all active, no API key or login line needed; (2) the CLI
+(`composio execute`) remains the transport for deterministic scripts. Verified runtime
+facts: the cloud environment needs full network access (Trusted blocks composio.dev
+with 403); the CLI install must pin `COMPOSIO_INSTALL_VERSION=0.4.0` (the installer's
+latest-stable detection fails on Composio's release list); CLI network-backed commands
+currently return empty output inside the cloud sandbox (proxy quirk) — MCP is the
+reliable path there; CLI login requires a fresh dashboard-minted user API key
+(`uak_…` plus `--org ok_…`) — locally cached keys can be stale, validate against the
+API before shipping one into an environment.
+Revisit if: the sandbox proxy quirk resolves (scripts then work cloud-side), or
+scheduled routines turn out not to carry connectors (sweeps would then need the CLI
+lane, forcing the key fix).
+
 **delegation-without-gates** · 2026-08-29
 The repo runs the simplified harness: orchestration doctrine, worker/checker split,
 enforcement hooks, brief template, completion reports — but no gate system, attestation,
