@@ -1,0 +1,17 @@
+{
+  "id": "18f2a3b9c0d1e310",
+  "threadId": "18f2a3b9c0d1e310",
+  "labelIds": ["INBOX", "CATEGORY_UPDATES"],
+  "snippet": "Priya Nair viewed your profile and 3 other updates",
+  "payload": {
+    "headers": [
+      { "name": "From", "value": "LinkedIn <notifications-noreply@linkedin.com>" },
+      { "name": "To", "value": "Me <me@example.com>" },
+      { "name": "Cc", "value": "" },
+      { "name": "Subject", "value": "Priya Nair and 3 others viewed your profile" },
+      { "name": "Date", "value": "Sat, 29 Aug 2026 09:15:44 +0000" }
+    ]
+  },
+  "body_text": "See who's been checking out your profile this week. Priya Nair, Product Manager at Lumen Analytics, and 3 others viewed your profile.",
+  "_fixture_note": "BEST-GUESS shape per Plan 17 U2 — From domain is linkedin.com, driving classify.sh's linkedin-notification rule. Not yet live-verified. See fixtures/README.md."
+}

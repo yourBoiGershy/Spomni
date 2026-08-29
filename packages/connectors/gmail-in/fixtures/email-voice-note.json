@@ -1,0 +1,17 @@
+{
+  "id": "18f2a3b9c0d1e300",
+  "threadId": "18f2a3b9c0d1e300",
+  "labelIds": ["INBOX"],
+  "snippet": "ok so just grabbed coffee with dana whitfield, she's now leading...",
+  "payload": {
+    "headers": [
+      { "name": "From", "value": "Me <me@example.com>" },
+      { "name": "To", "value": "Me <me@example.com>" },
+      { "name": "Cc", "value": "" },
+      { "name": "Subject", "value": "debrief: coffee with dana [ra]" },
+      { "name": "Date", "value": "Sat, 29 Aug 2026 14:32:00 +0000" }
+    ]
+  },
+  "body_text": "ok so just grabbed coffee with dana whitfield, she's now leading the fintech partnerships team at her company, sounded stressed about the berlin move happening end of september, said she'd send me the deck she's building once its done, need to follow up on that in like three weeks",
+  "_fixture_note": "BEST-GUESS shape per Plan 17 U2 — subject carries the literal [ra] voice-note marker; self-sent (From == To == the user's own address), matching the retired composio-in convention. Not yet live-verified. See fixtures/README.md."
+}

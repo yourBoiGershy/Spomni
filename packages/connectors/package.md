@@ -15,8 +15,11 @@ match, rank, or file — that intelligence lives in `ingestion` and `attention`
 Each subdirectory is a sub-package and gets its own mini `package.md` when built:
 
 - `gmail-in/` — subject-tagged self-emails (voice notes), LinkedIn notification emails,
-  event-confirmation emails → typed capture events
-- `calendar-in/` — multi-calendar read-only pull → normalized event artifacts
+  event-confirmation emails → typed capture events; transport is the first-party
+  claude.ai Gmail connector (session-driven MCP tools), read-only
+- `calendar-in/` — multi-calendar read-only pull → normalized event artifacts;
+  transport is the first-party claude.ai Google Calendar connector
+  (session-driven MCP tools), read-only
 - `contacts-in/` — Google Contacts (birthdays, emails) → contact artifacts
 - `file-out/` — renders batches to `data/outbox/` + in-session display
 - `gmail-out/` — emails batches to the user's OWN address only (hard-constrained;
@@ -46,5 +49,5 @@ outbound delivery.
 
 ## Built by
 
-Plans 02 (gmail-in), 04 (calendar-in, connector half), 07 (file-out, gmail-out),
-13 (beeper-in).
+Plans 07 (file-out, gmail-out), 13 (beeper-in), 17 (gmail-in, calendar-in;
+docs/plans/2026-08-29-17-composio-retirement-direct-google-lanes.md).
