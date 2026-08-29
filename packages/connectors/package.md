@@ -21,6 +21,8 @@ Each subdirectory is a sub-package and gets its own mini `package.md` when built
 - `file-out/` — renders batches to `data/outbox/` + in-session display
 - `gmail-out/` — emails batches to the user's OWN address only (hard-constrained;
   draft-never-send)
+- `beeper-in/` — the user's own Beeper Client API (personal chats across bridged
+  networks, opt-in per network) → normalized capture events
 
 Shared input tooling (e.g. `scripts/normalize-capture.sh`) lives at the package root.
 
@@ -44,4 +46,5 @@ outbound delivery.
 
 ## Built by
 
-Plans 02 (gmail-in), 04 (calendar-in, connector half), 07 (file-out, gmail-out).
+Plans 02 (gmail-in), 04 (calendar-in, connector half), 07 (file-out, gmail-out),
+12 (beeper-in).
