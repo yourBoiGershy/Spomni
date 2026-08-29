@@ -128,6 +128,9 @@ wakeup-1.1.0-dismissed-valid:0:wakeup 1.1.0 dismissed with dismiss-reason: not-t
 wakeup-1.1.0-snooze-count:0:wakeup 1.1.0 with snooze-count: 2
 wakeup-1.1.0-invalid-dismissed-no-reason:1:wakeup 1.1.0 dismissed without dismiss-reason
 wakeup-1.1.0-invalid-dismissed-bad-reason:1:wakeup 1.1.0 dismissed with a dismiss-reason outside the enum
+wakeup-1.2.0-valid-proposal:0:wakeup 1.2.0 event-proposal with a well-formed proposed-event mapping
+wakeup-1.2.0-invalid-created-without-confirmed:1:wakeup 1.2.0 created-event-id set without confirmed-on — validator-checkable proof of the 1.2.0 invariant
+wakeup-1.2.0-invalid-proposal-no-proposed-event:1:wakeup 1.2.0 kind: event-proposal missing its required proposed-event mapping
 "
 
 while IFS=':' read -r fixture_name expected_status desc; do
@@ -168,6 +171,22 @@ if [ -x "$BUILD_STATS_TEST" ]; then
   fi
 else
   echo "FAIL: $BUILD_STATS_TEST not found or not executable"
+  STORE_TESTS_STATUS=1
+fi
+
+# --- delegate to the wakeup-add.sh golden test, tallying its exit status
+#     alongside this script's own ---
+WAKEUP_ADD_TEST="$SCRIPT_DIR/test-wakeup-add.sh"
+echo ""
+echo "--- test-wakeup-add.sh ---"
+if [ -x "$WAKEUP_ADD_TEST" ]; then
+  "$WAKEUP_ADD_TEST"
+  wakeup_add_status=$?
+  if [ "$wakeup_add_status" -ne 0 ]; then
+    STORE_TESTS_STATUS=1
+  fi
+else
+  echo "FAIL: $WAKEUP_ADD_TEST not found or not executable"
   STORE_TESTS_STATUS=1
 fi
 
