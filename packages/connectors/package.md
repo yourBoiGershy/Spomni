@@ -24,7 +24,8 @@ Each subdirectory is a sub-package and gets its own mini `package.md` when built
 - `beeper-in/` — the user's own Beeper Client API (personal chats across bridged
   networks, opt-in per network) → normalized capture events
 
-Shared input tooling (e.g. `scripts/normalize-capture.sh`) lives at the package root.
+Shared input tooling (e.g. `scripts/normalize-capture.sh`, and the sync scheduler
+`scripts/sync-scheduler.sh` + `scripts/sync-lib.sh`) lives at the package root.
 
 ## Provides
 
@@ -32,10 +33,13 @@ Shared input tooling (e.g. `scripts/normalize-capture.sh`) lives at the package 
   processed-message ledger
 - Normalized calendar-event and contact artifacts for `ingestion`
 - The output-adapter delivery lanes
+- The shared sync scheduler (`scripts/sync-scheduler.sh` + `scripts/sync-lib.sh`,
+  plan 19) — one configurable, restart-safe launchd runner for all input-lane
+  sweeps, replacing per-lane bespoke installers (e.g. beeper-in's plan-13 one)
 
 ## Consumes
 
-- `capture-event@^1`, `connector-interface@^1` (core)
+- `capture-event@^1`, `connector-interface@^1`, `sync-lanes@^1` (core)
 - First-party MCP servers / Claude connectors only (see DECISIONS.md:
   first-party-mcp-only)
 
