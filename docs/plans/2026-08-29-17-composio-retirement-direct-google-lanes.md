@@ -1,6 +1,6 @@
 # Plan 17: Composio retirement & direct Google lanes
 
-Status: Ready
+Status: Done (2026-08-29)
 Package: connectors (composio-in teardown; gmail-in, calendar-in build) + core
 (contract wording) + ingestion (spec pointer) + root docs
 Depends-on: 01, 14; decision `composio-retired`
@@ -297,4 +297,14 @@ decision (Out of scope).
 - **Filing/matching** of the new events (plans 03/04) and rewriting existing
   `composio-in/*` / bare-source inbox events (valid as written).
 
-Status: Ready
+Status: Done (2026-08-29). Evidence: suites green (capture 99, beeper 70, store
+20); calendar live sweep 6 captured / 4 dedup-skipped / 0 quarantined; gmail
+live sweep (bounded batch) 3 captured / 10 dedup-skipped / 0 quarantined, 17
+remain ledger-eligible; check-sync: zero findings on gmail-in/calendar-in
+events (3 pre-existing legacy failures out of scope); plan-14 caveat closed
+both halves (calendar organizer/creator + all-day shape; gmail To/Cc pre-split
+arrays, plaintextBody); composio-free grep-proven (3 sanctioned citations);
+Composio CLI logged out, legacy state dirs moved to
+data/backups/composio-ledgers-2026-08-29/. Residual: recurrence-expansion
+VERIFY-LIVE (no recurring event was in-window); dashboard API-key revocation +
+Google-account grant revocation are user dashboard steps.

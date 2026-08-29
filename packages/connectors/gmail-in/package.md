@@ -8,7 +8,7 @@ Read-only Gmail capture: subject-tagged self-emails (voice notes, `[ra]`
 subject marker), LinkedIn notification emails, and ordinary email — landed as
 typed capture events in `inbox/`. Transport is the first-party claude.ai
 Gmail connector, called **in-session** via its MCP tools
-(`mcp__claude_ai_Gmail__*` — VERIFY-LIVE, see
+(`mcp__claude_ai_Gmail__*`, live-verified 2026-08-29 — see
 `skills/gmail-sweep/SKILL.md` step 0), not a CLI or shell-out; there is no
 standalone Gmail API client in this package. Structuring/filing is out of
 scope here (`ingestion`'s job) — this package only guarantees access + lossless
@@ -17,14 +17,15 @@ raw capture, per "dumb edges, smart middle."
 ## Call convention
 
 The `gmail-sweep` skill instructs the running Claude session to call
-`mcp__claude_ai_Gmail__*` tools directly (list/search/get-class only) and pipe
-each item's result through Bash into
-`packages/connectors/scripts/normalize-capture.sh`. No tool name below is
-verified against a live server yet — every one carries an explicit
-`VERIFY-LIVE` marker in the skill file, and step 0 of every sweep run
-re-enumerates the actually-available tool set before doing anything else; if
-the live names differ from what's written, the sweep stops and reports rather
-than guessing.
+`mcp__claude_ai_Gmail__search_threads` (thread-level search, `pageSize` max
+50, `pageToken` pagination), `mcp__claude_ai_Gmail__get_thread`, and
+`mcp__claude_ai_Gmail__get_message` (both with `messageFormat:
+"PLAIN_TEXT"` recommended) directly, and pipe each item's result through
+Bash into `packages/connectors/scripts/normalize-capture.sh`. These names
+and the PLAIN_TEXT recommendation are live-verified 2026-08-29 (Plan 17,
+Phase 3 / U10); step 0 of every sweep run still re-enumerates the
+actually-available tool set before doing anything else, and stops and
+reports rather than guessing if the live surface has since changed.
 
 **Read-only, hard constraint** (`docs/DECISIONS.md#draft-never-send`): the
 sweep may call only list/search/get-class Gmail tools. Any tool whose name
@@ -38,9 +39,9 @@ explicitly as banned in the skill file (never called, not even to test).
   typed `email` / `voice-note` / `linkedin-notification` per
   `scripts/classify.sh`'s rules, subject to the capture-event contract's
   `type` enum
-- `fixtures/` — best-guess, synthetic-PII-only first-party Gmail tool output
-  shapes for offline sweep-logic development and test fixtures; corrected
-  against live shapes at Phase 3 live-verify (see `fixtures/README.md`)
+- `fixtures/` — live-verified (2026-08-29), synthetic-PII-only first-party
+  Gmail tool output shapes for offline sweep-logic development and test
+  fixtures (see `fixtures/README.md`)
 - `scripts/classify.sh` — deterministic, offline-testable typing helper
 
 ## Consumes
@@ -61,11 +62,16 @@ processed-message ledger, raw-item archive — never in the shared store).
 
 ## Out of scope (deferred)
 
-Backfill mode and a one-shot contacts-seed are deferred by Plan 17 pending a
-Phase 3 check of whether the first-party Gmail connector's tool surface
-offers equivalent tooling (date-range query beyond the 30-day checkpoint
-bound, contacts listing). Scheduling/recurring invocation is Plan 19's job —
-this package only guarantees the sweep is invokable as a single skill run.
+Backfill mode is deferred by Plan 17; date-range querying (`after:`/
+`before:` in `search_threads`) exists on this surface, so a
+backfill-equivalent sweep (widen the query window past the 30-day
+first-run bound) is possible if a later plan wants it — nothing here blocks
+it. A one-shot contacts-seed is **permanently deferred**, not
+pending-verification: live-verified 2026-08-29, no contacts/People tool
+exists on this connector's surface at all (see `skills/gmail-sweep/SKILL.md`
+step 0's "Not present on this surface" note); revisit only if the surface
+itself changes. Scheduling/recurring invocation is Plan 19's job — this
+package only guarantees the sweep is invokable as a single skill run.
 
 ## Built by
 

@@ -1,17 +1,16 @@
 {
   "id": "18f2a3b9c0d1e2f3",
   "threadId": "18f2a3b9c0d1e2f3",
+  "date": "2026-08-29T14:02:11Z",
+  "historyId": "3916961",
+  "internalDate": "1788012131000",
   "labelIds": ["INBOX", "UNREAD"],
+  "sender": "dana.whitfield@example.com",
+  "sizeEstimate": 4021,
   "snippet": "Hey, following up on the fintech partnerships sync we had last week...",
-  "payload": {
-    "headers": [
-      { "name": "From", "value": "Dana Whitfield <dana.whitfield@example.com>" },
-      { "name": "To", "value": "Me <me@example.com>" },
-      { "name": "Cc", "value": "Priya Nair <priya.nair@example.com>" },
-      { "name": "Subject", "value": "Re: fintech partnerships sync" },
-      { "name": "Date", "value": "Sat, 29 Aug 2026 14:02:11 +0000" }
-    ]
-  },
-  "body_text": "Hey, following up on the fintech partnerships sync we had last week. I'll send over the deck once it's finalized, hopefully by end of next week. Let me know if you want to grab coffee before the Berlin move.",
-  "_fixture_note": "BEST-GUESS shape per Plan 17 U2 — not yet live-verified against mcp__claude_ai_Gmail__get_message. See fixtures/README.md."
+  "subject": "Re: fintech partnerships sync",
+  "toRecipients": ["me@example.com"],
+  "ccRecipients": ["priya.nair@example.com"],
+  "plaintextBody": "Hey, following up on the fintech partnerships sync we had last week. I'll send over the deck once it's finalized, hopefully by end of next week. Let me know if you want to grab coffee before the Berlin move.",
+  "_fixture_note": "Live-verified 2026-08-29 shape (mcp__claude_ai_Gmail__get_thread / get_message, messageFormat=PLAIN_TEXT). ccRecipients element shape here is schema-asserted (same array-of-bare-address form as toRecipients) — not itself observed live, since no sampled live message carried a Cc. This field is not part of the real tool's response and must not be treated as one."
 }
