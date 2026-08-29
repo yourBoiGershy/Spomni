@@ -1,6 +1,9 @@
 # Plan 12: Eval harness (tool / agent / skill tiers)
 
-Status: Ready
+Status: Done (2026-08-29) — all waves + live-run fix pass landed. Live proof:
+query suite pass=3 xfail=2 xpass=0 in 2:01 wall / $0.20 on subscription auth;
+T1 40+9 (2 xfail pins); 8 T3 cases SKIP until plans 03/05/06. Flip condition
+for the xfails: plan-13 query-personalization integration.
 Package: core (shared runner scripts, eval-case contract) + query (T1 tests,
 T2 agent cases) + ingestion (T3 preference-skill cases) + attention (T3
 drift/proposal cases)
