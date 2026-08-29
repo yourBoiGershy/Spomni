@@ -1,19 +1,16 @@
 # Spec: onboarding tiering seed
 
-Status: spec (plan 11 unit 13, cold-start phase). Package: `packages/ingestion`
-(the confirmation write, per the single-writer rule) triggered once at
-first-run onboarding, downstream of `packages/connectors/gmail-in` /
-`packages/connectors/calendar-in`'s backfill mode (plan 11 unit 12,
-spec-level as of this writing) and `packages/core/scripts/build-stats.sh`.
-This spec does not redefine backfill mode or the filing-confirmation write
-path — it only fixes the sequence, the frequency-to-tier mapping, and the
+Status: spec (plan 11 unit 13, cold-start phase; amended by plan 24 unit 2 —
+6-month configurable window + participation-signal scoring). Package:
+`packages/ingestion` (the confirmation write, per the single-writer rule)
+triggered once at first-run onboarding, downstream of the three direct
+lanes' backfill modes — `packages/connectors/gmail-in` / `calendar-in`
+(skill backfill modes) and `packages/connectors/beeper-in` (`--backfill`),
+built by plan 24 (`docs/plans/2026-08-29-24-onboarding-backfill-priority-seeding.md`)
+— and `packages/core/scripts/build-stats.sh`. This spec does not redefine
+backfill mode or the filing-confirmation write path — it only fixes the
+sequence, the frequency-and-participation-to-tier mapping, and the
 presentation/no-guilt rules that sit between them.
-
-**Backfill deferral note:** backfill mode itself is deferred by plan 17 (the
-2026-08-29 direct-Google-lanes plan under `docs/plans/`) pending its Phase 3
-tool-surface check on the new first-party `gmail-in` / `calendar-in` lanes —
-this spec's sequence is otherwise unchanged and takes effect once that
-backfill mode ships.
 
 ## Scope
 
@@ -30,13 +27,14 @@ not a new write path.
 
 ## Sequence
 
-1. **Backfill sweeps run.** `packages/connectors/gmail-in` / `calendar-in`'s
-   backfill mode (gmail-sweep / calendar-sweep, date-range window, isolated
-   checkpoint namespace per plan 11 unit 12) runs once against the connected
-   accounts, producing normalized `inbox/` capture events the same shape
-   incremental sweeps produce — this spec does not change capture-event shape
-   or the backfill window default. (Backfill mode is deferred pending plan
-   17's Phase 3 tool-surface check — see the deferral note above.)
+1. **Backfill sweeps run.** The three direct lanes' backfill modes —
+   `packages/connectors/gmail-in` / `calendar-in` (skill backfill modes,
+   date-range window, isolated checkpoint namespace) and
+   `packages/connectors/beeper-in` (`--backfill`) — run once against the
+   connected accounts, producing normalized `inbox/` capture events the same
+   shape incremental sweeps produce — this spec does not change capture-event
+   shape. See "Window" below for the backfill window default and its
+   configuration.
 2. **Filing produces interactions.** The filing engine ingests those capture
    events through its normal path, creating `people/<slug>.md` (new-person
    flow, per `stated-preference-filing.md` (a).4) and `interactions/*.md`
@@ -46,10 +44,12 @@ not a new write path.
    (`packages/core/contracts/derived-index.md`) with, per slug: `touchpoints`,
    `median_gap_days`, `first_interaction`, `last_interaction`,
    `interactions[]`.
-4. **Frequency-derived tier suggestions are computed** (deterministic mapping,
-   below) from that `stats.json` snapshot — a suggestion is a value held in
-   memory / the onboarding session's working state, **never written to
-   `people/<slug>.md`** until the user confirms it in step 5.
+4. **Frequency-and-participation-derived tier suggestions are computed**
+   (deterministic scoring model, below) from that `stats.json` snapshot plus
+   participation signals derived from the preserved raw capture events — a
+   suggestion is a value held in memory / the onboarding session's working
+   state, **never written to `people/<slug>.md`** until the user confirms it
+   in step 5.
 5. **Suggestions are presented in one batch**, the user confirms/adjusts/skips
    each (presentation rule, below).
 6. **Confirmed tiers are filed by ingestion** as stated-by-user, via the exact
@@ -58,15 +58,24 @@ not a new write path.
    from `stats.json` slugs, not free text). Skipped or unconfirmed people are
    left with no `tier` key at all (see "Untiered is a valid end state" below).
 
-Steps 1–3 are the plan 11 unit 12 backfill mode's output and
+Steps 1–3 are the direct lanes' backfill modes' output and
 `build-stats.sh`'s normal operation respectively — this spec consumes both
 as-is and does not amend either.
 
-## Frequency-derived tier suggestions (deterministic mapping)
+## Window
 
-Computed once per person from that person's `stats.json` entry, using the
-window covered by the backfill (default 12 months per plan 11 unit 12 — this
-spec does not override that default).
+Backfill covers a **default 6-month** window, user-configurable via
+`packages/core/contracts/onboarding-backfill.md`'s `window_months` key (an
+integer ≥ 1, defaulting to 6 when the config file or key is absent). All
+three backfill lanes and the participation derivation below (see
+"Participation signals") honor the same configured window — there is no
+per-lane override.
+
+## Tier suggestions (deterministic scoring model)
+
+Computed once per person from that person's `stats.json` entry plus
+participation signals derived at seed time, over the window covered by the
+backfill (see "Window" above).
 
 **Insufficient-data gate (evaluated first):** if `touchpoints < 2`, there is
 no `median_gap_days` (per `derived-index.md`, a gap requires two dates) — the
@@ -76,26 +85,80 @@ single data point, and do not suggest `dormant` as a default either (that is
 still a guess about a real category the user must confirm, not a null value).
 These people remain untiered and are not offered a suggestion in this pass.
 
-**Band mapping**, for every person with `touchpoints >= 2` (uses the exact
-gap thresholds `packages/attention/specs/tier-drift.md`'s expected-cadence
-table already establishes for these same tier boundaries, so a person seeded
-here and later drifting is measured against the same yardstick):
+**Base band**, for every person with `touchpoints >= 2`, from
+`median_gap_days` (uses the exact gap thresholds
+`packages/attention/specs/tier-drift.md`'s expected-cadence table already
+establishes for these same tier boundaries, so a person seeded here and later
+drifting is measured against the same yardstick; ties at a boundary fall to
+the *closer* (warmer) tier — e.g. exactly `21` maps to `inner-circle`, not
+`close`):
 
-| `median_gap_days` | Suggested tier |
+| `median_gap_days` | Base band | Points |
+|---|---|---|
+| `<= 21` | `inner-circle` | 3 |
+| `> 21` and `<= 45` | `close` | 2 |
+| `> 45` and `<= 90` | `active` | 1 |
+| `> 90` | `dormant` | 0 |
+
+There is no ambiguous case: every integer `median_gap_days` value maps to
+exactly one row.
+
+**Participation signals**, derived at seed time from the preserved raw
+capture events via interactions' `source-capture` links (per
+`packages/core/contracts/interaction.md`) — these signals are derived,
+never written to any file; stated always outranks derived, per plan 15 /
+`docs/DECISIONS.md#preference-provenance`:
+
+- **`user-engaged` (+2):** at least one linked raw event in-window authored
+  by a `self` identity (from the onboarding-backfill config) with this
+  person a participant.
+- **`co-attended` (+1):** at least one `stats.json` interaction with
+  `calendar: true` in-window.
+- **`silent-group` (class LOW, score forced to 0):** no `user-engaged`, no
+  `co-attended`, and at least one linked raw event is a group event (three
+  or more participant hints).
+- **`never-answered` (class VERY-LOW, score forced to −1):** no
+  `user-engaged`, no `co-attended`, no linked group event — i.e. all
+  touchpoints are direct inbound the user never answered.
+
+Boosts (`user-engaged`, `co-attended`) are cumulative. The two penalty
+classes (`silent-group`, `never-answered`) apply only when both boosts are
+absent, and are mutually exclusive by the group test — a person can be in at
+most one penalty class.
+
+**Final score** = clamp(base band points + boost points, −1, 3); the penalty
+classes set the score directly (0 for `silent-group`, −1 for
+`never-answered`), overriding the base band's points. Suggested tier from
+final score:
+
+| Final score | Suggested tier |
 |---|---|
-| `<= 21` | `inner-circle` |
-| `> 21` and `<= 45` | `close` |
-| `> 45` and `<= 90` | `active` |
-| `> 90` | `dormant` |
+| `3` | `inner-circle` |
+| `2` | `close` |
+| `1` | `active` |
+| `<= 0` | `dormant` |
 
-Ties at a boundary fall to the *closer* (warmer) tier — e.g. exactly `21`
-maps to `inner-circle`, not `close` — matching the table's `<=` operators
-above (there is no ambiguous case: every integer `median_gap_days` value maps
-to exactly one row).
+Note: a person with two or more touchpoints all being unanswered cold
+inbound gets the `never-answered` (VERY-LOW) class, a final score of −1, and
+a suggested tier of `dormant`, ranked last in the batch (see "Ordering"
+below) — this is distinct from a single cold pitch, which never reaches
+this scoring step at all because it is excluded by the insufficient-data
+gate above.
 
-This mapping is intentionally the only judgment this spec makes from data
-alone, and it never writes anything by itself — it only populates what is
-offered to the user in step 5.
+**Breakdown string**, carried by every suggestion, for presentation and for
+fixture-checking:
+
+```
+suggested: <tier> | base: <band> (median_gap_days=<n>) | signals: <comma list with deltas, e.g. user-engaged(+2), co-attended(+1)>
+```
+
+Penalty classes render in the `signals` position as `class: never-answered
+(very low)` or `class: silent-group (low)` instead of a delta list. A person
+with no boosts and no penalty class renders `signals: none`.
+
+This scoring model is intentionally the only judgment this spec makes from
+data alone, and it never writes anything by itself — it only populates what
+is offered to the user in step 5.
 
 ## Presentation rule
 
@@ -105,9 +168,10 @@ offered to the user in step 5.
   have N people to review" resurfacing on a later day. If the user closes the
   session partway through, whatever was not confirmed in that pass is treated
   exactly like a skip (see below) — not queued for a second pass.
-- **Cap and ordering.** Present at most 20 people, most-frequent first
-  (ascending `median_gap_days`, i.e. warmest suggestion first; ties broken by
-  descending `touchpoints`). If fewer than 20 people clear the
+- **Cap and ordering.** Present at most 20 people, ordered by final score
+  descending (warmest/most-engaged first), ties broken by `median_gap_days`
+  ascending, then `touchpoints` descending, then slug ascending. If fewer
+  than 20 people clear the
   insufficient-data gate, present all of them. If more than 20 clear the
   gate, the remaining people beyond the cap are **not** presented and are not
   queued for later — they stay untiered exactly like a skip, for the same
@@ -185,23 +249,39 @@ tiering pressure after onboarding is tier-drift's job, not this spec's.
 
 ## Deterministic fixture-checkability
 
-Given a fixture `stats.json` (per-slug `touchpoints`, `median_gap_days`) and a
-fixture cap/ordering scenario, a checker can hand-verify without judgment
-calls:
+Given a fixture `stats.json` (per-slug `touchpoints`, `median_gap_days`,
+`interactions[]` with `calendar` flags), a fixture set of preserved raw
+capture events linked via `source-capture`, and a fixture cap/ordering
+scenario, a checker can hand-verify without judgment calls:
 
 1. Which people clear the insufficient-data gate (`touchpoints >= 2`).
-2. Each cleared person's exact suggested tier from the band table.
-3. The presented batch's exact order (ascending `median_gap_days`, ties by
-   descending `touchpoints`) and which people fall inside vs. outside the
-   20-person cap.
-4. That a confirmed/adjusted person ends the pass with exactly the tier the
+2. Each cleared person's derived participation signals from the fixture raw
+   events — `user-engaged`, `co-attended`, `silent-group`, or
+   `never-answered`, per the definitions above.
+3. Each cleared person's exact base band, final score (clamped, with penalty
+   classes overriding as specified), and suggested tier.
+4. The presented batch's exact order (final score descending, then
+   `median_gap_days` ascending, then `touchpoints` descending, then slug
+   ascending), including where penalty-class people fall, and which people
+   fall inside vs. outside the 20-person cap.
+5. Each presented suggestion's exact breakdown string, matching the format
+   above (including `class: ...` rendering for penalty classes and
+   `signals: none` where no signal applies).
+6. That a confirmed/adjusted person ends the pass with exactly the tier the
    user chose (suggestion or override) written to `people/<slug>.md`, and a
    skipped or capped-out person ends the pass with no `tier` key at all.
 
 ## Out of scope
 
-- Backfill mode itself (date-range window, checkpoint isolation) — plan 11
-  unit 12's spec, consumed as-is here.
+- Backfill mode itself (date-range window, checkpoint isolation) — the three
+  direct lanes' backfill modes (`gmail-in` / `calendar-in` skill backfill
+  modes, `beeper-in --backfill`), consumed as-is here.
+- The `onboarding-backfill.tsv` config format and `window_months` validation
+  — `packages/core/contracts/onboarding-backfill.md`, consumed as-is here.
+- The participation-derivation script's implementation details (identity
+  resolution against `self`, group-event participant-hint counting) —
+  `packages/ingestion/scripts/derive-participation.sh`, consumed as-is here;
+  this spec only specifies the scoring model those signals feed.
 - The mechanics of the confirmation write (person resolution, frontmatter
   overwrite, ambiguity handling) — `stated-preference-filing.md` (a), reused
   as-is; this spec only supplies the suggestions that feed that path's input.
