@@ -1,117 +1,117 @@
-# Plan 09: Infrastructure — sync, hub runtime, egress hygiene
-Status: Ready
-Package: core (store-sync script) + harness (`.claude/hooks/` guard) + docs; integrates attention's sweep (06)
-Depends-on: 01; integrates 06's sweep entry point; constrains the mcp stream's remote surface
+# Plan 09: Infrastructure — cloud runtime, data-repo discipline, egress hygiene
+Status: In progress (data repo created + scaffolded 2026-08-29)
+Package: core (store-sync script) + harness (`.claude/hooks/` guards) + docs; integrates attention's sweep (06)
+Depends-on: 01; integrates 06's sweep entry point and 08's Composio lanes; constrains the mcp stream's remote surface
 
 ## Objective
-Make the system reachable from any device at any time without chasing "always connected":
-capture and delivery are store-and-forward over surfaces every device already has, the
-private data repo is the sync rendezvous, and exactly one always-on hub runs the sweeps.
+Zero self-hosted infrastructure, reachable from any device: the private data repo on
+GitHub is the authoritative store and rendezvous, Claude Code cloud sessions are the
+interactive surface (phone included), scheduled routines run the sweeps, and the
+Composio CLI carries all outside-world reads identically in every runtime.
 Simultaneously make the open-source posture honest: a finite, enumerated, mechanically
-guarded list of lanes where person-data ever leaves the machine.
+guarded list of lanes where person-data ever leaves the store.
 
 ## Context
 Read docs/PROJECT-CONTEXT.md first. Decisions that bind this plan:
-- **git-as-sync-protocol** — git is the multi-device sync protocol; devices append only to
-  `inbox/`, the hub writes everything else, so sync is conflict-free by construction; the
-  store stays plain files and single-writer setups may use any synced folder.
-- **home-hub-tailscale** — the always-on runtime is a user-owned machine over Tailscale;
-  degradation floor is on-session-open sweeps (hybrid-runtime); cloud scheduled agents are
-  explicit opt-in only.
-- **pii-egress-allowlist** — every egress lane is enumerated in `docs/EGRESS.md`; the
+- **cloud-native-runtime** (supersedes home-hub-tailscale) — cloud sessions + routines
+  against the data repo's own `main`, direct commits, no PRs; `COMPOSIO_API_KEY` in the
+  cloud environment env vars (no secrets store yet — accepted); home hub demoted to
+  privacy variant.
+- **composio-hub** — outside-world access is `composio execute` CLI shell-out; works in
+  any runtime with the key present.
+- **git-as-sync-protocol** — git carries history, atomicity, and rendezvous; the store
+  stays plain files.
+- **pii-egress-allowlist** — every egress lane enumerated in `docs/EGRESS.md`; the
   public repo mechanically cannot carry real data.
-- **gmail-first-capture** — the universal capture lane is email; nothing in this plan may
-  add a capture requirement beyond it.
-- **code-data-separation** — this plan touches machinery and docs only; `data/` shape is
-  read from core's contracts.
+- **code-data-separation** — machinery public, store private; sessions bridge them by
+  cloning the machinery repo into the data-repo sandbox (`machinery/`, gitignored).
 
-The topology this plan builds:
+Standing state (done 2026-08-29): private repo `relationship-agent-data` created and
+scaffolded per core contracts (inbox/people/interactions/wakeups+signals, generated
+index.json, bootstrap CLAUDE.md that clones the machinery repo); local checkouts
+symlink `data/store` → the clone; empty store passes `validate-store.sh`.
+
+The topology:
 
 ```
-any device ──(self-email / future iOS-Shortcut commit)──▶ inbox/ in private data repo
-                                                                │
-                            always-on hub: pull → sweep (plan 06) → commit → push
-                                                                │
+any device ──(self-email / Composio lanes)──▶ user accounts ──▶ sweeps pull → inbox/
+phone/laptop ──(claude.ai/code cloud session on data repo)──▶ talk, debrief, query
+scheduled routine ──(same cloud environment)──▶ sweep → commit to data repo main
 any device ◀──(Gmail drafts, rendered repo files — plan 07)── connectors-out
-      │
-      └──(interactive: Tailscale to hub; MCP server itself = mcp stream's territory)
 ```
 
 ## Deliverables
-- `packages/core/scripts/store-sync.sh` — the sync primitive every runtime calls:
-  `pull` (fetch + merge, fail loudly on any conflict — a conflict means the single-writer
-  discipline was violated, never auto-resolve), `commit <lane>` (stages only the paths the
-  calling lane is allowed to write: `device` → `inbox/` additions only; `hub` → everything),
-  `push`. Bash 3.2 portable, no-op cleanly when `data/` is not a git repo (synced-folder
-  setups).
-- Sync discipline doc section in `docs/runtime-hub.md`: the append-only device lane, the
-  hub-as-sole-derived-writer rule, and why conflicts are structurally impossible when it's
-  followed.
-- `docs/EGRESS.md` — the allowlist: the five v1 lanes from the pii-egress-allowlist
-  decision, each with what may flow through it and what must not (told-by-user facts never
-  in web queries), plus the standing rule that adding a lane requires a DECISIONS entry.
-- PII-scan guard, three enforcement points sharing one scan script:
-  (a) `.claude/hooks/pii-guard.sh` — harness PreToolUse guard on `git commit`/`git push`
-  in the machinery repo; (b) a native git `pre-push` hook (installed by a setup script,
-  covers human pushes outside Claude sessions) — the push boundary is the one that
-  matters in a public repo, since a pushed branch is world-readable whether or not it
-  ever merges; (c) the same script CI-runnable as a **required PR check**, so no PR
-  carrying real-looking data can merge. The scan flags real-looking emails, phone
-  numbers, and non-reserved domains outside the synthetic-fixture conventions (fixtures
-  use `example.com`/`example.org` and reserved numbers); blocks with a named finding,
-  never silently. Also asserts `data/` remains gitignored.
-- Hub runtime kit in `docs/runtime-hub.md`: host options (per home-hub-tailscale),
-  Tailscale setup, a launchd/cron template that runs `store-sync.sh pull` → plan 06's
-  sweep → `store-sync.sh commit hub && push`, and cadence config.
-- Heartbeat/deadman: each hub sweep stamps `last-sweep` (inside the data repo, so every
-  device can see it); a staleness check (> 2× cadence) surfaces as a wake-up queue entry —
-  silence must be impossible, a dead hub announces itself.
+- `packages/core/scripts/store-sync.sh` — the write discipline every runtime uses
+  against the data repo: `pull` (fetch+merge, loud on conflict), `commit` (validate
+  store → rebuild index → commit), `push` (with one pull-merge retry for concurrent
+  session races). No-op cleanly when the store isn't a git repo.
+- Cloud environment spec (in `docs/runtime-cloud.md`): the setup script (install
+  Composio CLI, clone machinery repo), required env vars (`COMPOSIO_API_KEY` — with the
+  no-secrets-store caveat and rotation guidance), network access level, and the
+  routine definition for sweeps (cadence config; integrates plan 06's sweep skill,
+  skipping gracefully until it lands).
+- Heartbeat/deadman: each sweep stamps `last-sweep` in the data repo; staleness > 2×
+  cadence surfaces as a wake-up entry — a dead schedule announces itself.
+- git-guard repo-scoping: the machinery repo's branch/push guard must not block the
+  data repo's designed direct-to-main flow — scope the guard to the machinery repo's
+  own paths/remotes.
+- PII-and-secrets scan guard, three enforcement points sharing one scan script:
+  (a) `.claude/hooks/pii-guard.sh` (harness guard on commit/push in the machinery
+  repo); (b) a native git `pre-push` hook installed by a setup script — the push
+  boundary is what matters in a public repo, a pushed branch is world-readable whether
+  or not it merges; (c) CI as a **required PR check**. Flags real-looking emails,
+  phone numbers, non-reserved domains outside synthetic-fixture conventions
+  (`example.com`/`example.org`, reserved numbers) AND credential-shaped strings
+  (API keys, tokens). Asserts `data/` stays gitignored. Named findings, never silent.
+- `docs/EGRESS.md` — the allowlist per pii-egress-allowlist, updated for this
+  topology: LLM provider + provider sandbox (cloud-native-runtime), the private data
+  repo host, the user's own accounts via Composio (payloads transit Composio's cloud;
+  retention caveat from composio-hub), public web-search queries (public-sphere
+  identifiers only — told-by-user facts never leave in a query), rendered deliveries
+  to the user's own surfaces. Adding a lane requires a DECISIONS entry.
+- Home-hub appendix in `docs/runtime-cloud.md`: the Tailscale privacy variant, kept
+  current enough to be followable, explicitly non-default.
 
 ## Work units
 Wave A (parallel):
-1. [worker] `packages/core/scripts/store-sync.sh` — pure git ops, lane-scoped staging,
-   loud conflict failure, non-git no-op path.
-2. [worker] Tests for store-sync: two clones simulate device + hub; device appends to
-   `inbox/` while hub rewrites `people/` + `index.json` → both sync clean; same-path
-   double-write → loud failure; non-git dir → clean no-op.
-3. [worker] `docs/EGRESS.md` + `docs/runtime-hub.md` — the allowlist and the hub kit
-   docs (host options, Tailscale, sync discipline section, cadence config).
+1. [worker] `packages/core/scripts/store-sync.sh` — pull/commit/push discipline,
+   validate+reindex before commit, loud conflicts, one pull-merge retry, non-git no-op.
+2. [worker] Tests for store-sync: commit rejects an invalid store; index regenerated;
+   push race (simulated non-fast-forward) retries once then fails loudly; non-git dir
+   no-ops.
+3. [worker] `docs/EGRESS.md` + `docs/runtime-cloud.md` (environment spec, setup
+   script content, routine definition, heartbeat rule, home-hub appendix).
 
 Wave B (after A):
-4. [worker] The shared scan script + its three mounts: `.claude/hooks/pii-guard.sh`
-   (harness guard on commit/push), git `pre-push` hook + installer, CI workflow as a
-   required PR check — synthetic-fixture conventions enforced, `data/` gitignore
-   asserted, findings named.
-5. [worker] Hub schedule template (launchd + cron variants) invoking sync → sweep → sync,
-   plus the `last-sweep` heartbeat stamp and the staleness→wake-up rule (via core's
-   `wakeup-add.sh`, honoring the single-writer rule).
-6. [checker] End-to-end sim on fixtures: seed two clones, run the full hub cycle
-   unattended, verify clean sync both directions, heartbeat stamped, guard catches a
-   planted fake-PII fixture violation, and a stale heartbeat produces exactly one wake-up.
+4. [worker] The shared scan script + its three mounts (harness hook, git pre-push +
+   installer, CI required check) — PII patterns + credential patterns, gitignore
+   assertion, named findings.
+5. [worker] git-guard repo-scoping + the sweep-side heartbeat stamp and
+   staleness→wake-up rule (via core's `wakeup-add.sh`).
+6. [checker] End-to-end sim on fixtures: clone the (fixture) store fresh, run
+   store-sync pull→commit→push against a bare remote, verify validate-gate blocks a
+   bad store, heartbeat stamps, planted fake-PII and fake-API-key both caught by the
+   scan, stale heartbeat yields exactly one wake-up.
 
 ## Interfaces
-Consumes: store contracts (01); plan 06's sweep entry point (optional at runtime — the
-schedule template skips it with a log line until 06 lands); core's `wakeup-add.sh` for the
-deadman entry.
-Produces: the sync primitive every runtime calls; `docs/EGRESS.md`, which binds every
-stream — in particular the mcp stream's remote answer surface must ship inside lane (1)/(5)
-semantics (answers leave, the store does not) and must sit behind Tailscale or equivalent
-authenticated private transport, never a public tunnel.
+Consumes: store contracts + scripts (01); plan 06's sweep entry point (optional at
+runtime); composio-in lanes (08); core's `wakeup-add.sh`.
+Produces: the write discipline every session and routine uses; `docs/EGRESS.md`,
+binding every stream — the mcp stream's remote answer surface ships answers, never the
+store, and any transport it exposes must be authenticated/private.
 
 ## Proof of done
-A note self-emailed from a phone lands in `inbox/` and is on the hub after its next cycle
-with zero manual steps; the two-clone sim syncs conflict-free both ways and fails loudly
-on a planted discipline violation; the hub cycle runs unattended from the schedule
-template with a clean log; killing the hub surfaces a staleness wake-up within 2× cadence;
-the pii-guard blocks a planted real-looking email address in a fixture; `docs/EGRESS.md`
-enumerates every lane and nothing in the repo transmits outside them.
+A cloud session opened on the data repo from a phone can debrief and commit with zero
+manual steps; the scheduled routine runs the sweep unattended in the cloud environment
+and its commit appears on the data repo's main; the two-remote sim passes; killing the
+schedule surfaces a staleness wake-up; the scan blocks both a planted real-looking
+email and a planted API key; `docs/EGRESS.md` enumerates every lane and nothing in the
+repo transmits outside them.
 
 ## Out of scope
-- The query MCP server itself (mcp stream's territory — this plan only sets the transport
-  and egress constraints it must obey)
-- iOS-Shortcut→GitHub capture lane (deferred in ROADMAP; `store-sync.sh`'s device lane is
-  designed to receive it later)
+- Machinery-as-plugin packaging (its own later chunk — see ROADMAP Later)
+- The query MCP server (mcp stream)
 - Push notifications to the phone (output-adapter concern)
-- Encryption-at-rest of the data repo beyond what the host provides (document as a later
-  hardening item in EGRESS.md, don't build)
-- Local-model runtime (the revisit trigger on pii-egress-allowlist)
+- Encryption-at-rest beyond what GitHub provides (documented in EGRESS.md as a
+  hardening note)
+- Local-model runtime (revisit trigger on pii-egress-allowlist)

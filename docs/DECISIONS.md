@@ -153,6 +153,23 @@ finite, checkable egress surface is the only privacy claim that survives scrutin
 "nothing is ever sent anywhere" is false the moment an LLM reads the store.
 Revisit if: a local-model runtime becomes practical — lane (1) then becomes optional.
 
+**cloud-native-runtime** · 2026-08-29
+Supersedes home-hub-tailscale as the default runtime. The private data repo
+(`<user>/relationship-agent-data` on GitHub) is the authoritative store and the
+rendezvous point; on-demand sessions open it in Claude Code cloud from any device
+(claude.ai/code — phone included); scheduled routines run the sweeps against the same
+repo, in a cloud environment whose setup script installs the Composio CLI and clones
+the machinery repo. Data-repo flow is direct commits to its own `main` — no PRs, no
+review ceremony; git history is the undo button (the machinery repo keeps its
+branch/PR doctrine). Accepted trade-offs (user decision, this date): store content
+transits the provider sandbox during runs; `COMPOSIO_API_KEY` lives in the cloud
+environment's env vars because no dedicated secrets store exists yet — values are
+visible to the account, so the key must be rotatable, minted for this use, and never
+committed to either repo. Home hub + Tailscale is demoted to the documented
+privacy-purist variant, with hybrid-runtime's on-session-open sweeps as the floor.
+Revisit if: Claude cloud ships a secrets store (move the key immediately), or the
+sandbox posture changes.
+
 **delegation-without-gates** · 2026-08-29
 The repo runs the simplified harness: orchestration doctrine, worker/checker split,
 enforcement hooks, brief template, completion reports — but no gate system, attestation,
