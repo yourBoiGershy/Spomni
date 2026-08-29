@@ -15,6 +15,7 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 05 | Signal engine | attention (detection/ranking) | 01, 02 (email lanes), 04 (co-attendance) | Ready |
 | 06 | Wake-up scheduler | attention (queue/sweeps) | 01; orchestrates 03/05 outputs | Ready |
 | 07 | Output skills & adapters | query + connectors/file-out, gmail-out | 01; 06 for nudge firing | Ready |
+| 08 | Infrastructure: sync, hub, egress | core (sync script) + harness guard + docs | 01; integrates 06's sweep | Ready |
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
 attention-merge. Plan 04 spans a thin connector plus ingestion-side matching — see
@@ -30,7 +31,7 @@ to resync — never rebase). Streams may run concurrently with each other.
 |---|---|---|---|
 | `ingestion/` | `stream-ingestion` | connectors-in + ingestion (data imports: gmail, calendar, user inputs; messages deferred) | 02 → 04 → 03 |
 | `mcp/` | `stream-mcp` | query + connectors-out (answer surface, briefs, model access) | 07 (06-dependent parts last) |
-| `infrastructure/` | `stream-infrastructure` | phone access / remote runtime / sync — **no plan yet; needs planning first** | TBD |
+| `infrastructure/` | `stream-infrastructure` | sync protocol + hub runtime + egress hygiene (plan 08; decisions git-as-sync-protocol, home-hub-tailscale, pii-egress-allowlist) | 08 |
 
 Chunks 05/06 (attention) are unassigned — schedule after 02/04 land, either in a fourth
 worktree or in `ingestion/` once it goes quiet. The single-writer rule still applies
