@@ -15,7 +15,7 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 05 | Signal engine | attention (detection/ranking) | 01, 02 (email lanes), 04 (co-attendance) | Ready |
 | 06 | Wake-up scheduler | attention (queue/sweeps) | 01; orchestrates 03/05 outputs | Ready |
 | 07 | Output skills & adapters (briefs, nudge cards, file-out/gmail-out; query skill superseded by 08) | query + connectors/file-out, gmail-out | 01; 06 for nudge firing | Ready |
-| 08 | Chat MCP & query data layer | query (MCP server) + core (stats contract, fixtures) | 01 | In progress (stream-mcp) |
+| 08 | Chat MCP & query data layer | query (MCP server) + core (stats contract, fixtures) | 01 | Done (2026-08-29, stream-mcp) |
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
 attention-merge. Plan 04 spans a thin connector plus ingestion-side matching — see
