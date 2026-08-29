@@ -99,6 +99,9 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   (override via `HARNESS_PROTECTED_PREFIXES` in the hook's environment).
 - One package = one focused agent/session's territory; cross-package needs are
   met via the other package's `package.md` + core contracts, never its files.
-- No build/test commands yet — when the first scripts land, add typecheck/
-  lint/test commands here and in `/implement` step 4.
-  <!-- PARAMETERIZE: fill in when the project grows real tooling -->
+- Test commands (bash 3.2, no npm/jest — run both before any merge):
+  `bash packages/core/tests/run-store-tests.sh` and
+  `bash packages/connectors/tests/run-capture-tests.sh`.
+  Store sanity: `bash packages/core/scripts/validate-store.sh <store-dir>`
+  (checks people/interactions/wakeups only — not inbox/).
+  <!-- PARAMETERIZE: extend as more packages grow suites -->

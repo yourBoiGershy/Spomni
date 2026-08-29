@@ -15,7 +15,7 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 05 | Signal engine | attention (detection/ranking) | 01, 02 (email lanes), 04 (co-attendance) | Ready |
 | 06 | Wake-up scheduler | attention (queue/sweeps) | 01; orchestrates 03/05 outputs | Ready |
 | 07 | Output skills & adapters | query + connectors/file-out, gmail-out | 01; 06 for nudge firing | Ready |
-| 08 | Composio access layer | connectors/composio-in (+ shared normalizer) | 01 | In progress (2026-08-29, branch chunk-08-composio-access) |
+| 08 | Composio access layer | connectors/composio-in (+ shared normalizer) | 01 | Done (2026-08-29, branch chunk-08-composio-access; live-proven: 20 real events, 3 lanes, zero dupes) |
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
 attention-merge. Plan 04 spans a thin connector plus ingestion-side matching — see

@@ -123,6 +123,22 @@ the write (but still append nothing new) if the key + hash pair is already
 present. On a successful new/changed capture, append `<key> <hash> <ISO8601
 timestamp>` to the ledger.
 
+**Two scopes for the hash, do not conflate them:**
+
+- **Hash scope (dedup key): the `data` sub-object only.** The CLI response
+  wrapper's `logId` changes on every single call, even when `data` is
+  byte-for-byte identical (live-verified 2026-08-29: two `LINKEDIN_GET_MY_INFO`
+  calls with identical `data` produced different `logId`s and a stable hash —
+  `712770ac…` — when hashed over `data` alone). Hash the whole wrapper
+  (including `logId`) and dedup breaks forever, since every call would look
+  "changed." Always hash `.data` (after resolving `storedInFile` if
+  applicable), never the wrapper.
+- **Capture-event body scope: the full raw wrapper, verbatim.** This is
+  unchanged from "Per-item capture" below — the body written to `inbox/` is
+  the entire `composio execute` response object (`successful`, `data`,
+  `error`, `logId`, everything), byte-for-byte. Only the dedup-key computation
+  is narrowed to `data`; the stored capture event is not.
+
 ## Per-item capture
 
 Every new-or-changed item becomes exactly one capture event, written through

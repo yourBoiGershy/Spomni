@@ -1,5 +1,5 @@
 # Plan 08: Composio access layer (the pipes)
-Status: In progress
+Status: Done (2026-08-29 — proof of done met live: gmail 15 events, calendar 4, linkedin 1; re-runs produced zero duplicates; 44-assertion test suite green)
 Package: connectors/composio-in (shared input tooling at connectors root)
 Depends-on: 01 only
 

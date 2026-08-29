@@ -166,15 +166,16 @@ printf 'Subject: %s\n\n%s\n' "$SUBJECT" "$BODY_TEXT" | \
     --source gmail \
     --type "$TYPE" \
     --captured-at "$TIMESTAMP" \
-    --hint "$SENDER"
+    --hint "$SENDER" \
+    [--hint "$TO_ADDRESS"]   # only when $TO_ADDRESS is not the user's own address
 ```
 
 - `<store-dir>` is `data/store` per `docs/data-layout.md`.
 - `--captured-at` uses the message's own `messageTimestamp` (ISO 8601 `Z` form, matches
   `capture-event.md`'s required format) — not the time the sweep happened to run.
 - `--hint` carries the raw `From:` address/name as a `participant-hints` entry; add
-  additional `--hint` flags for `to:`/`cc:` addresses if present and not the user's own
-  address, so the filing engine has more to resolve against later.
+  additional `--hint` flags for `to:`/`cc:` addresses **only when** present and not the
+  user's own address, so the filing engine has more to resolve against later.
 - On success (exit 0), `normalize-capture.sh` prints the new `inbox/<id>.md` path to
   stdout — append `$MSG_ID` to `processed.log` now (step 3).
 - On failure (exit 1), the raw body is quarantined at

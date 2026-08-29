@@ -45,8 +45,8 @@ before relying on this — Composio toolkit versions and slugs can drift.
 composio execute GOOGLECALENDAR_LIST_CALENDARS -d '{ "max_results": 250 }'
 ```
 
-- Params: `page_token` (loop until `nextPageToken` is absent — do not stop at
-  page one), `max_results` (max 250), `show_hidden`, `show_deleted`,
+- Params: `page_token` (loop until `next_page_token` is absent — do not stop
+  at page one), `max_results` (max 250), `show_hidden`, `show_deleted`,
   `min_access_role` (leave unset to include read-only calendars too — this
   sweep never writes to Calendar, so `freeBusyReader`-only calendars are
   still fine to skip since they carry no event detail).
@@ -55,8 +55,10 @@ composio execute GOOGLECALENDAR_LIST_CALENDARS -d '{ "max_results": 250 }'
   response once against your account before hardening any parsing). Extract
   each calendar's `id` (the value to pass as `calendarId` in step 2) and
   `summary` (for logging only).
-- Loop `page_token` until no `nextPageToken` comes back, accumulating every
-  calendar `id` — this is "all calendars", not just `primary`.
+- Loop `page_token` until no `next_page_token` comes back (live-verified
+  2026-08-29, toolkit version `20260826_00`: the field is `next_page_token`,
+  snake_case), accumulating every calendar `id` — this is "all calendars",
+  not just `primary`.
 
 ## Step 2 — per calendar, pull events in the window
 
@@ -87,12 +89,14 @@ composio execute GOOGLECALENDAR_EVENTS_LIST -d '{
   their concrete instances so each occurrence in the window gets its own
   capture event, instead of one opaque "series master" record. `orderBy:
   "startTime"` requires `singleEvents: true` (the tool enforces this itself).
-- **Pagination:** the response carries `nextPageToken` (verified shape in
-  this package's fixture, `fixtures/calendar-event.json`, under
-  `data.eventsItems[]` + `data.nextPageToken`) — loop with `pageToken` set to
-  the previous response's `nextPageToken` until it's absent/null. Do not
-  stop at the first page; a busy calendar in a 90-day window can exceed 250
-  events.
+- **Pagination:** events live under `data.items[]`, **not** `data.eventsItems[]`
+  (live-verified 2026-08-29, toolkit version `20260826_00` — see this
+  package's fixture, `fixtures/calendar-event.json`, under `data.items[]`).
+  When there's a next page, the response carries `data.nextPageToken`; when
+  there isn't one, the key is **absent entirely**, not present-and-null —
+  loop with `pageToken` set to the previous response's `nextPageToken` until
+  the key is absent. Do not stop at the first page; a busy calendar in a
+  90-day window can exceed 250 events.
 - **Timezone care:** per the tool's own warning, `timeMin`/`timeMax` ending
   in `Z` are interpreted as UTC regardless of the calendar's own timezone —
   fine for this sweep since the window is generous (30/60 days) and a few
