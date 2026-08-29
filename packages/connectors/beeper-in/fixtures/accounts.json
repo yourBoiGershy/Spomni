@@ -1,0 +1,29 @@
+[
+  {
+    "accountID": "local-whatsapp_ba_test1",
+    "network": "whatsapp",
+    "status": "connected",
+    "user": {
+      "id": "test-user-1",
+      "name": "Ada Test"
+    }
+  },
+  {
+    "accountID": "matrix",
+    "network": "matrix",
+    "status": "connected",
+    "user": {
+      "id": "@ada-test:example.org",
+      "name": "Ada Test"
+    }
+  },
+  {
+    "accountID": "local-signal_ba_test2",
+    "network": "signal",
+    "status": "disconnected",
+    "user": {
+      "id": "test-user-2",
+      "name": "Ada Test"
+    }
+  }
+]

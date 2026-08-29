@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>__LABEL__</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>__REPO_ROOT__/packages/connectors/beeper-in/scripts/beeper-sweep.sh</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>__REPO_ROOT__</string>
+	<key>StartInterval</key>
+	<integer>__INTERVAL__</integer>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardOutPath</key>
+	<string>__REPO_ROOT__/data/connectors/beeper-in/launchd.log</string>
+	<key>StandardErrorPath</key>
+	<string>__REPO_ROOT__/data/connectors/beeper-in/launchd.log</string>
+</dict>
+</plist>

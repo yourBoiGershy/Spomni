@@ -18,6 +18,17 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 08 | Chat MCP & query data layer | query (MCP server) + core (stats contract, fixtures) | 01 | Done (2026-08-29, stream-mcp) |
 | 09 | Infrastructure: cloud runtime, data-repo discipline, egress | core (sync script) + harness guards + docs | 01; integrates 06, 10 | In progress (2026-08-29, stream-infrastructure; data repo live) |
 | 10 | Composio access layer | connectors/composio-in (+ shared normalizer) | 01 | Done (2026-08-29, branch chunk-08-composio-access; live-proven: 20 real events, 3 lanes, zero dupes) |
+| 11 | Messaging-connectors research (Composio coverage, personal-account bridges, Beeper decision) | docs only (feeds 13) | — | Done (2026-08-29, stream-connectors; first 11 to merge — keeps the number) |
+| 12 | Cadence & capacity-aware scheduling (routine map, week-plan contract, capacity-aware nudge selection) | attention + core (week-plan contract) + docs/runtime-cloud.md | 01; amends 05/06 (its amendment unit must land before either is dispatched); integrates 09 | Ready |
+| 13 | Beeper capture connector (personal chats: whatsapp/linkedin/matrix; renumbered from 12 on merge) | connectors/beeper-in (+ shared normalizer) | 01, 10 (normalizer) | Done (2026-08-29, stream-connectors; live-proven: 25 real events, 3 networks, launchd 15-min schedule installed) |
+
+> **Plan-number collision (2026-08-29, partially resolved):** three parallel streams
+> each minted a "plan 11" on their own branches. `11-messaging-connectors-research`
+> (stream-connectors) merged first and **keeps 11**; its implementation plan
+> (beeper-capture, drafted as 12) renumbered to **13** on merge since cadence &
+> capacity holds 12. Still to renumber at their next session or merge:
+> `11-composio-import-standard` (stream-composio-standardization) and
+> `11-preference-personalization` (stream-personalization) → take **14** and **15**.
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
 attention-merge. Plan 04 spans a thin connector plus ingestion-side matching — see
