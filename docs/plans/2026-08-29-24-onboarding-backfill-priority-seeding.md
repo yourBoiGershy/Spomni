@@ -1,6 +1,14 @@
 # Plan 24: Onboarding deep backfill & priority seeding
 
-Status: Ready
+Status: Done (2026-08-29) — U1–U13 + U15 landed; U14.1 verified (store 10/0,
+capture 109/0, beeper 88/0, scheduler 64/0 untouched, seed 23/0; goldens +
+filing path byte-untouched vs main; confirm-first eval PASS live + doctored
+FAIL; smoke eval 1/1 via wave-parallel runner; pre-merge checker: zero
+findings). Residual: U14.2–.4 (live fresh-store onboarding run + window
+override + incremental-state diff on real data) awaits a user session, since
+the gmail/calendar backfill sweeps are driven by the first-party connectors.
+Known pre-existing: 11 legacy ingestion eval cases fail live (chunk-21 T3
+runner re-baseline debt; not touched by this plan).
 Package: connectors (backfill modes on gmail-in / calendar-in / beeper-in +
 shared window helper) + core (new onboarding-backfill config contract) +
 ingestion (spec amendment, participation derivation, tier-suggestion scoring,
