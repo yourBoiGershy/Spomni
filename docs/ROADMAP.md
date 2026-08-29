@@ -32,10 +32,11 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 17 | Composio retirement & direct Google lanes (gmail-in, calendar-in on first-party claude.ai connectors) | connectors (composio-in teardown; gmail-in, calendar-in) + docs | 01, 14; decision composio-retired | Done (2026-08-29; suites 99/70/20 green, both lanes live-verified on real sweeps, plan-14 caveat closed, composio-free grep-proven, CLI logged out). Residual: recurrence-expansion VERIFY-LIVE awaits a recurring event in-window; dashboard key revocation + Google-grant revocation are user steps |
 | 18 | Query & chat live wiring (register the MCP server against the live store; chat with your own data) | query (server config) + harness docs | 08 | Done (2026-08-29, query-live; root `.mcp.json` registration, smoke-live script, chat-setup docs; fixtures smoke 6/6, store+query suites green, checker CLEAN; decision query-mcp-registration). Residual: live-store smoke + chat verification await 20's filed backlog — chunk 22 |
 | 19 | Scheduled syncs runner (one configurable scheduler for all capture lanes; restart-safe) | connectors/scripts + core (sync-lanes contract) | 13; 17's lanes join via config rows when they land | Done (2026-08-29, chunk-19-sync-scheduler; suites 20/82/70/64 green, beeper migrated, reboot-sim + config-change proven; live firing awaits a machine-side TCC grant — see plan 19, affects plan 13's job too) |
-| 20 | Backfill blitz & ship-day shakedown (file the real backlog, prove the loop end to end, TODAY) | cross-package (runs the machinery, builds none) | 03, 13, 18 | Planned — SHIP GATE, runs today |
+| 20 | Backfill blitz & ship-day shakedown (file the real backlog, prove the loop end to end, TODAY) | cross-package (runs the machinery, builds none) | 03, 13, 18 | Done (2026-08-29, chunk-20-backfill-shakedown; 45/45 accounted, 15 filed / 27 held / 3 quarantined, both audits green, beeper round-trip proven, query 6/6; gmail filed→query leg user-accepted as known gap; ship notes `docs/ship-notes-2026-08-30.md`) |
 | 21 | Calendar intelligence & event proposals (tell/schedule from messages; propose events, draft-only) | attention + query + connectors/calendar | 04, 05, 06, 17, 18 | Planned — plan file to author |
-| 22 | Live-data query sync & verification (plan 18 close-out: smoke 6/6 over the filed live store, real chat with citations, legacy user-scope registration removed) | query (verification only — runs the machinery, builds none) | 18, 20 (filed backlog) | Blocked on 20 — run as soon as the backlog is filed |
+| 22 | Live-data query sync & verification (plan 18 close-out: smoke 6/6 over the filed live store, real chat with citations, legacy user-scope registration removed) | query (verification only — runs the machinery, builds none) | 18, 20 (filed backlog) | Ready — 20 shipped; its Phase 5 shakedown already gave 6/6 cited answers via a fresh server, so 22 collapses to registration cleanup + smoke-live re-run + real-chat verification |
 | 23 | Harness context economy (content-bearing briefs; warm per-package workers via SendMessage; fork guidance; capsule-sized manifests) | harness docs (`.claude/rules`, `.claude/context`) — no machinery | — | Done (2026-08-29, worktree-harness-context-economy) |
+| 24 | Onboarding deep backfill & priority seeding (backfill history on first run, seed tiers from participation signals) | connectors (backfill mode on direct lanes) + ingestion (seed pass, extends `specs/onboarding-tiering-seed.md`) + core (config) | 03, 15, 17 | Planned — plan file to author |
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
 attention-merge. Historical plan-number collisions (11/12 renumbered to 13–16 at merge)
@@ -195,19 +196,51 @@ conversation; `package.md` manifests kept capsule-sized. Codified as the new
 **Deliverables / proof of done.** Template, orchestration rules, and rules index
 updated; roadmap row 23 added. No package code touched.
 
+### 24 — Onboarding deep backfill & priority seeding
+
+**Context (from the chunk-20 live run, 2026-08-29).** The ship-gate backfill only
+filed what the incremental sweeps had already captured — a fresh install must
+instead backfill real history on first onboarding, then seed priorities. The
+existing spec `packages/ingestion/specs/onboarding-tiering-seed.md` already
+defines the sequence (backfill sweeps → filing → `build-stats.sh` → suggested
+tiers → user-confirmed writes, untiered is valid) but is frequency-only and
+still references the retired composio backfill mode.
+**Work.** (a) Port backfill mode to the direct lanes (gmail-in, calendar-in,
+beeper-in): date-range window, isolated checkpoint namespace, default window
+**6 months back, configurable on user request** (core config contract).
+(b) Extend the tier-suggestion mapping beyond frequency to **participation
+signals**: user replied/initiated → strong initial boost; co-attendance at an
+event with the user → boost; captured-but-never-answered senders (cold pitches,
+unanswered invites) → very low; group chats where the user never participates →
+low. Chunk-20 live examples recorded in the private ship note. (c) Keep every
+write user-confirmed per the spec's no-guilt presentation rules — signals
+suggest, the human tiers.
+**Agent path.** After 17: connectors worktree for backfill mode, ingestion for
+the seed pass amendment; plan-architect reconciles with plan 15's
+stated-preference provenance (stated always outranks derived).
+**Deliverables / proof of done.** Fresh-store onboarding run backfills the
+configured window on all three lanes (capture suites green, check-sync clean on
+backfilled events); tier suggestions carry a score breakdown naming their
+signals; the chunk-20 examples rank correctly (unanswered pitch = very low,
+non-participating group = low, active thread = boosted); zero tier writes
+without confirmation (eval-guarded); window override honored end to end.
+
 ## Execution order (current)
 
-**Ship deadline: 2026-08-30.** Pre-ship (today): 18 is done enough to chat (server
-registered as `spomni-query`); **20 runs NOW** — backfill filed, loop proven, ship
-notes written. 17 and 19 squeeze in today only if 20 clears early; otherwise they are
-day-one post-ship items (the beeper lane and composio lanes keep capturing meanwhile,
-so nothing is lost by shipping first).
+**Shipped 2026-08-30** (chunk 20 gate: GO — see `docs/ship-notes-2026-08-30.md`;
+zero data loss, audits green; gmail filed→query leg accepted as a known gap,
+closes with 17's lanes + first human email).
 
-Post-ship order:
-1. **17** — composio teardown + direct gmail/calendar lanes.
-2. **19** — scheduled syncs runner (needs 17's lanes to exist).
-3. **Post-ship monitoring** — the longitudinal organization-quality watch that used to
+Post-ship order (17, 18, 19 landed in parallel sessions on ship day):
+1. **22** — live-data query sync & verification: mostly satisfied by 20's Phase 5
+   shakedown (6/6 cited answers via a fresh server); remaining = reconnect the
+   session server (boot-snapshot known issue), `smoke-live.sh` over the filed
+   store, ≥3 real chat questions with citations, legacy registration removal.
+2. **Post-ship monitoring** — the longitudinal organization-quality watch that used to
    be 20's trial: periodic check-sync/validate-store audits, defects filed per package.
+3. **24** — onboarding deep backfill & priority seeding (needs 17's lanes; extends
+   the onboarding-tiering-seed spec with participation signals + a configurable
+   backfill window, default 6 months).
 4. **12 (amendment unit) → 05 + 06 → 07** — the attention layer, honoring plan 15
    personalization touchpoints.
 5. **21** — calendar intelligence, once 05/06 exist to carry its signals and cards.
