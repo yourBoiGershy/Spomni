@@ -5,7 +5,7 @@ org: Casa Fuentes
 role: Chef & Owner
 location: Austin, TX
 tags: [friend, food]
-how-met: Met through mutual friends at a supper club
+how-met: "Met through mutual friends at a \"supper club\" pop-up dinner"
 last-touch: 2026-08-16
 tier: close
 ---
