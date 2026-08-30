@@ -301,6 +301,182 @@ identical to a file that had accumulated several incremental steps, exactly
 as the contract's Notes section anticipates ("no data is lost ... only the
 record of prior calibration rationale text").
 
+## Seeding from user-model (`--seed-from-user-model <store>`)
+
+A one-shot (or revision-triggered) initialization of the `kinds` and
+`evidence` dimensions of `ranking-weights.json` (1.1.0) from the store's
+confirmed `data/store/user-model.md` — the "Priors, not multipliers"
+amendment's seeding path, per `ranking-weights.md` 1.1.0 and
+`relationship-scoring.md`'s `## Priors` section. This is a separate
+invocation from the sweep's normal `calibrate` step (which only ever touches
+`signal-types`/`tags`) — `--seed-from-user-model` is invoked explicitly
+(onboarding confirmation flow, or a later revision confirmation), never
+silently folded into a sweep run.
+
+**Refusal:** if `user-model.md`'s frontmatter `status` is `draft` (not
+`confirmed`), the command refuses and exits **3** — no partial write, no
+`ranking-weights.json` touch at all. Seeding only ever reads confirmed
+user-model state, same as the drift judgment (`tier-drift.md` "## Judgment
+verdict").
+
+### `kinds.*` derivation
+
+Each kind in the vocabulary (`friend, family, collaborator, professional,
+community, scheduling, transactional, unsolicited, unknown`) maps to one of
+`user-model.md`'s five `## Investment mix` axes (`business`, `friends`,
+`family`, `community`, `transactional`) via a fixed axis map:
+
+| kind | axis |
+|---|---|
+| `friend` | `friends` |
+| `family` | `family` |
+| `collaborator` | `business` |
+| `professional` | `business` |
+| `community` | `community` |
+| `transactional` | `transactional` |
+| `scheduling` | `transactional` |
+| `unsolicited` | `transactional` |
+| `unknown` | *(no axis — see below)* |
+
+For every mapped kind, read the axis's confirmed weight (`## Investment
+mix`, `<axis>: <weight 0-1>`) and compute:
+
+```
+axis_weight = <the axis's 0-1 weight>
+weight      = 0.5 + axis_weight              # 0.0 -> 0.5, 0.5 -> 1.0 (neutral), 1.0 -> 1.5
+weight      = clamp(weight, 0.25, 2.0)
+```
+
+`kind: unknown` has no axis mapping and is left at the neutral default
+(absent from the seeded output — same absent-key-default semantics as any
+other key with no evidence, per `ranking-weights.md`).
+
+**Protected-time lift:** if the `## Protected time` prose names the axis a
+kind maps to (a plain substring/keyword match against the axis name or its
+common synonyms, e.g. "friends" text matching the `friends` axis, "family"
+matching `family`), that kind's seeded `weight` is lifted to `max(weight,
+1.0)` — protected time is a floor signal ("this axis is protected — never
+seed it below neutral"), not an override of a genuinely high axis weight
+above `1.0`.
+
+### `evidence.*` derivation
+
+`evidence.*` is seeded to a fixed default set on every seeding run
+(independent of the user-model's per-axis weights — the evidence dimension
+reflects general evidence-strength priors, not per-axis investment):
+
+| evidence key | seeded weight |
+|---|---|
+| `meeting` | 1.5 |
+| `co_attended` | 1.3 |
+| `user_initiated` | 1.2 |
+| `talking_point` | 1.2 |
+| `email` | 1.0 |
+| `chat_day` | 0.8 |
+
+### Rationale, first-write exemption, revision-aware re-seed
+
+- Every seeded entry (`kinds.*` and `evidence.*`) gets `rationale: "seeded
+  from user-model revision <n>"` (`<n>` = `user-model.md`'s confirmed
+  `revision` field) and `updated: <today>`.
+- **First-write exemption:** a seeding run's writes to a previously-absent
+  key are exempt from the per-step `±0.15` bound (`ranking-weights.md`
+  1.1.0 clause (i), "First-write seeding") — the seeded value may land
+  anywhere in `[0.25, 2.0]` per the formulas above.
+- **Revision-aware re-seed:** on a later seeding run (the user re-confirms
+  `user-model.md` and its `revision` bumps), only keys whose *current*
+  `rationale` names an **older** revision number than the new one are
+  re-seeded (overwritten per the formulas above, with the new revision
+  number in the rationale). Any key whose rationale does **not** match the
+  `"seeded from user-model revision <n>"` pattern — i.e. it was since
+  touched by the normal `calibrate` step or hand-edited — is a **user-tuned
+  entry** and is left untouched by re-seeding, regardless of how stale the
+  user-model revision it was originally seeded from is. This mirrors the
+  contract's stated-outranks-revealed posture: once a value has organic
+  outcome evidence behind it, a later seed pass does not clobber it.
+
+### Worked example
+
+`user-model.md` (confirmed, `revision: 2`) has `## Investment mix` axis
+`friends: 0.8 — regular weekly hangs` and `## Protected time` prose "regular
+friends — weekly-ish hangs are non-negotiable; family dinners always win."
+
+- `kinds.friend` seeds to `clamp(0.5 + 0.8, 0.25, 2.0) = 1.3`, then the
+  protected-time lift checks: `## Protected time` names "friends" →
+  `max(1.3, 1.0) = 1.3` (already above floor, no change) — `rationale:
+  "seeded from user-model revision 2"`.
+- If instead `friends: 0.2` (weight `0.7`, below the `1.0` floor) and
+  "friends" is still named in `## Protected time`, the lift applies:
+  `max(0.7, 1.0) = 1.0`.
+- `evidence.meeting` seeds to `1.5` regardless of axis weights —
+  `rationale: "seeded from user-model revision 2"`.
+- A later run against `revision: 3` re-seeds `kinds.friend` (its rationale
+  names revision 2, older than 3) but skips `kinds.professional` if that
+  key's current rationale reads `"acted on 6 of 7 fired nudges"` (a
+  `calibrate`-step rewrite, not a seed rationale) — that entry is user-tuned
+  and survives.
+
+## Rescale (`--rescale <dimension>`)
+
+A **user-invoked** post-processing step over one weight dimension
+(`kinds`, `evidence`, `signal-types`, or `tags`) — renormalizes that
+dimension so its geometric mean lands at `1.0` while preserving the
+*ratios* between entries, per `ranking-weights.md` 1.1.0 clause (ii) ("the
+rescale exemption"). This is never invoked as part of the sweep pipeline —
+it is a standalone `calibrate.sh --rescale <dimension>` call the user (or an
+operator) runs explicitly, e.g. after noticing a dimension has drifted
+lopsided over many small calibration steps.
+
+### Formula
+
+```
+geomean = ( product of all weight[k] for k in dimension ) ^ (1 / count)
+w'[k]   = weight[k] / geomean                      # preserves ratios
+w'[k]   = clamp(w'[k], 0.25, 2.0)                   # then clamp
+```
+
+Clamping after the divide can pull the post-clamp mean slightly off `1.0`
+when one or more entries would otherwise land outside `[0.25, 2.0]`
+post-rescale — this is an accepted, documented approximation, not a bug:
+the absolute bound (`ranking-weights.md` "Clamps") always wins over exact
+mean-centering.
+
+- **Exempt from the per-step `±0.15` bound** (clause (ii)) — a rescale may
+  move any entry by more than `0.15` in one run; it is not exempt from the
+  absolute `[0.25, 2.0]` bound.
+- Every entry the rescale actually touches (i.e. every key in the
+  dimension, since a geometric-mean renormalization by construction moves
+  every entry unless it was already exactly at the mean) gets `updated:
+  <today>` and `rationale: "rescaled <today>: dimension mean <old geomean>
+  → 1.0"` (with `<old geomean>` rounded to 2 decimal places, matching the
+  file's weight precision).
+- **No-op:** if the dimension's current geometric mean is already within
+  `±0.01` of `1.0`, the command performs no writes at all (not even an
+  `updated` bump) — nothing changed, nothing to record.
+- `--rescale` is **user-invoked only** — it never runs as part of the sweep
+  pipeline's automatic `calibrate` step (section 1–5 above); a sweep never
+  silently renormalizes a dimension on the user's behalf.
+- Full-file rewrite, same envelope as section 5 (this and seeding are both
+  paths through the sole-writer `calibrate.sh`, alongside the normal
+  `calibrate` step — none of the three write outside `ranking-weights.json`).
+
+### Worked example
+
+`kinds` dimension has three entries: `friend: 1.6`, `collaborator: 1.4`,
+`transactional: 1.2` (no other kinds present).
+
+```
+geomean = (1.6 * 1.4 * 1.2) ^ (1/3) = (2.688) ^ (1/3) ≈ 1.391
+
+friend:        1.6 / 1.391 ≈ 1.15   (clamp: no-op, within bound)
+collaborator:  1.4 / 1.391 ≈ 1.01
+transactional: 1.2 / 1.391 ≈ 0.86
+```
+
+All three land inside `[0.25, 2.0]`, so no clamping perturbation applies
+here. Each entry's `updated` becomes today's date and `rationale`:
+`"rescaled 2026-08-30: dimension mean 1.39 → 1.0"`.
+
 ## Non-goals
 
 - Does not write `wakeup.md` outcome fields (`outcome-recording.md`'s

@@ -1,0 +1,8 @@
+scope	n	mean	median	spread	share_ge_80	share_le_20	skew
+overall	6	89.8	89	13.5	1.00	0.00	yes
+friend	1	82.0	82	0	1.00	0.00	n/a (n<4)
+collaborator	1	85.0	85	0	1.00	0.00	n/a (n<4)
+professional	1	88.0	88	0	1.00	0.00	n/a (n<4)
+family	1	90.0	90	0	1.00	0.00	n/a (n<4)
+transactional	1	95.0	95	0	1.00	0.00	n/a (n<4)
+scheduling	1	99.0	99	0	1.00	0.00	n/a (n<4)

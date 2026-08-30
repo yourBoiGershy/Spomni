@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-08-29T09:00:00Z",
+  "weights": {
+    "signal-types": {},
+    "tags": {},
+    "kinds": {
+      "friend": {
+        "weight": 1.3,
+        "updated": "2026-08-29",
+        "rationale": "seeded from user-model revision 1 — friends protected at 0.70"
+      }
+    },
+    "evidence": {
+      "meeting": {
+        "weight": 1.5,
+        "updated": "2026-08-29",
+        "rationale": "seeded from user-model revision 1 — meetings weighted heavier for this user"
+      }
+    }
+  }
+}

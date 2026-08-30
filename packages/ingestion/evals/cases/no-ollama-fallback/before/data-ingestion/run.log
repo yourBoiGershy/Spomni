@@ -1,0 +1,2 @@
+2026-08-29T09:05:00Z embed-people.sh --scope /tmp/scope.txt --today 2026-08-29: embeddings: unavailable
+2026-08-29T09:05:01Z cluster-people.sh --scope /tmp/scope.txt: embeddings: unavailable

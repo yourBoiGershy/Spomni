@@ -1,6 +1,6 @@
 # package: attention
 
-version: 0.1.0
+version: 0.2.0
 
 ## Purpose
 
@@ -57,9 +57,21 @@ attention-merge).
 - Outcome recording: `fired-on`/`dismiss-reason`/`snooze-count`/`acted-on` writes on
   `wakeups/*.md` per `specs/outcome-recording.md` (sole writer of the wakeup lifecycle
   fields, per `wakeup.md`'s writer table and `docs/DECISIONS.md#attention-merge`)
-- `ranking-weights@1` (`ranking-weights.json`) — the sweep's `calibrate` step is its
-  sole writer; aggregates `wakeups/` outcome history into bounded per-signal-type and
-  per-tag adjustments (calibration mechanics specced by a sibling unit, not this file)
+- `ranking-weights@1.1` (`ranking-weights.json`) — `scripts/calibrate.sh` is its sole
+  writer, three modes: ordinary sweep mode aggregates `wakeups/` outcome history into
+  bounded per-signal-type and per-tag adjustments (calibration mechanics specced by a
+  sibling unit, not this file), carrying `kinds`/`evidence` forward unchanged;
+  `--seed-from-user-model` seeds `kinds`/`evidence` from the confirmed
+  `user-model.md` (`specs/calibration.md` "Seeding from user-model"); `--rescale
+  <dimension>` geometric-mean renormalizes one dimension in place (`specs/
+  calibration.md` "Rescale"). The latter two are user-invoked only, never part of
+  the sweep pipeline.
+- `skills/signal-scan/`'s `tier-drift` step (plan 30, `specs/tier-drift.md`): a
+  deterministic per-kind horizon prefilter (rhythmed kinds only, unkinded ->
+  `professional`, expired kinds excluded) narrows candidates, then a model judgment
+  pass (`relationship-scoring.md`'s judgment record) verdicts each candidate into a
+  quiet-drift/upward-drift proposal (full breakdown string) or `no-drift` — replacing
+  the retired flat 21/45/90-day per-tier cadence table.
 - The fired-batch artifact `query`/output adapters render; snooze/dismiss writebacks
 - `evals/` (`packages/attention/evals/`) — T3 skill-tier eval cases per
   `packages/core/contracts/eval-case.md`, wrapping
@@ -96,10 +108,30 @@ attention-merge).
   (`specs/ranking.md` §2/§8); same-package read, no cross-package consume needed.
   A missing/stale (>8 days) file is treated as `weekly_tier: normal`,
   `budget.max = 3` and logged, never recomputed by signal-scan itself.
-- `ranking-weights@1` (`ranking-weights.json`) — read by `skills/signal-scan/` as the
-  per-signal-type/per-tag score multiplier (`specs/ranking.md` §5); this package's own
-  sweep `calibrate` step is its sole writer (see above), so this is also a same-package
-  read, not a cross-package consume.
+- `ranking-weights@^1.1` (`ranking-weights.json`) — read by `skills/signal-scan/` as
+  the per-signal-type/per-tag score multiplier (`specs/ranking.md` §5) and by the
+  `tier-drift` step's judgment pass as the `kinds`/`evidence` prior-strength hints
+  (`specs/tier-drift.md` "## Judgment verdict",
+  `packages/core/contracts/ranking-weights.md` 1.1.0); `scripts/calibrate.sh` is its
+  sole writer (see above), so this is also a same-package read, not a cross-package
+  consume.
+- `user-model@^1` (core) — read-only, **confirmed only**: the `tier-drift` judgment
+  pass reads `data/store/user-model.md` for its axis/protected-time priors when
+  `status: confirmed` (absent or `status: draft` → judge without user-model priors,
+  disclosed as `user-model: none` in the breakdown string); `scripts/calibrate.sh
+  --seed-from-user-model` reads it to seed `ranking-weights.json`'s `kinds`/
+  `evidence` dimensions, refusing (exit 3) on anything but `confirmed`. Attention
+  never writes `user-model.md`.
+- `relationship-scoring@^1` (core) — the kind vocabulary, judgment record shape, and
+  breakdown-string format the `tier-drift` step's prefilter and judgment pass
+  transcribe from and produce, per `specs/tier-drift.md`.
+- `embeddings-index@^1` (core) — read-only, via ingestion's
+  `packages/ingestion/scripts/nearest-confirmed.sh`: the `tier-drift` judgment pass's
+  neighbor priors when `index/embeddings.jsonl` exists (omitted, not blocking,
+  when absent).
+- `person@^1.1` (core) — the `kind`/`kind_note`/`kind_source`/`kind_expires`/
+  `kind_updated` columns (1.1.0 addition) the `tier-drift` prefilter reads per person,
+  alongside the pre-1.1.0 `tier` field.
 
 ## Owned paths
 
@@ -120,4 +152,9 @@ Plan 06 (queue/sweeps) landed: `scripts/wakeup-queue.sh`,
 `skills/sweep/` — the `daily-attention` entry skill that wires signal-scan,
 `wakeup-queue.sh fire`, acted-on detection, `calibrate.sh`, and the
 un-debriefed mention into one ordered, skip-tolerant sweep
-(`docs/plans/2026-08-29-06-wakeup-scheduler.md`).
+(`docs/plans/2026-08-29-06-wakeup-scheduler.md`). Plan 30 (units 16–17)
+made the semantic-scoring/user-model model operative here: `tier-drift`'s
+retired flat cadence table replaced by the kind-horizon prefilter + model
+judgment procedure, and `calibrate.sh` gained `--seed-from-user-model`/
+`--rescale` alongside carrying `ranking-weights.json`'s `kinds`/`evidence`
+dimensions through ordinary sweep runs at schema 1.1.0.

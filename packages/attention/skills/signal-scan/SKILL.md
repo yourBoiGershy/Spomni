@@ -145,22 +145,69 @@ items stand in for the live search/EDGAR calls.
 
 ### tier-drift
 
-Reads every person with a `tier` set, plus their `stats.json` rollup
-(`median_gap_days`, `touchpoints`, `interactions[].date`) —
-never recomputed inline (`specs/tier-drift.md` Inputs). Opt-out
-(`tier-drift — all`/`— [[slug]]`) is checked before evaluating either
-direction, suppressing emission entirely (no signal event at all) for an
-opted-out person. Evaluates UPWARD drift (`dormant`/`active` tiers only,
-trailing-90-day touchpoint thresholds) and QUIET drift
-(`inner-circle`/`close` only, `median_gap_days` past the tier's threshold
-with the most recent interaction at least that old) per the spec's tables.
-Confidence is always `medium`. Before emitting, apply both: the
-declined-pairing suppression (a dismissed `(person, proposed-tier)` pair
-with `dismiss-reason: not-this-signal-type` within 180 days) and the
-quarterly rate limit (at most one tier-drift proposal per person per
-90-day rolling window, any direction/outcome). QUIET-direction promotion
-never proposes a tier write — reach-out-or-reclassify framing only,
-per the spec's binding never-demote guardrail.
+Plan 30's two-phase prefilter + judgment procedure (`specs/tier-drift.md`
+"## Prefilter" / "## Judgment verdict", transcribing
+`packages/core/contracts/relationship-scoring.md`'s kind vocabulary and
+Drift-prefilter section — this step does not restate those numbers a third
+time). Opt-out (`tier-drift — all`/`— [[slug]]`) is checked **first**,
+before candidate-building — suppressing emission entirely (no signal event
+at all, no judgment call spent) for an opted-out person.
+
+1. **Build candidates (deterministic, no model call).** Read per-person
+   evidence via `packages/ingestion/scripts/derive-evidence.sh <store>` when
+   that script is on `PATH`; else fall back to `index.json`'s `kind`/
+   `kind_expires`/`kind_source` columns plus `stats.json`'s
+   `last_interaction`/`touchpoints`/`median_gap_days` (say which path was
+   used in the run log — the fallback is a degraded-evidence mode, not
+   silent). For each person with a `tier` set:
+   - Resolve `kind` (unkinded → `professional`, horizon 120, and the
+     eventual proposal must disclose `"no kind on file — professional
+     horizon assumed"`).
+   - Drop no-rhythm kinds (`community`, `scheduling`, `transactional`,
+     `unsolicited`, `unknown`) and any kind whose `kind_expires` is in the
+     past — neither enters candidacy, regardless of tier.
+   - **QUIET candidacy:** `days_since_last` (from the evidence source above)
+     exceeds the kind's horizon (`friend`/`family` 30, `collaborator` 14,
+     `professional` 120). `dormant` tier never quiet-drifts (floor,
+     unchanged from the retired table).
+   - **UPWARD candidacy:** rhythmed kinds only; trailing-90-day
+     `interactions[].date` touchpoint count is elevated relative to what
+     the current tier implies — the prefilter only requires a non-trivial
+     elevation to admit the person to judgment; the actual "is this really
+     elevated for this kind/tier/user" call is the judgment step's job, not
+     this deterministic pass's.
+2. **Judge each candidate.** One judgment record per candidate
+   (`relationship-scoring.md` "## Judgment record":
+   `attention_warrant`, `suggested_tier`, `kind`, `kind_note`, `rationale`,
+   `confidence`), reading: the evidence line from step 1; `people/<slug>.md`
+   and its filed interaction summaries; the confirmed
+   `data/store/user-model.md` — if the file is absent or `status: draft`,
+   judge **without** user-model priors and disclose `user-model: none` in
+   the breakdown string (never block on a missing/unconfirmed model);
+   `ranking-weights.json`'s `kinds`/`evidence` priors (absent → `1.0`
+   neutral); and neighbor priors from `index/embeddings.jsonl` via
+   `packages/ingestion/scripts/nearest-confirmed.sh` (read-only) when that
+   file exists, else the breakdown omits the `neighbors:` segment per that
+   contract's rule.
+3. **Verdict.** The judgment resolves to a quiet-drift or upward-drift
+   signal event — `evidence:` carries the full breakdown string
+   (`relationship-scoring.md` "## Breakdown string", quoted there, not
+   restated here) — or `no-drift`, logged as a one-line reason in
+   `wakeups/signals/scan-log.md` and no signal event written. `confidence`
+   on the signal event is the judgment record's own `confidence` field
+   (`low`/`medium`/`high`), not a fixed per-detector constant.
+
+Before emitting a verdicted proposal, apply both: the declined-pairing
+suppression (a dismissed `(person, proposed-tier)` pair with
+`dismiss-reason: not-this-signal-type` within 180 days) and the quarterly
+rate limit (at most one tier-drift proposal per person per 90-day rolling
+window, any direction/outcome). QUIET-direction promotion never proposes a
+tier write — reach-out-or-reclassify framing only, per the spec's binding
+never-demote guardrail; UPWARD-direction promotion only ever proposes a
+*more* attentive tier, never a demotion as a side effect. Attention writes
+no `tier`, no `kind`, and no `user-model.md` field anywhere in this
+detector — every judgment output is ammunition in a wake-up's `## Context`,
+never a direct write.
 
 ### birthday
 

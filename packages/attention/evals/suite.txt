@@ -1,5 +1,6 @@
 # packages/attention/evals/suite.txt
 packages/attention/evals/cases/tier-drift-upward
+packages/attention/evals/cases/tier-drift-by-kind
 packages/attention/evals/cases/declined-proposal
 packages/attention/evals/cases/scheduling-intent-proposal
 packages/attention/evals/cases/zero-create-without-confirm

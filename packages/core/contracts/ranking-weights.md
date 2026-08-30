@@ -1,6 +1,6 @@
 # Contract: ranking weights
 
-`schema_version: 1.0.0`
+`schema_version: 1.1.0`
 
 A flat, regenerable JSON artifact holding calibrated signal-ranking
 multipliers derived from wake-up outcome history — no database, no
@@ -41,11 +41,12 @@ rationale text (which itself was derived from history still present in
 ## Shape
 
 A single JSON object with a version/generation envelope plus a `weights`
-map holding two calibrated dimensions: `signal-types` and `tags`.
+map holding four calibrated dimensions: `signal-types`, `tags`, `kinds`, and
+`evidence`.
 
 ```json
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "generated_at": "<ISO 8601 datetime>",
   "weights": {
     "signal-types": {
@@ -61,6 +62,20 @@ map holding two calibrated dimensions: `signal-types` and `tags`.
         "updated": "2026-08-29",
         "rationale": "acted on 6 of 7 fired nudges"
       }
+    },
+    "kinds": {
+      "scheduling": {
+        "weight": 0.5,
+        "updated": "2026-08-29",
+        "rationale": "seeded from user-model revision 3"
+      }
+    },
+    "evidence": {
+      "meeting": {
+        "weight": 1.5,
+        "updated": "2026-08-29",
+        "rationale": "seeded from user-model revision 3"
+      }
     }
   }
 }
@@ -70,9 +85,9 @@ Top-level fields:
 
 | Field | Type | Notes |
 |---|---|---|
-| `schema_version` | semver string | This contract's version, `1.0.0`. |
+| `schema_version` | semver string | This contract's version, `1.1.0`. |
 | `generated_at` | ISO 8601 datetime | When the `calibrate` step last produced this file. |
-| `weights` | object | Two keys: `signal-types` and `tags`. Each maps a key (a signal-type from plan 05's detector set, or a `person.md` tag string) to a weight entry. Either map may be empty (`{}`) if no calibration adjustment has fired for that dimension yet. |
+| `weights` | object | Four keys: `signal-types`, `tags`, `kinds`, and `evidence`. Each maps a key to a weight entry. `signal-types` keys come from plan 05's detector set; `tags` keys are `person.md` tag strings; `kinds` keys are one per kind vocabulary entry: `friend, family, collaborator, professional, community, scheduling, transactional, unsolicited, unknown`; `evidence` keys are: `meeting, chat_day, email, co_attended, user_initiated, talking_point`. Any map may be empty (`{}`) if no calibration adjustment has fired for that dimension yet. |
 
 Weight entry fields (identical shape under both `signal-types` and `tags`):
 
@@ -104,6 +119,32 @@ should not — pre-populate every known signal-type or tag with an explicit
   previously exist). This makes calibration a slow, auditable drift rather
   than a single outcome swinging ranking sharply — consistent with the
   no-guilt, no-overreaction posture of `docs/DECISIONS.md#preference-provenance`.
+- **First-write seeding (1.1.0):** an *absent* key's first write may land
+  anywhere inside the absolute bound `[0.25, 2.0]`; the per-step `0.15`
+  bound applies from the second write on.
+- **Rescale exemption (1.1.0):** `calibrate.sh --rescale <dimension>`
+  renormalizes one dimension so its geometric mean = 1.0 preserving ratios,
+  within the absolute bound; it is exempt from the per-step bound; every
+  touched entry gets `updated` + rationale `rescaled <date>: dimension mean
+  <old> → 1.0`. Both amendments carry rationale (interpretability contract
+  unchanged).
+
+## Priors, not multipliers (kinds / evidence)
+
+The `kinds` and `evidence` dimensions are **prior-strength hints the
+judgment must acknowledge**: a weight < 1.0 means "de-emphasize this kind /
+evidence feature relative to default", > 1.0 "emphasize" — e.g.
+`kinds.scheduling: 0.5` — the judgment should treat scheduling contacts as
+warranting noticeably less attention than default; `evidence.meeting: 1.5` —
+an in-person meeting should weigh noticeably more than default. A prior
+never overrides a stated kind or tier or a rule (data gate, kind caps, zero
+unconfirmed tier writes). They are consumed by ingestion's judgment pass and
+attention's drift judgment (both read-only), named in every breakdown
+string. Writer remains attention's `calibrate.sh` (sole writer unchanged).
+Seeding: `calibrate.sh --seed-from-user-model` writes initial `kinds.*`/
+`evidence.*` from the confirmed `user-model.md` with rationale `seeded from
+user-model revision <n>`; a revision bump re-seeds only keys whose rationale
+still names an older revision (user-tuned entries survive).
 
 ## The interpretability contract
 
@@ -122,8 +163,8 @@ change, so a user (or `packages/query`'s explanation surface) can answer
 
 ## Per-person suppression is out of scope
 
-`ranking-weights.json` holds only `signal-types` and `tags` — dimensions
-that generalize across the whole store. A `not-this-person` dismiss reason
+`ranking-weights.json` holds only `signal-types`, `tags`, `kinds`, and
+`evidence` — dimensions that generalize across the whole store. A `not-this-person` dismiss reason
 does **not** get encoded as a weight here (there is no `people` key in this
 contract's `weights` object, and none should be added). Per-person
 suppression is handled as a proposal — the calibration step surfaces it as
@@ -139,6 +180,9 @@ alongside `signal-types`/`tags`) are a `schema_version` minor bump, per the
 `capture-event.md` precedent — existing `1.0.0` files remain valid and
 readers ignore keys they don't recognize. Removing a field, changing a
 field's type, or narrowing the clamp range is a major bump.
+
+`1.1.0` — additive `kinds`/`evidence` dimensions + the two clamp amendments,
+per plan 30; `1.0.0` files remain valid (absent dimensions read as `{}`).
 
 ## Notes
 

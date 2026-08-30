@@ -30,6 +30,31 @@
 #      present without `kind: event-proposal` is an error; a non-null
 #      `created-event-id` requires both a non-null `confirmed-on` and
 #      `kind: event-proposal`.
+#   8. person.md 1.1.0 kind fields (optional, plan 30): when `kind` is
+#      present it must be one of the D3 vocabulary
+#      (friend/family/collaborator/professional/community/scheduling/
+#      transactional/unsolicited/unknown); `kind_note`, `kind_source`
+#      (stated-by-user|derived), and `kind_updated` (YYYY-MM-DD) must then
+#      be present and non-empty; `kind_expires`, if present, must be
+#      YYYY-MM-DD; `kind: scheduling` requires `kind_expires`. Any
+#      `kind_*` field present without `kind` is an error.
+#   9. `user-model.md` (singleton, optional — absence is not an error, per
+#      `contracts/user-model.md`): frontmatter parseable; `schema_version`
+#      present; `status` in draft|confirmed; `provenance` in
+#      observed-from-behavior|stated-by-user; pairing (draft <=>
+#      observed-from-behavior + confirmed_at: null; confirmed <=>
+#      stated-by-user + confirmed_at a date); `revision` a non-negative
+#      integer; `derived_at` a date; only the four fixed `## ` sections, in
+#      order (Investment mix, Protected time, Season, Revealed vs stated);
+#      `## Investment mix` has exactly the five axis lines
+#      (business/friends/family/community/transactional), each with a
+#      weight in [0, 1].
+#  10. `index/embeddings.jsonl` (optional, per `contracts/embeddings-index.md`):
+#      each non-empty line must be valid JSON with a `slug` resolving to
+#      people/<slug>.md, a non-empty `model`, an integer `dims` > 0, a
+#      `vector` array of numbers whose length equals `dims` and whose L2
+#      norm is within 1e-6 of 1.0 (or exactly 0), a non-empty
+#      `embedded_at`, and a 64-hex-char `content_hash`.
 #
 # Output: one finding per line, "path/to/file.md:LINE: message", to stdout.
 # Exit 0 and "store clean: N files checked" when clean; exit 1 otherwise.
@@ -288,6 +313,60 @@ if [ -d "$store_dir/people" ]; then
             check_enum "$f" "$tier_line" "tier" "$tier_val" "inner-circle|close|active|dormant"
         fi
 
+        # --- person.md 1.1.0 kind fields (optional, plan 30) ---
+        kind_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "kind")
+        kind_note_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "kind_note")
+        kind_source_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "kind_source")
+        kind_expires_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "kind_expires")
+        kind_updated_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "kind_updated")
+
+        if [ -n "$kind_line" ]; then
+            kind_val=$(scalar_value "$f" "$kind_line" "kind")
+            check_enum "$f" "$kind_line" "kind" "$kind_val" "friend|family|collaborator|professional|community|scheduling|transactional|unsolicited|unknown"
+
+            if [ -z "$kind_note_line" ]; then
+                report "$f" "$kind_line" "kind is set but missing required field: kind_note"
+            else
+                kind_note_val=$(scalar_value "$f" "$kind_note_line" "kind_note")
+                [ -n "$kind_note_val" ] || report "$f" "$kind_note_line" "kind_note must not be empty"
+            fi
+
+            if [ -z "$kind_source_line" ]; then
+                report "$f" "$kind_line" "kind is set but missing required field: kind_source"
+            else
+                kind_source_val=$(scalar_value "$f" "$kind_source_line" "kind_source")
+                check_enum "$f" "$kind_source_line" "kind_source" "$kind_source_val" "stated-by-user|derived"
+            fi
+
+            if [ -z "$kind_updated_line" ]; then
+                report "$f" "$kind_line" "kind is set but missing required field: kind_updated"
+            else
+                kind_updated_val=$(scalar_value "$f" "$kind_updated_line" "kind_updated")
+                if [ -z "$kind_updated_val" ] || ! printf '%s' "$kind_updated_val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+                    report "$f" "$kind_updated_line" "invalid kind_updated: '${kind_updated_val}' (expected ISO 8601 date YYYY-MM-DD)"
+                fi
+            fi
+
+            if [ -n "$kind_expires_line" ]; then
+                kind_expires_val=$(scalar_value "$f" "$kind_expires_line" "kind_expires")
+                if [ -n "$kind_expires_val" ] && ! printf '%s' "$kind_expires_val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+                    report "$f" "$kind_expires_line" "invalid kind_expires: '${kind_expires_val}' (expected ISO 8601 date YYYY-MM-DD)"
+                fi
+            fi
+
+            if [ "$kind_val" = "scheduling" ] && [ -z "$kind_expires_line" ]; then
+                report "$f" "$kind_line" "kind: scheduling requires a kind_expires date"
+            fi
+        else
+            for pair in "kind_note:${kind_note_line}" "kind_source:${kind_source_line}" "kind_expires:${kind_expires_line}" "kind_updated:${kind_updated_line}"; do
+                pkey="${pair%%:*}"
+                pline="${pair#*:}"
+                if [ -n "$pline" ]; then
+                    report "$f" "$pline" "${pkey} is set without kind"
+                fi
+            done
+        fi
+
         # Facts section: every bullet must carry a provenance tag.
         untagged=$(awk '
             /^## Facts$/{infacts=1; next}
@@ -398,6 +477,228 @@ EOF
         done
 
         check_links_resolve "$f"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Pass 1.6: user-model.md (singleton, optional — absence is not an error)
+# ---------------------------------------------------------------------------
+
+if [ -f "$store_dir/user-model.md" ]; then
+    f="$store_dir/user-model.md"
+    files_checked=$((files_checked + 1))
+
+    fm_end=$(find_frontmatter_end "$f")
+    if [ -z "$fm_end" ]; then
+        report "$f" 1 "malformed frontmatter: missing opening/closing ---"
+    else
+        fm_start=2
+        fm_body_end=$((fm_end - 1))
+        check_frontmatter_lines_parseable "$f" "$fm_start" "$fm_body_end"
+
+        require_field "$f" "$fm_start" "$fm_body_end" "schema_version" > /dev/null
+
+        status_line=$(require_field "$f" "$fm_start" "$fm_body_end" "status")
+        status_val=""
+        if [ -n "$status_line" ]; then
+            status_val=$(scalar_value "$f" "$status_line" "status")
+            check_enum "$f" "$status_line" "status" "$status_val" "draft|confirmed"
+        fi
+
+        provenance_line=$(require_field "$f" "$fm_start" "$fm_body_end" "provenance")
+        provenance_val=""
+        if [ -n "$provenance_line" ]; then
+            provenance_val=$(scalar_value "$f" "$provenance_line" "provenance")
+            check_enum "$f" "$provenance_line" "provenance" "$provenance_val" "observed-from-behavior|stated-by-user"
+        fi
+
+        confirmed_at_line=$(require_field "$f" "$fm_start" "$fm_body_end" "confirmed_at")
+        confirmed_at_val=""
+        if [ -n "$confirmed_at_line" ]; then
+            confirmed_at_val=$(scalar_value "$f" "$confirmed_at_line" "confirmed_at")
+        fi
+
+        if [ -n "$status_line" ] && [ -n "$provenance_line" ] && [ -n "$confirmed_at_line" ]; then
+            if [ "$status_val" = "draft" ]; then
+                if [ "$provenance_val" != "observed-from-behavior" ]; then
+                    report "$f" "$status_line" "status: draft requires provenance: observed-from-behavior (found '${provenance_val}')"
+                fi
+                if [ "$confirmed_at_val" != "null" ]; then
+                    report "$f" "$confirmed_at_line" "status: draft requires confirmed_at: null (found '${confirmed_at_val}')"
+                fi
+            elif [ "$status_val" = "confirmed" ]; then
+                if [ "$provenance_val" != "stated-by-user" ]; then
+                    report "$f" "$status_line" "status: confirmed requires provenance: stated-by-user (found '${provenance_val}')"
+                fi
+                if [ -z "$confirmed_at_val" ] || [ "$confirmed_at_val" = "null" ] || ! printf '%s' "$confirmed_at_val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+                    report "$f" "$confirmed_at_line" "status: confirmed requires confirmed_at to be a date (found '${confirmed_at_val}')"
+                fi
+            fi
+        fi
+
+        revision_line=$(require_field "$f" "$fm_start" "$fm_body_end" "revision")
+        if [ -n "$revision_line" ]; then
+            revision_val=$(scalar_value "$f" "$revision_line" "revision")
+            if ! printf '%s' "$revision_val" | grep -qE '^[0-9]+$'; then
+                report "$f" "$revision_line" "invalid revision: '${revision_val}' (expected non-negative integer)"
+            fi
+        fi
+
+        derived_at_line=$(require_field "$f" "$fm_start" "$fm_body_end" "derived_at")
+        if [ -n "$derived_at_line" ]; then
+            derived_at_val=$(scalar_value "$f" "$derived_at_line" "derived_at")
+            if [ -z "$derived_at_val" ] || ! printf '%s' "$derived_at_val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+                report "$f" "$derived_at_line" "invalid derived_at: '${derived_at_val}' (expected ISO 8601 date YYYY-MM-DD)"
+            fi
+        fi
+
+        # Only the four fixed sections, in order.
+        headings=$(awk -v e="$fm_end" '
+            NR>e && /^## / { print NR":"$0 }
+        ' "$f")
+        expected_headings="## Investment mix
+## Protected time
+## Season
+## Revealed vs stated"
+        actual_headings=""
+        if [ -n "$headings" ]; then
+            while IFS= read -r entry; do
+                [ -n "$entry" ] || continue
+                ln="${entry%%:*}"
+                txt="${entry#*:}"
+                case "$txt" in
+                    "## Investment mix"|"## Protected time"|"## Season"|"## Revealed vs stated") ;;
+                    *) report "$f" "$ln" "unexpected section '${txt}' (user-model.md allows only Investment mix, Protected time, Season, Revealed vs stated)" ;;
+                esac
+                if [ -z "$actual_headings" ]; then
+                    actual_headings="$txt"
+                else
+                    actual_headings="${actual_headings}
+${txt}"
+                fi
+            done <<EOF
+$headings
+EOF
+        fi
+        if [ -n "$headings" ] && [ "$actual_headings" != "$expected_headings" ]; then
+            first_ln=$(printf '%s\n' "$headings" | head -n1 | cut -d: -f1)
+            report "$f" "$first_ln" "user-model.md sections out of order (expected Investment mix, Protected time, Season, Revealed vs stated in that order)"
+        fi
+
+        # Investment mix: exactly the five axis lines, each with a weight in [0,1].
+        mix_lines=$(awk '
+            /^## Investment mix$/{inmix=1; next}
+            /^## /{inmix=0}
+            inmix && /^- / { print NR":"$0 }
+        ' "$f")
+        for axis in business friends family community transactional; do
+            axis_lines=$(printf '%s\n' "$mix_lines" | grep -E ":- ${axis}:")
+            axis_count=$(printf '%s\n' "$axis_lines" | grep -cE ":- ${axis}:")
+            if [ "$axis_count" -eq 0 ]; then
+                anchor_ln=$(printf '%s\n' "$mix_lines" | head -n1 | cut -d: -f1)
+                [ -n "$anchor_ln" ] || anchor_ln="$fm_end"
+                report "$f" "$anchor_ln" "## Investment mix missing required axis line: ${axis}"
+            elif [ "$axis_count" -gt 1 ]; then
+                while IFS= read -r entry; do
+                    [ -n "$entry" ] || continue
+                    ln="${entry%%:*}"
+                    report "$f" "$ln" "## Investment mix has duplicate axis line: ${axis}"
+                done <<EOF
+$axis_lines
+EOF
+            else
+                ln="${axis_lines%%:*}"
+                txt="${axis_lines#*:}"
+                weight=$(printf '%s' "$txt" | sed -E "s/^- ${axis}:[[:space:]]*//" | sed -E 's/[[:space:]]*—.*$//' | sed -E 's/[[:space:]]+$//')
+                if ! printf '%s' "$weight" | grep -qE '^(0(\.[0-9]+)?|1(\.0+)?)$'; then
+                    report "$f" "$ln" "## Investment mix ${axis} weight out of range or malformed: '${weight}' (expected a number in [0, 1])"
+                fi
+            fi
+        done
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Pass 1.7: index/embeddings.jsonl (optional)
+# ---------------------------------------------------------------------------
+
+if [ -f "$store_dir/index/embeddings.jsonl" ]; then
+    f="$store_dir/index/embeddings.jsonl"
+    ln=0
+    seen_slugs_file="$work_dir/embeddings_seen_slugs.txt"
+    : > "$seen_slugs_file"
+    while IFS= read -r line || [ -n "$line" ]; do
+        ln=$((ln + 1))
+        [ -n "$(printf '%s' "$line" | tr -d '[:space:]')" ] || continue
+
+        if ! printf '%s' "$line" | jq -e . > /dev/null 2>&1; then
+            report "$f" "$ln" "malformed JSON"
+            continue
+        fi
+
+        e_slug=$(printf '%s' "$line" | jq -r '.slug // empty')
+        e_model=$(printf '%s' "$line" | jq -r '.model // empty')
+        e_dims=$(printf '%s' "$line" | jq -r 'if (.dims|type) == "number" then (.dims|tostring) else "" end')
+        e_embedded_at=$(printf '%s' "$line" | jq -r '.embedded_at // empty')
+        e_content_hash=$(printf '%s' "$line" | jq -r '.content_hash // empty')
+        e_vector_len=$(printf '%s' "$line" | jq -r 'if (.vector|type) == "array" then (.vector|length) else -1 end')
+        e_vector_all_numbers=$(printf '%s' "$line" | jq -r 'if (.vector|type) == "array" then (all(.vector[]; type == "number")) else false end')
+
+        if [ -z "$e_slug" ]; then
+            report "$f" "$ln" "missing required field: slug"
+        elif [ ! -f "$store_dir/people/${e_slug}.md" ]; then
+            report "$f" "$ln" "slug '${e_slug}' does not resolve to people/${e_slug}.md"
+        else
+            printf '%s\n' "$e_slug" >> "$seen_slugs_file"
+        fi
+
+        [ -n "$e_model" ] || report "$f" "$ln" "missing or empty required field: model"
+
+        if [ -z "$e_dims" ]; then
+            report "$f" "$ln" "missing or non-integer required field: dims"
+        elif [ "$e_dims" -le 0 ] 2>/dev/null; then
+            report "$f" "$ln" "invalid dims: '${e_dims}' (expected integer > 0)"
+        fi
+
+        if [ "$e_vector_len" = "-1" ]; then
+            report "$f" "$ln" "missing or non-array required field: vector"
+        elif [ "$e_vector_all_numbers" != "true" ]; then
+            report "$f" "$ln" "vector must be an array of numbers"
+        else
+            if [ -n "$e_dims" ] && [ "$e_vector_len" != "$e_dims" ]; then
+                report "$f" "$ln" "vector length (${e_vector_len}) does not match dims (${e_dims})"
+            fi
+
+            # Norm rule: |v| must be within 1e-6 of 1.0, unless it is the
+            # all-zero vector (norm 0) — the writer's one exemption, per
+            # contracts/embeddings-index.md's validation rules.
+            e_vector_norm=$(printf '%s' "$line" | jq -r '(.vector | map(. * .) | add | sqrt)')
+            norm_ok=$(awk -v n="$e_vector_norm" 'BEGIN {
+                d = n - 1; if (d < 0) d = -d;
+                if (n == 0 || d <= 1e-6) print "yes"; else print "no"
+            }')
+            if [ "$norm_ok" != "yes" ]; then
+                report "$f" "$ln" "vector is not unit-normalized: |v| = ${e_vector_norm} (expected 1 ± 1e-6, or 0)"
+            fi
+        fi
+
+        [ -n "$e_embedded_at" ] || report "$f" "$ln" "missing or empty required field: embedded_at"
+
+        if ! printf '%s' "$e_content_hash" | grep -qE '^[0-9a-fA-F]{64}$'; then
+            report "$f" "$ln" "invalid content_hash: expected 64 hex characters"
+        fi
+    done < "$f"
+
+    if [ -s "$seen_slugs_file" ]; then
+        dup_slugs=$(sort "$seen_slugs_file" | uniq -d)
+        if [ -n "$dup_slugs" ]; then
+            while IFS= read -r dslug; do
+                [ -n "$dslug" ] || continue
+                report "$f" 1 "duplicate slug '${dslug}' appears on more than one line"
+            done <<EOF
+$dup_slugs
+EOF
+        fi
     fi
 fi
 

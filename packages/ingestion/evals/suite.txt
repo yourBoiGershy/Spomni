@@ -19,3 +19,12 @@ packages/ingestion/evals/cases/confirm-first-tier-writes   # smoke
 packages/ingestion/evals/cases/episode-split-multiday   # smoke
 packages/ingestion/evals/cases/triage-held-respected   # smoke
 packages/ingestion/evals/cases/shard-mode-confined   # smoke
+packages/ingestion/evals/cases/kind-classification-corpus
+packages/ingestion/evals/cases/warrant-ordering
+packages/ingestion/evals/cases/de-saturation   # smoke
+packages/ingestion/evals/cases/user-model-propagation
+packages/ingestion/evals/cases/neighbor-prior-consistency
+packages/ingestion/evals/cases/no-ollama-fallback   # smoke
+packages/ingestion/evals/cases/rescale-skew-detection
+packages/ingestion/evals/cases/review-tiers-zero-writes-without-confirm   # smoke
+packages/ingestion/evals/cases/stated-kind-sticks   # smoke

@@ -73,6 +73,17 @@ event:
 The exact rule patterns (what gets held and why) live in ingestion's own
 spec, not here: `packages/ingestion/specs/import-triage.md`.
 
+## Post-file judgment pass: classify (plan 30)
+
+The `classify` pass runs *after* `file`, not as a new stage in the table
+above (the five stages are unchanged). It reads only file-stage outputs —
+`people/`, `interactions/`, `index.json`, and the evidence/stats derived
+from them — plus `user-model.md` and `ranking-weights.json`; it never reads
+`inbox/` or `archive/`. It is user-invoked (the review-tiers skill, not an
+automatic pipeline step) and produces `person.md` kind fields (`kind`
+marked `derived`) plus tier suggestions requiring confirmation, per
+`contracts/relationship-scoring.md`.
+
 ## Notes
 
 - This contract owns the cross-package stage boundaries and their on-disk

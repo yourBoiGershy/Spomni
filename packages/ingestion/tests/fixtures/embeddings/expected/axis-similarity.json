@@ -1,0 +1,8 @@
+{
+  "business": 0.387,
+  "friends": 0.1815,
+  "family": 0.136,
+  "community": 0.4632,
+  "transactional": 0.1717,
+  "model": "nomic-embed-text"
+}

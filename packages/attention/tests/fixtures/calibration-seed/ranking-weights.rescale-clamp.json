@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-08-29T09:00:00Z",
+  "schema_version": "1.1.0",
+  "weights": {
+    "signal-types": {},
+    "tags": {},
+    "kinds": {},
+    "evidence": {
+      "meeting": {"rationale": "seeded from user-model revision 1", "updated": "2026-08-29", "weight": 2.0},
+      "co_attended": {"rationale": "seeded from user-model revision 1", "updated": "2026-08-29", "weight": 2.0},
+      "chat_day": {"rationale": "seeded from user-model revision 1", "updated": "2026-08-29", "weight": 0.03}
+    }
+  }
+}

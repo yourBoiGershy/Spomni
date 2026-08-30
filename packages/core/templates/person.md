@@ -1,5 +1,5 @@
 ---
-schema_version: 1.0.0
+schema_version: 1.1.0
 name: <name>
 org:
 role:
@@ -8,6 +8,13 @@ tags: []
 birthday:
 how-met:
 last-touch:
+tier:
+# Optional relationship kind (plan 30; set only via person-set-kind.sh):
+# kind:
+# kind_note:
+# kind_source:
+# kind_expires:
+# kind_updated:
 ---
 
 ## Facts

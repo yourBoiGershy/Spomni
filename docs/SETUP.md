@@ -221,6 +221,25 @@ like; skipped people are never re-prompted. Afterwards, the query tools and
 `/debrief` have something to work with, and the scheduler keeps the inbox
 fresh.
 
+## 7. Optional: local embeddings for kind/tier review (plan 30)
+
+The `review-tiers` skill (`packages/ingestion/skills/review-tiers/SKILL.md`)
+can use **local** embeddings to hand the judgment "who among your confirmed
+people is this person most like" as a prior. It is optional — without it
+every step runs identically and the run log says `embeddings: unavailable`.
+Cloud embedding APIs are never used (other people's data stays local).
+
+```sh
+brew install ollama            # or https://ollama.com/download
+ollama serve &                 # listens on http://localhost:11434
+ollama pull nomic-embed-text   # the default EMBED_MODEL
+bash packages/ingestion/scripts/embed-people.sh data/store   # refresh vectors
+```
+
+Vectors land in `data/store/index/embeddings.jsonl` (regenerable; never
+leaves the machine). Override the endpoint/model with `OLLAMA_URL` /
+`EMBED_MODEL`; tests inject a deterministic shim via `EMBED_CMD`.
+
 ## Troubleshooting quick reference
 
 | Symptom | Cause / fix |

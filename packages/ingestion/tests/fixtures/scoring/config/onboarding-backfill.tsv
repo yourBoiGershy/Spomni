@@ -1,0 +1,4 @@
+# onboarding-backfill.tsv — see
+# packages/core/contracts/onboarding-backfill.md for the format.
+window_months	6
+self	me@example.test
