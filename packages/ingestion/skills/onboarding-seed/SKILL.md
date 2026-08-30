@@ -45,6 +45,42 @@ job and does not queue itself for a later pass — see the Summary section's
   --all`'s scope or cap is not listed, not flagged as "still needs
   attention," and is not queued for a later pass.
 
+## Progress narration (binding)
+
+Pure running-cost cut, per the mission test: the user should never have to
+ask "what's happening" mid-run. Before each step/sub-step, print ONE line
+`▶ Step N(x) — <what I'm about to do>`; after it, print one or two lines
+`✓ Step N(x) <elapsed>s — <what I found>`. Numbers in the `✓` line come ONLY
+from the step's own script summary line, a `wc -l` on a ledger/log file, or
+the model pass's own report — never invented or estimated. On a failure,
+print `✗ Step N(x) — <error line>` and continue per that step's existing
+failure rule (e.g. Step 1's "a partial or failed lane is not fatal").
+**Never print a person's name in a progress line** — names/slugs surface
+only in the final correction digest (review-tiers' own output), not here.
+
+Exact templates, per step (elapsed seconds and counts illustrative):
+
+- **Step 0:** `▶ Resolving your backfill window…` /
+  `✓ 0s — 6 months back to 2026-02-28; 4 self identities configured.`
+- **Step 1:** `▶ Starting beeper backfill in the background, then gmail…` /
+  one `✓ Ns —` line per lane as each finishes (beeper, gmail, calendar),
+  each citing that lane's own sweep summary line.
+- **2(a):** `▶ Triaging held-out events…` /
+  `✓ 8s — triage held 122 events: 120 calendar blocks with only you, 2 marketing.`
+- **2(b):** `▶ Filing calendar/email touchpoints deterministically…` /
+  `✓ 17s — filed 190 calendar/email touchpoints for 80 people without a model call; 10 held for judgment.`
+- **2(c):** `▶ Reading 46 chat threads (one model call each, 6 in parallel)…` /
+  `✓ 111s — 43 threads summarized, 3 skipped (2 security notices, 1 broadcast); kinds: 9 friend, 8 unsolicited, 13 group…` then
+  `✓ 2s — 146 conversation-days filed for 62 people.`
+- **2(d):** `▶ Judging 52 remaining emails/events with the model…` /
+  `✓ 468s — 15 real touchpoints filed (12 new people); 37 were bots/newsletters/notices and are marked done.`
+- **Step 3/4:** `▶ Building stats and deriving participation…` /
+  `✓ Ns — stats built for <people>/<interactions>; participation derived for N self identities.` Then hand off to
+  `/review-tiers --all`, which prints its own step-by-step narration and
+  correction digest — do not restate or duplicate it here.
+- **Close:** one total-elapsed line (`✓ total <M>m<S>s`) followed by the
+  pointer to the digest for corrections — nothing here restates it.
+
 ## Step 0 — resolve and announce the window; check for `self` identities
 
 Before running any sweep, resolve the active backfill window:
@@ -274,7 +310,9 @@ does not invoke it.
 
 ## Summary
 
-End with a short summary:
+The progress lines already printed (Progress narration section above) are
+the summary — do not restate them; this section is only what to add beyond
+them, kept as a short recap:
 
 - Window used.
 - Per-lane backfill outcome (counts, or "skill run — see its own
