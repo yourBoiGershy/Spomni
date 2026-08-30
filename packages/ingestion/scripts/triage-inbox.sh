@@ -87,10 +87,15 @@ INDEX_JSON="${STORE_DIR}/index.json"
 PEOPLE_DIR="${STORE_DIR}/people"
 
 # ---------------------------------------------------------------------------
-# Perf refactor (plan 27 U1, D4): a scratch workspace holds (a) the sender
-# haystack — one snapshot of index.json + people/*.md, greped once per hint
-# instead of re-grepping both sources per hint — and (b) the ledger
-# partition files built once at startup instead of per-event grep/awk.
+# Perf refactor (plan 27 U1, D4; F4 fix-round correction): a scratch
+# workspace holds (a) two sender-haystack snapshots, greped once per hint
+# instead of re-grepping their source(s) per hint — SENDER_HAYSTACK
+# (index.json + people/*.md, for the email check) and
+# SENDER_HAYSTACK_PEOPLE (people/*.md only, for the name-part check — pre-
+# U1 semantics: a name_part match only ever counted against people/*.md,
+# never index.json, and the U1 refactor must not silently widen that) —
+# and (b) the ledger partition files built once at startup instead of
+# per-event grep/awk.
 # ---------------------------------------------------------------------------
 
 WORKTMP="$(mktemp -d "${TMPDIR:-/tmp}/triage-inbox.XXXXXX")"
@@ -100,12 +105,15 @@ cleanup_worktmp() {
 trap cleanup_worktmp EXIT
 
 SENDER_HAYSTACK="${WORKTMP}/sender-haystack"
+SENDER_HAYSTACK_PEOPLE="${WORKTMP}/sender-haystack-people"
 : > "$SENDER_HAYSTACK"
+: > "$SENDER_HAYSTACK_PEOPLE"
 if [ -f "$INDEX_JSON" ]; then
   cat "$INDEX_JSON" >> "$SENDER_HAYSTACK" 2>/dev/null || true
 fi
 if [ -d "$PEOPLE_DIR" ]; then
   find "$PEOPLE_DIR" -type f -exec cat {} + >> "$SENDER_HAYSTACK" 2>/dev/null || true
+  find "$PEOPLE_DIR" -type f -exec cat {} + >> "$SENDER_HAYSTACK_PEOPLE" 2>/dev/null || true
 fi
 
 # ---------------------------------------------------------------------------
@@ -159,8 +167,12 @@ EOF_HINTS
 }
 
 # extract_subject <body-text> — the first "Subject: ..." line's value.
+# Note: [[:space:]] (POSIX class), not [ \t] — BSD/macOS sed has no \t
+# escape inside a bracket expression there, so [ \t] would match only the
+# three literal characters space/backslash/t (and never a real tab),
+# silently mis-trimming the subject.
 extract_subject() {
-  printf '%s\n' "$1" | grep -m1 -i '^Subject:' | sed -n 's/^[Ss][Uu][Bb][Jj][Ee][Cc][Tt]:[ \t]*//p'
+  printf '%s\n' "$1" | grep -m1 -i '^Subject:' | sed -n 's/^[Ss][Uu][Bb][Jj][Ee][Cc][Tt]:[[:space:]]*//p'
 }
 
 # sender_known <hints-newline-list> — 0 (true/known) if any hint's email
@@ -170,9 +182,12 @@ extract_subject() {
 # fires cold-pitch without positive unknown-sender evidence).
 #
 # Perf: index.json + people/*.md were snapshotted once into
-# $SENDER_HAYSTACK at startup (see above); both the email and name-part
-# checks grep only that single file instead of re-reading INDEX_JSON/
-# PEOPLE_DIR per hint.
+# $SENDER_HAYSTACK at startup (see above), and people/*.md alone into
+# $SENDER_HAYSTACK_PEOPLE — the email check greps the combined haystack,
+# the name-part check greps the people-only haystack (matching this
+# function's original per-hint semantics: a name match only ever counted
+# against people/*.md, never index.json), instead of re-reading
+# INDEX_JSON/PEOPLE_DIR per hint.
 sender_known() {
   hints="$1"
   [ -z "$hints" ] && return 0
@@ -189,9 +204,9 @@ sender_known() {
     fi
 
     if [ "$found" -eq 0 ]; then
-      name_part="$(printf '%s' "$hint" | sed -n 's/^\([^<]*\)<.*/\1/p' | sed 's/[ \t]*$//')"
+      name_part="$(printf '%s' "$hint" | sed -n 's/^\([^<]*\)<.*/\1/p' | sed 's/[[:space:]]*$//')"
       [ -z "$name_part" ] && name_part="$hint"
-      if [ -n "$name_part" ] && [ -s "$SENDER_HAYSTACK" ] && grep -qiF -- "$name_part" "$SENDER_HAYSTACK" 2>/dev/null; then
+      if [ -n "$name_part" ] && [ -s "$SENDER_HAYSTACK_PEOPLE" ] && grep -qiF -- "$name_part" "$SENDER_HAYSTACK_PEOPLE" 2>/dev/null; then
         found=1
       fi
     fi

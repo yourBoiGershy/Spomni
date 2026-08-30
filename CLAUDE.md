@@ -102,8 +102,11 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
 - Test commands (bash 3.2, no npm/jest — run all before any merge):
   `bash packages/core/tests/run-store-tests.sh`,
   `bash packages/connectors/tests/run-capture-tests.sh`,
-  `bash packages/connectors/tests/run-beeper-capture-tests.sh`, and
-  `bash packages/connectors/tests/run-scheduler-tests.sh`.
+  `bash packages/connectors/tests/run-beeper-capture-tests.sh`,
+  `bash packages/connectors/tests/run-scheduler-tests.sh`,
+  `bash packages/ingestion/tests/run-seed-tests.sh`,
+  `bash packages/ingestion/tests/run-triage-tests.sh`, and
+  `bash packages/ingestion/tests/run-shard-tests.sh`.
   Store sanity: `bash packages/core/scripts/validate-store.sh <store-dir>`
   (checks people/interactions/wakeups only — not inbox/).
   Capture-sync audit: `bash packages/connectors/scripts/check-sync.sh <store-dir>`

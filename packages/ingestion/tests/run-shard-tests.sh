@@ -452,6 +452,86 @@ else
 fi
 
 # =============================================================================
+# Fix-round tests (plan 27, T-F1 + T-F2) — a dedicated small fixture store,
+# packages/ingestion/tests/fixtures/shard/store-tf/, since neither case is
+# expressible from the filing-bench corpus alone (T-F2 specifically needs a
+# person file whose BODY prose contains a word that also appears as a bare
+# chat-title hint, which the bench corpus's people-free design can't give
+# us). Synthetic PII only (example.co/.org domains).
+#
+#   inbox/tf1-a.md            — calendar-event, hint "Alex Kim
+#                                <alex.kim@example.co>"
+#   inbox/tf1-b.md             — email, hint "Alex Kim <alex.kim@example.org>"
+#                                (T-F1: no bare-name hint anywhere for Alex
+#                                Kim — the two email-qualified hints alone
+#                                must still co-shard on the shared display
+#                                name.)
+#   inbox/tf2-team.md          — chat-message, bare hint "Team" (T-F2
+#                                negative control: must NOT resolve against
+#                                people/priya-nair.md, whose Facts prose
+#                                happens to contain the word "Team".)
+#   inbox/tf2-name.md          — email, bare hint "Priya Nair" (T-F2
+#                                positive control: hint equal to a person's
+#                                `name` field DOES resolve.)
+#   inbox/tf2-index-email.md   — email, hint "priya.nair@example.co" (T-F2
+#                                positive control: index.json email exact
+#                                match resolves.)
+#   people/priya-nair.md       — name: Priya Nair; a Facts bullet containing
+#                                the word "Team" in prose ("Joined the
+#                                platform Team as lead").
+#   index.json                 — priya-nair entry carries an "email" field
+#                                matching tf2-index-email.md's hint.
+# =============================================================================
+
+STORE_TF="$REPO_ROOT/packages/ingestion/tests/fixtures/shard/store-tf"
+
+if [ ! -d "$STORE_TF" ]; then
+  fail "fix-round fixture missing at $STORE_TF"
+else
+  tf_out="$WORK_DIR/tf-out"
+  tf_summary="$("$SHARD" "$STORE_TF" --data-dir "$WORK_DIR/tf-data" --out-dir "$tf_out")"
+  tf_status=$?
+
+  if [ "$tf_status" -eq 0 ]; then
+    pass "fix-round: shard-filing-batch.sh exits 0 against the T-F1/T-F2 fixture store"
+  else
+    fail "fix-round: exited $tf_status against the T-F1/T-F2 fixture store"
+  fi
+
+  tf_produced="$WORK_DIR/tf-produced.tsv"
+  produced_partition "$tf_out" | sort > "$tf_produced"
+
+  # T-F1 (HIGH): two email-qualified hints for the same not-yet-a-person
+  # contact, no bare-name hint anywhere, empty people/ match for either —
+  # must still co-shard via the shared normalized display name.
+  if ids_cogrouped "$tf_produced" tf1-a tf1-b; then
+    pass "T-F1: tf1-a (Alex Kim <alex.kim@example.co>) and tf1-b (Alex Kim <alex.kim@example.org>) co-shard on the shared display name"
+  else
+    fail "T-F1: tf1-a/tf1-b did not co-shard: $(grep -E '^tf1-(a|b)	' "$tf_produced" | tr '\n' '; ')"
+  fi
+
+  # T-F2 positive controls: a bare-name hint equal to a person's `name`
+  # field resolves, and an index.json email exact match resolves — both
+  # should land in the same group (both resolve to slug:priya-nair).
+  if ids_cogrouped "$tf_produced" tf2-name tf2-index-email; then
+    pass "T-F2 (positive control): tf2-name (bare 'Priya Nair') and tf2-index-email (priya.nair@example.co via index.json) co-shard (both resolve to the same known person)"
+  else
+    fail "T-F2 (positive control): tf2-name/tf2-index-email did not co-shard: $(grep -E '^tf2-(name|index-email)	' "$tf_produced" | tr '\n' '; ')"
+  fi
+
+  # T-F2 negative control (MEDIUM, the actual fix under test): a bare-name
+  # hint "Team" must NOT resolve against people/priya-nair.md merely
+  # because the word "Team" appears in that file's Facts prose —
+  # resolution is restricted to identity fields (name/email), never an
+  # unanchored body-text substring match.
+  if ids_cogrouped "$tf_produced" tf2-team tf2-name; then
+    fail "T-F2: tf2-team ('Team') incorrectly co-shards with tf2-name (Priya Nair) — resolved against body-prose text instead of identity fields only"
+  else
+    pass "T-F2: tf2-team ('Team') does not co-shard with the Priya Nair group — not resolved via body-prose substring match"
+  fi
+fi
+
+# =============================================================================
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 

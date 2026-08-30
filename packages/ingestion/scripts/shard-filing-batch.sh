@@ -19,17 +19,22 @@
 # orchestrator's other workers). --out-dir defaults to
 # "<data-dir>/shards".
 #
-# Per eligible event, each participant-hints entry is resolved to a "key":
-# an email or name match against index.json/people/*.md resolves to that
-# person's slug (a known person); otherwise the hint is a "new" person,
-# keyed by its normalized email, or — for a bare name with no email — by a
-# name match against OTHER new-person hints seen elsewhere in this same
-# batch (so two differently-spelled hints for one not-yet-a-person contact
-# still collide on one key). A hint matching more than one candidate
-# contributes ALL matched keys (ambiguity is merged, never guessed).
-# Events sharing any key land in the same connected component. Zero-hint
-# events cannot be bounded to any person and are excluded from the wave —
-# written to leftover.ids for a serial post-wave pass instead.
+# Per eligible event, each participant-hints entry is resolved to a "key"
+# against an identity map snapshotted once at startup from index.json/
+# people/*.md frontmatter `name` + email addresses (identity fields only —
+# never an unanchored substring match against prose body text): an exact
+# email or exact normalized-name match resolves to that person's slug (a
+# known person); otherwise the hint is a "new" person, keyed by its
+# normalized email. A hint that also carries a display name (the
+# "Name <email>" form) ALWAYS additionally contributes a normalized-name
+# key, so two differently-addressed hints for one not-yet-a-person contact
+# still collide on the shared name; a bare name with no email resolves the
+# same way against that same normalized-name key. A hint matching more
+# than one candidate contributes ALL matched keys (ambiguity is merged,
+# never guessed). Events sharing any key land in the same connected
+# component. Zero-hint events cannot be bounded to any person and are
+# excluded from the wave — written to leftover.ids for a serial post-wave
+# pass instead.
 #
 # Components in excess of --max-shards are bin-packed: sorted by event
 # count descending (ties by first-appearance order), then assigned
@@ -186,40 +191,89 @@ EOF_HINTS
 parse_hint() {
   hint="$1"
   HINT_EMAIL="$(printf '%s' "$hint" | grep -Eio '[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}' | head -1)"
-  HINT_DISPLAY_NAME="$(printf '%s' "$hint" | sed -n 's/^\([^<]*\)<.*/\1/p' | sed 's/[ \t]*$//')"
+  HINT_DISPLAY_NAME="$(printf '%s' "$hint" | sed -n 's/^\([^<]*\)<.*/\1/p' | sed 's/[[:space:]]*$//')"
 }
 
 normalize_email() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
 }
 
+# Note: [[:space:]] (POSIX class), not [ \t] — BSD/macOS sed has no \t
+# escape inside a bracket expression, so [ \t] matches the three literal
+# characters space, backslash, and 't', silently eating a leading/trailing
+# "t"/"T" from names like "Team" -> "eam" instead of trimming whitespace.
 normalize_name() {
   printf '%s' "$1" |
     tr '[:upper:]' '[:lower:]' |
-    sed -e 's/^[ \t]*//' -e 's/[ \t]*$//' -e 's/[ \t][ \t]*/ /g'
+    sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/[[:space:]][[:space:]]*/ /g'
 }
 
-# store_resolve <text> — prints one matching person slug per line (may be
-# none) for a case-insensitive fixed-string match of <text> against
-# people/*.md or index.json — the same deterministic store lookup
-# triage-inbox.sh's sender_known uses, extended here to identify WHICH
-# person (a slug), not just whether one matched.
-store_resolve() {
-  text="$1"
-  [ -z "$text" ] && return 0
-  if [ -d "$PEOPLE_DIR" ]; then
-    grep -rliF -- "$text" "$PEOPLE_DIR" 2>/dev/null | while IFS= read -r pf; do
-      pb="$(basename "$pf")"
-      printf '%s\n' "${pb%.md}"
-    done || true
-  fi
-  if [ -f "$INDEX_JSON" ]; then
-    jq -r --arg t "$text" '
-      to_entries[]
-      | select((.value | tostring | ascii_downcase) | contains($t | ascii_downcase))
-      | .key
-    ' "$INDEX_JSON" 2>/dev/null || true
-  fi
+# ---------------------------------------------------------------------------
+# Identity map — snapshotted ONCE at startup (not per hint): one row per
+# known slug, `slug\tnorm_name\tnorm_email1,norm_email2,...`. Resolution
+# below is restricted to identity fields only — frontmatter `name` (exact
+# normalized match) and email addresses (exact match against email-shaped
+# tokens extracted from the person file / index.json value) — never an
+# unanchored substring match against prose body text, which is what let a
+# short hint (a chat title, a bare first name) over-merge the whole store
+# into one component. This mirrors the debrief skill's own §3 matching
+# (name / alias / contact-detail identity fields only).
+# ---------------------------------------------------------------------------
+
+IDENTITY_MAP="${WORKTMP}/identity-map"
+: > "$IDENTITY_MAP"
+
+if [ -d "$PEOPLE_DIR" ]; then
+  for pf in "$PEOPLE_DIR"/*.md; do
+    [ -e "$pf" ] || continue
+    slug="$(basename "$pf" .md)"
+    pfm="$(extract_frontmatter "$pf")"
+    pname="$(get_field "$pfm" name)"
+    norm_pname="$(normalize_name "$pname")"
+    emails="$(grep -Eio '[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}' "$pf" 2>/dev/null |
+      tr '[:upper:]' '[:lower:]' | sort -u | tr '\n' ',' | sed 's/,$//')"
+    printf '%s\t%s\t%s\n' "$slug" "$norm_pname" "$emails" >> "$IDENTITY_MAP"
+  done
+fi
+
+if [ -f "$INDEX_JSON" ]; then
+  jq -r '
+    to_entries[]
+    | [.key, ((.value | tostring) | ascii_downcase)]
+    | @tsv
+  ' "$INDEX_JSON" 2>/dev/null | while IFS="$(printf '\t')" read -r slug valtext; do
+    [ -z "$slug" ] && continue
+    idx_emails="$(printf '%s' "$valtext" |
+      grep -Eio '[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}' | sort -u | tr '\n' ',' | sed 's/,$//')"
+    if [ -n "$idx_emails" ]; then
+      printf '%s\t\t%s\n' "$slug" "$idx_emails" >> "$IDENTITY_MAP"
+    fi
+  done || true
+fi
+
+# identity_resolve_email <email> — exact match against any known slug's
+# email list; prints one matching slug per line (may be none).
+identity_resolve_email() {
+  e="$(normalize_email "$1")"
+  [ -z "$e" ] && return 0
+  [ -s "$IDENTITY_MAP" ] || return 0
+  awk -F'\t' -v e="$e" '
+    {
+      n = split($3, arr, ",")
+      for (i = 1; i <= n; i++) { if (arr[i] == e) { print $1; break } }
+    }
+  ' "$IDENTITY_MAP"
+  return 0
+}
+
+# identity_resolve_name <name> — exact normalized match against a known
+# slug's frontmatter `name`; prints one matching slug per line (may be
+# none, may be more than one if two people share a display name).
+identity_resolve_name() {
+  n="$(normalize_name "$1")"
+  [ -z "$n" ] && return 0
+  [ -s "$IDENTITY_MAP" ] || return 0
+  awk -F'\t' -v n="$n" '$2 == n { print $1 }' "$IDENTITY_MAP"
   return 0
 }
 
@@ -307,17 +361,22 @@ while IFS="$(printf '\t')" read -r id hint; do
 done < "$HINTS_RAW"
 
 IDKEYS="${WORKTMP}/idkeys"
-NAME_MAP="${WORKTMP}/name-map"
 : > "$IDKEYS"
-: > "$NAME_MAP"
 
-# Pass 1: email-bearing hints.
+# Pass 1: email-bearing hints. Each contributes the email-derived key (a
+# resolved slug if the email is known, else a synthetic new:<email> key)
+# and, if the hint also carried a display name, ALWAYS additionally
+# contributes the normalized-display-name key `new:<normalized-name>` —
+# so two email-hints for the same not-yet-a-person contact under two
+# different addresses still collide and merge on the shared name, rather
+# than sharding into two components that would both try to create the
+# same person file (F1).
 while IFS="$(printf '\t')" read -r id email dname; do
   [ -z "$id" ] && continue
   norm_email="$(normalize_email "$email")"
-  slugs="$(store_resolve "$email")"
+  slugs="$(identity_resolve_email "$email")"
   if [ -z "$slugs" ] && [ -n "$dname" ]; then
-    slugs="$(store_resolve "$dname")"
+    slugs="$(identity_resolve_name "$dname")"
   fi
   if [ -n "$slugs" ]; then
     printf '%s\n' "$slugs" | sort -u | while IFS= read -r s; do
@@ -327,15 +386,18 @@ while IFS="$(printf '\t')" read -r id email dname; do
   else
     newkey="new:${norm_email}"
     printf '%s\t%s\n' "$id" "$newkey" >> "$IDKEYS"
-    if [ -n "$dname" ]; then
-      norm_name="$(normalize_name "$dname")"
-      printf '%s\t%s\n' "$norm_name" "$newkey" >> "$NAME_MAP"
-    fi
+  fi
+  if [ -n "$dname" ]; then
+    norm_name="$(normalize_name "$dname")"
+    printf '%s\tnew:%s\n' "$id" "$norm_name" >> "$IDKEYS"
   fi
 done < "$EMAIL_HINTS"
 
-# Pass 2: bare-name hints (no email at all). Consults the store, then the
-# name->key map seeded above (ambiguity-merge if more than one candidate).
+# Pass 2: bare-name hints (no email at all). Store lookup first (exact
+# normalized name match, may return more than one slug — ambiguity-merge);
+# otherwise the same normalized-name key any pass-1 hint with this same
+# display name already contributed (or will contribute independent of
+# processing order — union-find doesn't care which side unions first).
 while IFS="$(printf '\t')" read -r id hint; do
   [ -z "$id" ] && continue
   parse_hint "$hint"
@@ -344,7 +406,7 @@ while IFS="$(printf '\t')" read -r id hint; do
   else
     name_for_lookup="$hint"
   fi
-  slugs="$(store_resolve "$name_for_lookup")"
+  slugs="$(identity_resolve_name "$name_for_lookup")"
   if [ -n "$slugs" ]; then
     printf '%s\n' "$slugs" | sort -u | while IFS= read -r s; do
       [ -z "$s" ] && continue
@@ -353,16 +415,8 @@ while IFS="$(printf '\t')" read -r id hint; do
     continue
   fi
   norm_name="$(normalize_name "$name_for_lookup")"
-  candidates="$(awk -F'\t' -v n="$norm_name" '$1 == n { print $2 }' "$NAME_MAP" | sort -u)"
-  if [ -n "$candidates" ]; then
-    printf '%s\n' "$candidates" | while IFS= read -r c; do
-      [ -z "$c" ] && continue
-      printf '%s\t%s\n' "$id" "$c" >> "$IDKEYS"
-    done
-  else
-    newkey="new:${norm_name}"
-    printf '%s\t%s\n' "$id" "$newkey" >> "$IDKEYS"
-  fi
+  newkey="new:${norm_name}"
+  printf '%s\t%s\n' "$id" "$newkey" >> "$IDKEYS"
 done < "$NAME_ONLY_HINTS"
 
 # ---------------------------------------------------------------------------

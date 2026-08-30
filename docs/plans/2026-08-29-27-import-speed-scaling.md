@@ -1,6 +1,8 @@
 # Plan 27: Import speed & scaling
 
-Status: Ready
+Status: Done (2026-08-29 — see Close-out at end of file; D6's 0.6× bench
+target measured at 0.65× — near miss at bench scale, structural win
+confirmed, onboarding-scale projection recorded)
 Package: ingestion (shard pre-pass, debrief shard mode, triage perf, specs,
 tests, eval, bench fixtures) + connectors (two LOW-advisory riders)
 Depends-on: 26 (import-pipeline contract 1.0.0, triage tier, held ledger),
@@ -397,4 +399,79 @@ sanity — nothing in this chunk wrote to it).
 - **Retroactive re-filing of the live store** — the baseline store is not
   rewritten; measurement is the D6 synthetic proxy.
 
-Status: Ready
+## Close-out (2026-08-29)
+
+All 11 units executed same-session in the ingestion worktree (U1–U9
+workers, U10–U11 orchestrator); commits: plan, phase 1, phase 2 + fix
+round, close-out. Evidence against Proof of done:
+
+1. **Zero cross-worker person-file conflicts — demonstrated live.** 4-shard
+   wave over the 24-event bench corpus: 16 people created, each by exactly
+   one shard worker; programmatic check (person ← interaction ← shard
+   mapping) = 0 of 16 touched by >1 shard; per-shard ledgers merged with 0
+   duplicate ids; single post-wave `build-index` + `validate` (1s).
+   Guaranteed by construction (D1/D2, spec'd U3, 25-assertion suite U7 with
+   sabotage proofs, contract-hooked U8, eval-guarded U9 `shard-mode-confined`
+   PASS×2 + doctored-FAIL, smoke-tagged).
+2. **Wall-clock target: measured 0.65× vs the 0.6× D6 target — near miss
+   at bench scale; structural win confirmed.** Serial baseline (plain batch,
+   one session): 293s for 23 filed. Wave: first shard START → leftover END =
+   191s. Decomposition: the four shard workers spent **19–26s each actually
+   filing** (≈11× on the filing itself — shard mode defers per-event
+   index/validate), the parallel phase was 92s from first START to last
+   END (cold skill startup dominates 5–8-event shards), and the serial
+   leftover pass (3 events, one a bench-only zero-hint case) cost ~90s.
+   A warm-worker leftover variant measured 113s (it filed 2 events with
+   full per-event §5c + one validate-fix cycle) — no gain at this size;
+   D3 nonetheless records warm-worker leftover as the protocol (context
+   economy), with the fresh-session fallback. **Onboarding projection
+   (labeled projection):** at 107 events / 8 shards (~13 events each), fixed
+   costs amortize: serial ≈ 107 × 12.7s/event ≈ 1360s vs wave ≈ 70s startup
+   + 13 × ~5s + 2s tail + leftover ≈ 250–350s → **~0.2–0.25×**. The live
+   store's pre-pass shows **leftover=0** (123 eligible → 30 components → 8
+   shards, 7s), so the real onboarding wave has no serial tail at all.
+   Target to be confirmed on the next real onboarding-shaped run.
+3. **Lane concurrency (U4):** onboarding Step 1 states beeper backgrounded
+   concurrently with the serial gmail→calendar session sweeps, with the
+   verified disjoint write paths cited.
+4. **Chunk-26 perf advisories (U1, U2):** implemented exactly (one-pass
+   ledger partition, sender_known haystack; coverage_floor_get delegation;
+   first() dup-id guard + test). Live triage timing 1.884s → 1.728s warm
+   (~8%): the ≤0.5× sub-target was miscalibrated — at 160 events / 37-line
+   ledger / 32 people the per-event subprocess parsing dominates, not the
+   O(N·M) lookups the fix removed; the complexity fix stands for 1000+.
+5. **Suites (post fix rounds):** store 10, capture 118, beeper 109,
+   scheduler 64, seed 23, triage 23, shard 29 — all green; ingestion eval
+   20/20 PASS ($0.87) + smoke 4/4 re-run after the fix rounds; live
+   pre-pass after the identity-field fix: 123 eligible → **36** components
+   (was 30 — six false over-merges removed) → 8 shards, leftover=0, ~7s;
+   live store validate clean (177 files), check-sync 0 failures.
+
+**Defect found by the wave's post-validate, fixed in-chunk:** the core
+person template shipped a blank `tier:` placeholder; workers copying it
+wrote an empty enum that `validate-store.sh` rejects (16/16 wave people;
+the serial worker omitted the line). Fixed: placeholder removed from
+`packages/core/templates/person.md` (+ README note; store suite green,
+old/new template proof), debrief SKILL new-person bullets now say
+omit-the-line, never blank. Filing-judgment variance observed across
+workers (name-from-email-local-part vs hold-as-unresolvable for bare-email
+hints) is recorded for chunk 30 — not a sharding issue.
+
+**Checker (/code-review medium over the branch):** 7 findings, severities
+assigned by the orchestrator. Fixed in one round: (HIGH) pass-1 hints with
+identical display names but different emails did not merge → same new
+person creatable by two shards — fixed by adding the normalized-name key
+to every email hint; (MEDIUM) `store_resolve` matched unanchored
+substrings over person bodies/index values (over-merge → shards=1 risk)
+→ restricted to identity fields (name/alias/contact), aligned with debrief
+§3; (MEDIUM) per-hint recursive greps → single identity-haystack snapshot;
+(MEDIUM) triage `sender_known` name-part check widened to index.json in
+U1 → people-only haystack restored; (docs) CLAUDE.md test list now carries
+seed/triage/shard suites. Regression tests added for each. Advisories,
+deliberately not fixed here: confinement is guaranteed by construction +
+post-wave validate, not enforced mechanically at run time (a shard file
+carrying its allowed slug/new-key set with the worker refusing writes
+outside it would make it enforceable — candidate for a hardening unit);
+frontmatter/hint helper duplication across ingestion scripts (a sourced
+`scripts/lib.sh` — declined twice, now the third recording; do it next
+time the helpers change).
