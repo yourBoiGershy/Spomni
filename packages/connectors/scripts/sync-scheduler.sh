@@ -110,6 +110,34 @@ done
 
 CONFIG_FILE="$(sync_config_path "$DATA_DIR")"
 
+# date-flavor detection (BSD vs GNU) — mirrors wakeup-queue.sh's parser.
+if date -u -d '@0' +%s >/dev/null 2>&1; then
+	DATE_MODE=gnu
+else
+	DATE_MODE=bsd
+fi
+
+# iso_to_epoch <YYYY-MM-DDTHH:MM:SSZ> — UTC epoch seconds, or "" on parse
+# failure.
+iso_to_epoch() {
+	# $1 = ISO timestamp
+	if [ "$DATE_MODE" = "gnu" ]; then
+		TZ=UTC date -u -d "$1" +%s 2>/dev/null || echo ""
+	else
+		date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s 2>/dev/null || echo ""
+	fi
+}
+
+# epoch_to_iso <epoch> — formats an epoch as an ISO UTC timestamp.
+epoch_to_iso() {
+	# $1 = epoch seconds
+	if [ "$DATE_MODE" = "gnu" ]; then
+		TZ=UTC date -u -d "@$1" +"%Y-%m-%dT%H:%M:%SZ"
+	else
+		date -u -r "$1" +"%Y-%m-%dT%H:%M:%SZ"
+	fi
+}
+
 label_for() {
 	echo "${LABEL_PREFIX}$1"
 }
@@ -345,10 +373,10 @@ $STATE
 EOF
 					LAST_RUN="$LAST_START"
 					if [ "$INSTALLED" = "yes" ]; then
-						START_EPOCH="$(date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_START" +%s 2>/dev/null || echo "")"
+						START_EPOCH="$(iso_to_epoch "$LAST_START")"
 						if [ -n "$START_EPOCH" ]; then
 							NEXT_EPOCH=$((START_EPOCH + INTERVAL))
-							NEXT_RUN="$(date -u -r "$NEXT_EPOCH" +"%Y-%m-%dT%H:%M:%SZ")"
+							NEXT_RUN="$(epoch_to_iso "$NEXT_EPOCH")"
 						else
 							NEXT_RUN="-"
 						fi

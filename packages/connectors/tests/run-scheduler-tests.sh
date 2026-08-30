@@ -538,8 +538,11 @@ EOF
   template_rc=$?
   assert_eq "core template sync-lanes.tsv: parses cleanly under sync_lanes_list" "$template_rc" "0"
   template_row_count="$(printf '%s\n' "$template_rows" | grep -c .)"
-  assert_eq "core template sync-lanes.tsv: exactly 5 rows" "$template_row_count" "5"
+  assert_eq "core template sync-lanes.tsv: exactly 6 rows" "$template_row_count" "6"
   assert_contains "core template sync-lanes.tsv: feedback lane row present" "$template_rows" "feedback"
+  template_learn_row="$(printf '%s\n' "$template_rows" | grep -E "^learn	900	true	")"
+  assert_contains "core template sync-lanes.tsv: learn lane row present (learn-sweep.sh)" "$template_learn_row" "learn-sweep.sh"
+  assert_contains "core template sync-lanes.tsv: learn lane row present (--data-dir)" "$template_learn_row" "--data-dir $template_copy_dir/data"
 
   # --- (ix) tick/subcommand argument errors ---
   "$MCP_TICK" tick --claude-bin "$STUB_CLAUDE" --allowed-tools "Bash" >/dev/null 2>/dev/null

@@ -38,6 +38,15 @@ notify	900	true	/bin/bash {{REPO_ROOT}}/packages/connectors/scripts/deliver-tick
 # captured this tick is already on disk for it to parse. Ships enabled.
 feedback	900	true	/bin/bash {{REPO_ROOT}}/packages/ingestion/scripts/feedback-parse.sh {{STORE_DIR}} --data-dir {{PRIVATE_DATA_ROOT}}/data/ingestion
 
+# Learn lane (plan 36 D) — walks a cursor over signals/feedback.jsonl,
+# regenerates the learned regression evals via ingestion's
+# feedback-to-evals.sh, and holds conflicting corrections for the user in
+# <data-dir>/attention/learn-conflicts.tsv (never auto-resolved, never
+# writes user-model.md). Deterministic shell, no model session; must run
+# after the feedback lane so this tick's parsed replies are already in the
+# ledger. Ships enabled; a 3-line digest lands in logs/learn.log.
+learn	900	true	/bin/bash <ABS-REPO-ROOT>/packages/attention/scripts/learn-sweep.sh <ABS-STORE-DIR> --data-dir <ABS-PRIVATE-DATA-ROOT>/data
+
 # MCP lanes (plan 28) — gmail/calendar sync runs as a headless Claude
 # session per tick, via packages/connectors/scripts/mcp-lane-tick.sh. These
 # rows are disabled by default; before enabling:

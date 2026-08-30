@@ -993,8 +993,13 @@ bf2_window_start="$(printf '%s' "$bf2_window_line" | cut -f1)"
 if [ -z "$bf2_window_start" ]; then
   fail "backfill window bound: could not resolve a window start to pin the test to"
 else
-  bf2_in_ts="$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' -v+1d "$bf2_window_start" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null)"
-  bf2_out_ts="$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' -v-1d "$bf2_window_start" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null)"
+  if date -u -d '@0' +%s >/dev/null 2>&1; then
+    bf2_in_ts="$(TZ=UTC date -u -d "$bf2_window_start + 1 day" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null)"
+    bf2_out_ts="$(TZ=UTC date -u -d "$bf2_window_start - 1 day" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null)"
+  else
+    bf2_in_ts="$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' -v+1d "$bf2_window_start" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null)"
+    bf2_out_ts="$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' -v-1d "$bf2_window_start" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null)"
+  fi
 
   bf2_straddle_fixture="$bf2_root/messages-straddle.json"
   cat > "$bf2_straddle_fixture" <<EOF

@@ -4,8 +4,11 @@
 # Usage: bash scripts/test-all.sh [--skip-node]
 #
 # Plain bash 3.2; every suite runs against committed synthetic fixtures — no
-# live data, no network. The query suite needs `node` (>= 22.6) and
-# `npm ci` in packages/query/server; pass --skip-node (or lack node) to skip it.
+# live data, no network. The query suite and run-reachouts-readonly.sh need
+# `node` (>= 22.6) and `npm ci` in packages/query/server; pass --skip-node
+# (or lack node) to skip them. run-embeddings-tests.sh and
+# run-gitignore-tests.sh run unconditionally (no node/Ollama required —
+# embeddings tests use a deterministic fake-embed shim, no network).
 # CI runs this exact script (.github/workflows/ci.yml).
 set -u
 
@@ -30,11 +33,14 @@ packages/ingestion/tests/run-structured-tests.sh
 packages/ingestion/tests/run-scoring-tests.sh
 packages/ingestion/tests/run-feedback-tests.sh
 packages/ingestion/tests/run-thread-tests.sh
+packages/ingestion/tests/run-embeddings-tests.sh
 packages/attention/tests/run-attention-tests.sh
 packages/attention/tests/run-capacity-tests.sh
 packages/attention/tests/run-queue-tests.sh
+packages/attention/tests/run-learn-tests.sh
 packages/query/tests/run-who-next-direct-tests.sh
 .claude/scripts/tests/run-oss-guard-tests.sh
+.claude/scripts/tests/run-gitignore-tests.sh
 .claude/scripts/oss-guard.sh
 "
 
@@ -82,6 +88,7 @@ else
     (cd packages/query/server && npm ci --silent) || { echo "FAIL  npm ci"; fail=$((fail+1)); }
   fi
   run packages/query/tests/run-query-tests.sh
+  run packages/query/tests/run-reachouts-readonly.sh
 fi
 
 echo

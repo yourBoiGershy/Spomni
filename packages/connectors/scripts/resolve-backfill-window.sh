@@ -15,8 +15,8 @@
 # window_months -> non-zero exit, one-line reason on stderr, no stdout.
 # Missing file or missing window_months key -> default 6.
 #
-# bash 3.2 + BSD date (darwin) only — no GNU-date assumptions, no external
-# deps beyond POSIX + date.
+# bash 3.2 compatible; detects BSD (darwin) vs GNU date at runtime, no
+# external deps beyond POSIX + date.
 
 set -u
 
@@ -79,7 +79,17 @@ if [ -z "$window_months" ]; then
   window_months=6
 fi
 
-window_start_iso="$(date -u -v-"${window_months}"m +%Y-%m-%dT%H:%M:%SZ)"
+if date -u -d '@0' +%s >/dev/null 2>&1; then
+  DATE_MODE=gnu
+else
+  DATE_MODE=bsd
+fi
+
+if [ "$DATE_MODE" = "gnu" ]; then
+  window_start_iso="$(date -u -d "-${window_months} months" +%Y-%m-%dT%H:%M:%SZ)"
+else
+  window_start_iso="$(date -u -v-"${window_months}"m +%Y-%m-%dT%H:%M:%SZ)"
+fi
 
 if [ -z "$window_start_iso" ]; then
   echo "resolve-backfill-window: failed to compute window start date" >&2
