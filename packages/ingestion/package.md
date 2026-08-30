@@ -99,7 +99,22 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   `scripts/file-thread.sh` (deterministic writer consuming that JSON —
   timestamp-derived episode split, chatID dedup union (D3), person upsert,
   `debrief-filed.log` append, no model call and no `tier`/`kind` opinion,
-  plan 32)
+  plan 32), `scripts/refresh-person.sh` (one-shot, hermetic model call over
+  a person's full interaction timeline — re-derives `## Facts`'
+  `inferred-*` bullets (told-by-user untouched) plus the `## Open threads`/
+  `## Resolved` bullet set per `specs/currency.md`'s currency model; sole
+  writer of `data/ingestion/refresh.log`, plan 36),
+  `scripts/find-merge-candidates.sh` (read-only over
+  `<store-dir>/people/`, `<store-dir>/interactions/`, `<store-dir>/index.json`,
+  and `<data-dir>/ingestion/identities.tsv` — deterministic scan for likely
+  duplicate person.md pairs via shared identity, normalized-name, or
+  slug-prefix+org/domain matching (highest-precedence reason wins when a
+  pair matches more than one rule: shared-identity > same-name >
+  slug-prefix+org > slug-prefix+domain), keep/drop ordered by
+  interaction-link count then slug specificity; emits `candidates=<n>` then
+  exactly one TSV `keep\tdrop\treason` row per pair; never merges, never
+  writes — pairs are handed to `packages/core/scripts/person-merge.sh` for
+  a human-confirmed merge, plan 36 B2)
 - Config: `config/noise-senders.tsv` — the rule 6 (`noise-sender`) name/regex/
   scope pattern table `scripts/triage-inbox.sh` reads (plus an optional
   `<data-dir>/noise-senders.local.tsv` override, same columns, local-row-wins

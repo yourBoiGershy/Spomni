@@ -34,6 +34,8 @@ packages/ingestion/tests/run-structured-tests.sh
 packages/ingestion/tests/run-scoring-tests.sh
 packages/ingestion/tests/run-feedback-tests.sh
 packages/ingestion/tests/run-thread-tests.sh
+packages/ingestion/tests/run-refresh-tests.sh
+packages/ingestion/tests/run-merge-candidates-tests.sh
 packages/ingestion/tests/run-embeddings-tests.sh
 packages/attention/tests/run-attention-tests.sh
 packages/attention/tests/run-capacity-tests.sh

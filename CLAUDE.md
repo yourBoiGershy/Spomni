@@ -128,6 +128,8 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   `bash packages/ingestion/tests/run-shard-tests.sh`,
   `bash packages/ingestion/tests/run-structured-tests.sh`,
   `bash packages/ingestion/tests/run-feedback-tests.sh`,
+  `bash packages/ingestion/tests/run-refresh-tests.sh`,
+  `bash packages/ingestion/tests/run-merge-candidates-tests.sh`,
   `bash packages/ingestion/tests/run-embeddings-tests.sh`,
   `bash packages/attention/tests/run-attention-tests.sh`,
   `bash packages/attention/tests/run-capacity-tests.sh`, and

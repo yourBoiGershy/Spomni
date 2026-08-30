@@ -248,6 +248,21 @@ else
 fi
 rm -rf "$REPO"
 
+REPO="$(new_repo)"
+mkdir -p "$REPO/docs"
+printf 'deploy: deploy@vercel.com\nreal: someone@gmail.com\n' \
+    > "$REPO/docs/notes.md"
+commit_extra "$REPO"
+out="$(run_guard "$REPO" personal-emails)"
+status=$?
+if [ "$status" -eq 1 ] && printf '%s' "$out" | grep -q 'FAIL: personal-emails:' \
+    && ! printf '%s' "$out" | grep -q 'deploy@vercel.com'; then
+    pass "personal-emails: allows deploy@vercel.com while someone@gmail.com still trips"
+else
+    fail "personal-emails: expected FAIL only for gmail.com, got status=$status output=$out"
+fi
+rm -rf "$REPO"
+
 # ===========================================================================
 # 5. phone-numbers
 # ===========================================================================
