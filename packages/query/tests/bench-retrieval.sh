@@ -49,12 +49,15 @@ MCP_CLIENT="${SCRIPT_DIR}/bench-mcp-client.mjs"
 
 usage() {
   cat >&2 <<EOF
-Usage: $(basename "$0") <store-dir> [--json] [--scale N] [--runs K]
+Usage: $(basename "$0") <store-dir> [--json] [--scale N] [--runs K] [--guard]
 
 Times every row of docs/plans/2026-08-30-38-retrieval-speed.md's §1 table on
 a scratch copy of <store-dir> (never writes into it). --scale N generates
 and benches an N-person synthetic store instead (in that case <store-dir>
-is optional). --runs K = best of K timed runs per row (default 2).
+is optional). --runs K = best of K timed runs per row (default 2). --guard
+compares every row against the plan's fixture-store (30-person) regression
+thresholds and exits 1 with a GUARD FAIL line per miss, plus a process-count
+check on build-index.sh / who-next-direct.sh.
 EOF
   exit 2
 }
@@ -63,11 +66,16 @@ STORE_DIR=""
 JSON_OUT=0
 SCALE_N=""
 RUNS=2
+GUARD=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --json)
       JSON_OUT=1
+      shift
+      ;;
+    --guard)
+      GUARD=1
       shift
       ;;
     --scale)
@@ -207,12 +215,14 @@ INTERACTIONS_COUNT="$(find "${SCRATCH}/interactions" -name '*.md' 2>/dev/null | 
 # Rows 1-3: build-index.sh, build-stats.sh, validate-store.sh (full)
 # ---------------------------------------------------------------------------
 
-time_cmd_best_of bash "${CORE_SCRIPTS_DIR}/build-index.sh" "$SCRATCH" > "${SCRATCH}/index.json.bench"
-mv "${SCRATCH}/index.json.bench" "${SCRATCH}/index.json"
+# build-index.sh / build-stats.sh already write <store>/index.json and
+# <store>/stats.json themselves (their stdout is just a one-line summary) —
+# time them in place, no redirect/mv (a prior version clobbered the JSON
+# files with that summary line, breaking every row downstream).
+time_cmd_best_of bash "${CORE_SCRIPTS_DIR}/build-index.sh" "$SCRATCH"
 BUILD_INDEX_S="$TIMING_RESULT"
 
-time_cmd_best_of bash "${CORE_SCRIPTS_DIR}/build-stats.sh" "$SCRATCH" > "${SCRATCH}/stats.json.bench"
-mv "${SCRATCH}/stats.json.bench" "${SCRATCH}/stats.json"
+time_cmd_best_of bash "${CORE_SCRIPTS_DIR}/build-stats.sh" "$SCRATCH"
 BUILD_STATS_S="$TIMING_RESULT"
 
 time_cmd_best_of bash "${CORE_SCRIPTS_DIR}/validate-store.sh" "$SCRATCH"
@@ -265,6 +275,10 @@ TOOL_SEARCH_MS="skipped (no node)"
 TOOL_GET_PERSON_MS="skipped (no node)"
 TOOL_SUGGEST_MS="skipped (no node)"
 TOOL_UPCOMING_MS="skipped (no node)"
+# Set non-zero when an MCP row fails outright (client crash / bad JSON) so
+# the script still prints its table (and --json) but exits 1 at the end,
+# rather than aborting before any output is produced.
+MCP_FAILED=0
 
 if [ "$NODE_OK" -eq 1 ]; then
   # Fresh cold start: scratch store copy already has fresh index/stats
@@ -274,20 +288,27 @@ if [ "$NODE_OK" -eq 1 ]; then
   # Ensure index/stats are newer than every people/interactions file.
   touch "${FRESH_DIR}/index.json" "${FRESH_DIR}/stats.json"
 
-  time_start="$(now_s)"
-  FRESH_OUT="$(node --experimental-strip-types "$MCP_CLIENT" "$FRESH_DIR" 20 2>/tmp/bench-retrieval-mcp-err.$$)" || {
+  FRESH_OUT=""
+  if ! FRESH_OUT="$(node --experimental-strip-types "$MCP_CLIENT" "$FRESH_DIR" 20 2>/tmp/bench-retrieval-mcp-err.$$)"; then
     echo "bench-retrieval.sh: bench-mcp-client.mjs (fresh) failed:" >&2
     cat /tmp/bench-retrieval-mcp-err.$$ >&2
-    rm -f /tmp/bench-retrieval-mcp-err.$$
-    exit 1
-  }
+    MCP_FAILED=1
+    MCP_COLD_FRESH_S="error"
+    TOOL_SEARCH_MS="error"
+    TOOL_GET_PERSON_MS="error"
+    TOOL_SUGGEST_MS="error"
+    TOOL_UPCOMING_MS="error"
+  fi
   rm -f /tmp/bench-retrieval-mcp-err.$$
-  MCP_COLD_FRESH_MS="$(echo "$FRESH_OUT" | jq -r '.cold_start_ms')"
-  MCP_COLD_FRESH_S="$(awk -v ms="$MCP_COLD_FRESH_MS" 'BEGIN { printf "%.2f", ms / 1000 }')"
-  TOOL_SEARCH_MS="$(echo "$FRESH_OUT" | jq -r '.tools.search_people')"
-  TOOL_GET_PERSON_MS="$(echo "$FRESH_OUT" | jq -r '.tools.get_person')"
-  TOOL_SUGGEST_MS="$(echo "$FRESH_OUT" | jq -r '.tools.suggest_reachouts')"
-  TOOL_UPCOMING_MS="$(echo "$FRESH_OUT" | jq -r '.tools.upcoming_meetings')"
+
+  if [ "$MCP_FAILED" -eq 0 ]; then
+    MCP_COLD_FRESH_MS="$(echo "$FRESH_OUT" | jq -r '.cold_start_ms')"
+    MCP_COLD_FRESH_S="$(awk -v ms="$MCP_COLD_FRESH_MS" 'BEGIN { printf "%.2f", ms / 1000 }')"
+    TOOL_SEARCH_MS="$(echo "$FRESH_OUT" | jq -r '.tools.search_people')"
+    TOOL_GET_PERSON_MS="$(echo "$FRESH_OUT" | jq -r '.tools.get_person')"
+    TOOL_SUGGEST_MS="$(echo "$FRESH_OUT" | jq -r '.tools.suggest_reachouts')"
+    TOOL_UPCOMING_MS="$(echo "$FRESH_OUT" | jq -r '.tools.upcoming_meetings')"
+  fi
 
   # Stale cold start: touch one people/*.md so it is newer than index.json.
   STALE_DIR="${WORKDIR}/mcp-stale"
@@ -298,15 +319,19 @@ if [ "$NODE_OK" -eq 1 ]; then
     touch "$FIRST_PERSON"
   fi
 
-  STALE_OUT="$(node --experimental-strip-types "$MCP_CLIENT" "$STALE_DIR" 1 2>/tmp/bench-retrieval-mcp-err2.$$)" || {
+  STALE_OUT=""
+  if ! STALE_OUT="$(node --experimental-strip-types "$MCP_CLIENT" "$STALE_DIR" 1 2>/tmp/bench-retrieval-mcp-err2.$$)"; then
     echo "bench-retrieval.sh: bench-mcp-client.mjs (stale) failed:" >&2
     cat /tmp/bench-retrieval-mcp-err2.$$ >&2
-    rm -f /tmp/bench-retrieval-mcp-err2.$$
-    exit 1
-  }
+    MCP_FAILED=1
+    MCP_COLD_STALE_S="error"
+  fi
   rm -f /tmp/bench-retrieval-mcp-err2.$$
-  MCP_COLD_STALE_MS="$(echo "$STALE_OUT" | jq -r '.cold_start_ms')"
-  MCP_COLD_STALE_S="$(awk -v ms="$MCP_COLD_STALE_MS" 'BEGIN { printf "%.2f", ms / 1000 }')"
+
+  if [ -n "$STALE_OUT" ]; then
+    MCP_COLD_STALE_MS="$(echo "$STALE_OUT" | jq -r '.cold_start_ms')"
+    MCP_COLD_STALE_S="$(awk -v ms="$MCP_COLD_STALE_MS" 'BEGIN { printf "%.2f", ms / 1000 }')"
+  fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -366,3 +391,84 @@ else
   echo "| suggest_reachouts (warm, median ms) | any | ${TOOL_SUGGEST_MS} |"
   echo "| upcoming_meetings (warm, median ms) | any | ${TOOL_UPCOMING_MS} |"
 fi
+
+# ---------------------------------------------------------------------------
+# Exit status: any outright MCP row failure fails the run even without
+# --guard (the caller still gets the printed table/JSON above first).
+# ---------------------------------------------------------------------------
+
+EXIT_CODE=0
+if [ "$MCP_FAILED" -eq 1 ]; then
+  EXIT_CODE=1
+fi
+
+# ---------------------------------------------------------------------------
+# --guard: threshold check (fixture store, 30 people, x3 CI headroom) plus a
+# deterministic process-count check (build-index.sh / who-next-direct.sh
+# must spawn O(1) jq, not one per person).
+# ---------------------------------------------------------------------------
+
+if [ "$GUARD" -eq 1 ]; then
+  echo "" >&2
+  echo "=== guard checks ===" >&2
+
+  guard_check() {
+    # guard_check <row-label> <seconds-value> <limit>
+    label="$1"
+    value="$2"
+    limit="$3"
+    case "$value" in
+      ''|*[!0-9.]*)
+        echo "GUARD FAIL: $label $value (non-numeric — node/MCP unavailable or errored)" >&2
+        GUARD_FAILED=1
+        return
+        ;;
+    esac
+    if awk -v v="$value" -v l="$limit" 'BEGIN { exit !(v > l) }'; then
+      echo "GUARD FAIL: $label $value > $limit" >&2
+      GUARD_FAILED=1
+    else
+      echo "GUARD PASS: $label $value <= $limit" >&2
+    fi
+  }
+
+  GUARD_FAILED=0
+  guard_check "build-index.sh" "$BUILD_INDEX_S" "1.0"
+  guard_check "build-stats.sh" "$BUILD_STATS_S" "1.0"
+  guard_check "validate-store.sh" "$VALIDATE_STORE_S" "3.0"
+  guard_check "who-next-direct.sh fresh" "$WHO_NEXT_FRESH_S" "1.5"
+  guard_check "who-next-direct.sh missing" "$WHO_NEXT_MISSING_S" "3.0"
+  if [ "$NODE_OK" -eq 1 ]; then
+    guard_check "mcp-cold-start fresh" "$MCP_COLD_FRESH_S" "1.5"
+    guard_check "mcp-cold-start stale" "$MCP_COLD_STALE_S" "1.5"
+  else
+    echo "GUARD SKIP: mcp-cold-start fresh/stale (no node)" >&2
+  fi
+
+  # Process-count guard: build-index.sh and who-next-direct.sh must spawn
+  # O(1) jq processes, not one per person. Re-run each under `bash -x` on
+  # the (disposable, already-rebuilt) scratch copy and count trace lines
+  # that invoke jq directly (`^\+.*jq `, i.e. a literal "+ ... jq " trace
+  # line, not "+jq" as a variable name elsewhere).
+  BUILD_INDEX_JQ_COUNT="$(bash -x "${CORE_SCRIPTS_DIR}/build-index.sh" "$SCRATCH" 2>&1 1>/dev/null | grep -c '^\+.*jq ' || true)"
+  if [ "$BUILD_INDEX_JQ_COUNT" -le 3 ]; then
+    echo "GUARD PASS: build-index.sh jq spawn count $BUILD_INDEX_JQ_COUNT <= 3" >&2
+  else
+    echo "GUARD FAIL: build-index.sh jq spawn count $BUILD_INDEX_JQ_COUNT > 3" >&2
+    GUARD_FAILED=1
+  fi
+
+  WHO_NEXT_JQ_COUNT="$(bash -x "$WHO_NEXT_SCRIPT" "$SCRATCH" --mode all --limit 20 2>&1 1>/dev/null | grep -c '^\+.*jq ' || true)"
+  if [ "$WHO_NEXT_JQ_COUNT" -le 3 ]; then
+    echo "GUARD PASS: who-next-direct.sh jq spawn count $WHO_NEXT_JQ_COUNT <= 3" >&2
+  else
+    echo "GUARD FAIL: who-next-direct.sh jq spawn count $WHO_NEXT_JQ_COUNT > 3" >&2
+    GUARD_FAILED=1
+  fi
+
+  if [ "$GUARD_FAILED" -eq 1 ]; then
+    EXIT_CODE=1
+  fi
+fi
+
+exit "$EXIT_CODE"

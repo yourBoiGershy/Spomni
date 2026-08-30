@@ -148,7 +148,25 @@ and the current script excerpt it rewrites.
 - Byte-identical `index.json` and identical `validate-store.sh` verdicts before and
   after B1/B2 (tests).
 
-Live table (fill on proof): _pending_.
+Live table — private store, 127 people / 356 interactions, laptop, scratch copy with
+mtimes preserved, measured 2026-08-30 after waves 1–2 (same method as §1):
+
+| Surface | Condition | Before | After | Target | Met |
+|---|---|---|---|---|---|
+| `build-index.sh` | full | 3.8 s | **0.03 s** | ≤ 0.3 s | ✓ |
+| `build-stats.sh` | full | 0.11 s | 0.12 s | — | — |
+| `validate-store.sh` | full | 15.4 s | **0.84 s** | ≤ 1.5 s | ✓ |
+| `who-next-direct.sh` | index fresh | 3.7 s | **0.05 s** | ≤ 0.5 s | ✓ |
+| `who-next-direct.sh` | index missing | 7.7 s | **0.29 s** | ≤ 1 s | ✓ |
+| MCP cold start → `initialize` | fresh | 0.18 s | 0.28 s | ≤ 0.5 s | ✓ |
+| MCP cold start → `initialize` | stale | 4.2 s | **0.19 s** | ≤ 0.5 s | ✓ |
+| MCP tools warm | any | ≤ 2 ms | ≤ 1 ms | p95 ≤ 200 ms | ✓ |
+| `/who-next` MCP path | per question | ≤ 22 round-trips | **1** (`who_next_pool`) + optional `upcoming_meetings` | ≤ 2 | ✓ (skill amended; live session run still owed) |
+
+Scale (synthetic `gen-scale-store.sh 1000`, from worker reports): `build-index` 0.7 s
+(≤ 2 s ✓), `validate-store` 3.5 s at 1000/2800 (≤ 8 s ✓), `who-next-direct` 0.25 s
+(≤ 2 s ✓). **Unit E (incremental index) skipped** — full rebuild is under target;
+recorded as decision `full-rebuild-is-cheap-enough`.
 
 ## 6. Out of scope
 

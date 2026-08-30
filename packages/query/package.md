@@ -53,7 +53,10 @@ wrapping them is mechanical.
   `who-next-direct.sh` fresh/missing, MCP cold start fresh/stale, warm
   per-tool latency) on a scratch copy of the given store, never writing to
   it; `tests/bench-mcp-client.mjs` is its JSON-RPC-over-stdio timing helper.
-  Smoke test: `tests/run-bench-smoke-tests.sh`.
+  Smoke test: `tests/run-bench-smoke-tests.sh`. `--guard` compares every row
+  against the plan's fixture-store thresholds plus a jq-spawn-count check on
+  `build-index.sh`/`who-next-direct.sh`, exiting 1 on any GUARD FAIL —
+  wired into `scripts/test-all.sh` via `tests/run-bench-guard.sh`.
 - Eval suite: `evals/` — `eval-case@1` cases (`packages/core/contracts/
   eval-case.md`) under `evals/cases/`, manifest at `evals/suite.txt`. T2
   (`tier: agent`) cases against `packages/core/scripts/eval-run.sh`:

@@ -410,3 +410,16 @@ be read back into prompts or evals — the cost of re-explaining yourself. Phase
 assistant report card) waits for ≥2 weeks of live ledger. Plan 34.
 Revisit if: the ledger grows past what a per-prompt tail read handles (then index,
 never rewrite).
+
+**full-rebuild-is-cheap-enough** · 2026-08-30
+`index.json` and `stats.json` are always regenerated in full, together, by
+`packages/core/scripts/reindex.sh`, which every writer of `people/` or
+`interactions/` calls before it exits (derived-index 1.1.0). No incremental
+index update is built. Readers (query server, `who-next-direct.sh`, attention)
+never rebuild into the store; the query server serves a stale-but-present copy
+immediately (`stale: true`, honest `generated_at`) and refreshes its cache in the
+background. Why: once the per-person process spawn was removed, a full rebuild
+measures 0.03 s at 127 people and 0.7 s at 1000 — far under any target — so an
+incremental path would be complexity with nothing to buy. Plan 38.
+Revisit if: a full `reindex.sh` exceeds 2 s on a real store (then plan 38 unit E,
+`reindex.sh --only <slug>…`).

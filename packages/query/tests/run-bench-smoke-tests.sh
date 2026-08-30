@@ -62,8 +62,8 @@ checksum_store() {
 
 BEFORE="$(checksum_store "$FIXTURE_STORE")"
 
-BENCH_OUT="$(bash "$BENCH" "$FIXTURE_STORE" --json --runs 1 2>/tmp/bench-smoke-err.$$)"
-BENCH_STATUS=$?
+BENCH_STATUS=0
+BENCH_OUT="$(bash "$BENCH" "$FIXTURE_STORE" --json --runs 1 2>/tmp/bench-smoke-err.$$)" || BENCH_STATUS=$?
 if [ "$BENCH_STATUS" -eq 0 ]; then
   pass "bench-retrieval.sh --json --runs 1 exits 0"
 else
@@ -83,6 +83,25 @@ if [ "$ROW_COUNT" -ge 5 ]; then
   pass "rows array has >=5 entries (got $ROW_COUNT)"
 else
   fail "rows array has >=5 entries (got $ROW_COUNT)"
+fi
+
+# mcp-cold-start rows must be numeric seconds (this is the bug fix under
+# test: a prior build-index.sh/build-stats.sh redirect+mv clobbered
+# index.json/stats.json with a summary line, which made the MCP client fail
+# and these rows come back non-numeric).
+MCP_FRESH_S="$(echo "$BENCH_OUT" | jq -r '.rows[] | select(.surface == "mcp-cold-start" and .condition == "fresh") | .seconds' 2>/dev/null || echo "")"
+MCP_STALE_S="$(echo "$BENCH_OUT" | jq -r '.rows[] | select(.surface == "mcp-cold-start" and .condition == "stale") | .seconds' 2>/dev/null || echo "")"
+if [ -d "$REPO_ROOT/packages/query/server/node_modules" ] && command -v node >/dev/null 2>&1; then
+  case "$MCP_FRESH_S" in
+    ''|*[!0-9.]*) fail "mcp-cold-start fresh row is numeric (got '$MCP_FRESH_S')" ;;
+    *) pass "mcp-cold-start fresh row is numeric ($MCP_FRESH_S)" ;;
+  esac
+  case "$MCP_STALE_S" in
+    ''|*[!0-9.]*) fail "mcp-cold-start stale row is numeric (got '$MCP_STALE_S')" ;;
+    *) pass "mcp-cold-start stale row is numeric ($MCP_STALE_S)" ;;
+  esac
+else
+  echo "SKIP: mcp-cold-start numeric checks (no node / server node_modules)"
 fi
 
 AFTER="$(checksum_store "$FIXTURE_STORE")"
