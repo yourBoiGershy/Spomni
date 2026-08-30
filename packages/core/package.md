@@ -12,7 +12,10 @@ nothing.
 ## Provides
 
 - Contracts (semver'd, each with a `schema_version`): `contracts/capture-event.md`,
-  `contracts/person.md` (1.2.0 — `tier_source` provenance field alongside
+  `contracts/person.md` (1.3.0 — third Facts provenance label
+  `inferred-from-thread`, for facts the model infers from a chat/email
+  thread the user is party to (neither told-by-user nor inferred-from-
+  public-web), per plan 32; 1.2.0 — `tier_source` provenance field alongside
   `tier`, derived writes never overwrite a stated tier, per plan 31; 1.1.0 —
   optional `kind`/`kind_note`/`kind_source`/`kind_expires`/`kind_updated`,
   per plan 30), `contracts/interaction.md`,
@@ -51,16 +54,19 @@ nothing.
   `contracts/week-plan.md` (`signals/week-plan.json`, the capacity-model
   weekly nudge budget artifact, per plan 12 — this is the RENUMBERED cadence
   plan, docs/plans/2026-08-29-12-cadence-capacity.md, not the earlier plan 12
-  eval-harness numbering)
+  eval-harness numbering),
+  `contracts/answer-style.md` 1.0.0 — render rules for every user-facing
+  answer/card (action-first, ≤2 lines/item, cap 5, draft on demand, no-guilt)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
   `templates/profile.md`, `templates/sync-lanes.tsv`, `templates/user-model.md`
 - Store scripts: `scripts/build-index.sh` (people/ → index.json; projects the
   1.1.0 `kind`/`kind_source`/`kind_expires` columns when present, per plan 30),
   `scripts/build-stats.sh` (people/ + interactions/ → stats.json, per
   `contracts/derived-index.md`), `scripts/validate-store.sh` (also validates
-  person.md 1.1.0 kind fields and 1.2.0 `tier_source`, the optional
+  person.md 1.1.0 kind fields, 1.2.0 `tier_source`, and 1.3.0
+  `inferred-from-thread` Facts provenance, the optional
   `user-model.md` singleton incl. `status: provisional`, and the optional
-  `index/embeddings.jsonl` incl. unit-norm vectors, per plans 30 and 31),
+  `index/embeddings.jsonl` incl. unit-norm vectors, per plans 30, 31, and 32),
   `scripts/init-store.sh` (idempotent store layout creation +
   README.md + index/stats + validate, refuses the code checkout itself),
   `scripts/check-store-location.sh` (flags a store-dir inside the code
@@ -138,3 +144,6 @@ The `person.md` 1.2.0 `tier_source` field, `scripts/person-set-tier.sh`, the
 (docs/plans/2026-08-30-31-deterministic-filing-cold-start-priors.md).
 `contracts/feedback-event.md` by plan 34
 (docs/plans/2026-08-30-34-feedback-ledger.md).
+
+The `person.md` 1.3.0 `inferred-from-thread` Facts provenance label is by
+plan 32.

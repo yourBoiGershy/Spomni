@@ -45,6 +45,42 @@ job and does not queue itself for a later pass — see the Summary section's
   --all`'s scope or cap is not listed, not flagged as "still needs
   attention," and is not queued for a later pass.
 
+## Progress narration (binding)
+
+Pure running-cost cut, per the mission test: the user should never have to
+ask "what's happening" mid-run. Before each step/sub-step, print ONE line
+`▶ Step N(x) — <what I'm about to do>`; after it, print one or two lines
+`✓ Step N(x) <elapsed>s — <what I found>`. Numbers in the `✓` line come ONLY
+from the step's own script summary line, a `wc -l` on a ledger/log file, or
+the model pass's own report — never invented or estimated. On a failure,
+print `✗ Step N(x) — <error line>` and continue per that step's existing
+failure rule (e.g. Step 1's "a partial or failed lane is not fatal").
+**Never print a person's name in a progress line** — names/slugs surface
+only in the final correction digest (review-tiers' own output), not here.
+
+Exact templates, per step (elapsed seconds and counts illustrative):
+
+- **Step 0:** `▶ Resolving your backfill window…` /
+  `✓ 0s — 6 months back to 2026-02-28; 4 self identities configured.`
+- **Step 1:** `▶ Starting beeper backfill in the background, then gmail…` /
+  one `✓ Ns —` line per lane as each finishes (beeper, gmail, calendar),
+  each citing that lane's own sweep summary line.
+- **2(a):** `▶ Triaging held-out events…` /
+  `✓ 8s — triage held 122 events: 120 calendar blocks with only you, 2 marketing.`
+- **2(b):** `▶ Filing calendar/email touchpoints deterministically…` /
+  `✓ 17s — filed 190 calendar/email touchpoints for 80 people without a model call; 10 held for judgment.`
+- **2(c):** `▶ Reading 46 chat threads (one model call each, 6 in parallel)…` /
+  `✓ 111s — 43 threads summarized, 3 skipped (2 security notices, 1 broadcast); kinds: 9 friend, 8 unsolicited, 13 group…` then
+  `✓ 2s — 146 conversation-days filed for 62 people.`
+- **2(d):** `▶ Judging 52 remaining emails/events with the model…` /
+  `✓ 468s — 15 real touchpoints filed (12 new people); 37 were bots/newsletters/notices and are marked done.`
+- **Step 3/4:** `▶ Building stats and deriving participation…` /
+  `✓ Ns — stats built for <people>/<interactions>; participation derived for N self identities.` Then hand off to
+  `/review-tiers --all`, which prints its own step-by-step narration and
+  correction digest — do not restate or duplicate it here.
+- **Close:** one total-elapsed line (`✓ total <M>m<S>s`) followed by the
+  pointer to the digest for corrections — nothing here restates it.
+
 ## Step 0 — resolve and announce the window; check for `self` identities
 
 Before running any sweep, resolve the active backfill window:
@@ -134,11 +170,13 @@ backfilled and what didn't in the eventual summary.
 
 ## Step 2 — file the backfilled history
 
-Three sub-steps, in order, over whatever new `inbox/` capture events the
+Four sub-steps, in order, over whatever new `inbox/` capture events the
 three backfill sweeps just landed. Expect hundreds of structured
 (calendar/metadata-only-email) events to file deterministically in under
-30 seconds; the model path (sub-step c) only ever sees free text — chat
-episodes, email bodies, and whatever structured events (a)/(b) held.
+30 seconds; chat-message events go through sub-step (c)'s one-call-per-
+thread path (plan 32), never the debrief skill's per-day model pass; the
+debrief path (sub-step d) only ever sees non-chat free text — email
+bodies, voice notes, and whatever structured events (a)/(b) held.
 
 **(a) Triage.**
 
@@ -169,18 +207,56 @@ model call — templated person/interaction writes only, per
 (`file-structured: eligible= filed= people_new= held= skipped=`) as part of
 this run's own summary. Anything it can't resolve deterministically (an
 ambiguous name hint, an email with no name and no existing person) is
-appended to `data/ingestion/structured-held.log` for sub-step (c), never
+appended to `data/ingestion/structured-held.log` for sub-step (d), never
 silently merged.
 
-**(c) Debrief the remainder.**
+**(c) Threads: one model call per chat, deterministic episodes.**
 
-Run the normal filing/debrief path (`packages/ingestion/skills/debrief/
-SKILL.md`, shard mode per `specs/parallel-filing.md` for this backfill
-volume) over what's left — by construction now only free-text events (chat
-episodes, email bodies) plus anything (b) held in
-`structured-held.log`. This produces `people/<slug>.md` (new people as
-needed) and `interactions/*.md` files. No `tier` is set by this step —
-filing carries no tier opinion, per the spec.
+Plan 32: chat-message captures are filed through one model call per thread
+plus a deterministic writer, not through the debrief skill's per-day
+episode-split model pass — a running-cost cut only (one summarize call and
+one script pass replace a per-day agentic filing task per thread).
+
+```sh
+# every eligible capture (not in debrief-filed.log / triage-held.log) whose body is chat JSON
+# (has chatID + messages) -- type: chat-message or legacy type: other from source: beeper:
+# e.g. grep -l '"chatID":' <candidates> or a python3 json.loads check on the body line
+for f in $(<eligible chat-json capture files>); do
+  bash packages/ingestion/scripts/summarize-thread.sh "$f" --out <data-dir>/ingestion/thread-summaries/$(basename "$f" .md).json
+done   # run with xargs -P 6; ~10–30 s per thread, dominated by CLI startup; RA_THREAD_MODEL=haiku default
+for j in <data-dir>/ingestion/thread-summaries/*.json; do
+  bash packages/ingestion/scripts/file-thread.sh <store-dir> <store-dir>/inbox/$(basename "$j" .json).md "$j" --data-dir <data-dir>
+done
+```
+
+Then one `build-index.sh` + `validate-store.sh` for this sub-step, same as
+any other filing pass.
+
+- `file-thread.sh` unions captures sharing a chatID (D3) so duplicates never
+  double-file — a rerun over the same capture(s) is a true no-op once every
+  contributing id is ledgered.
+- A summary with `skip` set (bots/broadcasts/self-notes/security notices
+  only) ledgers the id with no writes.
+- A stranger's cold pitch is filed as a person with `role_guess: unsolicited`
+  and tag `linkedin-outreach` (D4) — never skipped.
+- No `tier`/`kind` is written by this sub-step — filing carries no tier or
+  kind opinion, same rule as (b) and (d).
+- Exit codes from `summarize-thread.sh`: `3` = model/timeout, `4` = schema
+  failure — retry once, then leave the id pending (it stays eligible for a
+  later pass; it is not added to any ledger on either failure).
+
+Spec of record: `packages/ingestion/specs/thread-summary.md` (the model
+call's contract); `file-thread.sh`'s own header comment (episodes, person
+upsert, ledger) for the deterministic writer's rules.
+
+**(d) Debrief the remainder** — the old (c): only non-chat free text (email
+bodies, voice notes, linkedin-notification, `other`) plus
+`structured-held.log` ids remain for the normal filing/debrief path
+(`packages/ingestion/skills/debrief/SKILL.md`); shard mode per
+`specs/parallel-filing.md` only if more than ~40 events remain. This
+produces `people/<slug>.md` (new people as needed) and `interactions/*.md`
+files. No `tier` is set by this step — filing carries no tier opinion, per
+the spec.
 
 ## Step 3 — build stats
 
@@ -234,14 +310,19 @@ does not invoke it.
 
 ## Summary
 
-End with a short summary:
+The progress lines already printed (Progress narration section above) are
+the summary — do not restate them; this section is only what to add beyond
+them, kept as a short recap:
 
 - Window used.
 - Per-lane backfill outcome (counts, or "skill run — see its own
   summary").
 - Structured filing (b): the `file-structured.sh` summary line verbatim
   (`eligible= filed= people_new= held= skipped=`).
-- Model filing (c): count of events debrief filed.
+- Thread filing (c): count of chat-message events summarized + filed via
+  `summarize-thread.sh`/`file-thread.sh`, and count left pending on a
+  retried model/schema failure, if any.
+- Debrief filing (d): count of events debrief filed.
 - Totals: people/interactions counts in the store after Step 2.
 - `/review-tiers --all`'s own summary: derived tiers/kinds written,
   provisional user-model adopted (yes/no, revision), corrections applied
