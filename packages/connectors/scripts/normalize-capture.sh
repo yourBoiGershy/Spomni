@@ -19,6 +19,13 @@
 #
 # Exit 0 only on a written inbox event (prints the inbox path to stdout).
 # Exit 1 on quarantine (prints the quarantine path to stderr).
+# Exit 3 on a byte-identical duplicate of a body already in inbox/ (prints
+# the EXISTING inbox path to stdout, a reason to stderr) — nothing is
+# written and nothing is quarantined. Empty bodies are never deduplicated
+# (capture is lossy-tolerant; an empty capture is not "the same" as another
+# empty capture). Dedup state lives in <store-dir>/inbox/.fingerprints, a
+# dot-prefixed (so validators/check-sync ignore it) append-only TSV of
+# `sha256(body)<TAB>id`, rebuilt from disk the first time it's missing.
 #
 # Portable to bash 3.2 (macOS default): no associative arrays, no mapfile.
 
@@ -208,6 +215,56 @@ write_frontmatter() {
   } > "$dest"
 }
 
+hash_body() {
+  # $1 = path to a file containing just the body to hash.
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    sha256sum "$1" | awk '{print $1}'
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Dedup: refuse a byte-identical body already in inbox/. Only when the
+# event would otherwise be written and the body is non-empty.
+# ---------------------------------------------------------------------------
+
+FP_FILE="${INBOX_DIR}/.fingerprints"
+BODY_HASH=""
+
+if [ "$VALID" -eq 1 ] && [ -s "$BODY_TMP" ]; then
+  BODY_HASH="$(hash_body "$BODY_TMP")"
+
+  if [ ! -e "$FP_FILE" ]; then
+    # Build the index once from whatever is already on disk. Body = every
+    # line after the frontmatter's closing '---', matching check-sync.sh's
+    # "Byte-identical bodies" extraction so hashes agree across tools.
+    FP_TMP="$(mktemp)"
+    for existing in "$INBOX_DIR"/*.md; do
+      [ -e "$existing" ] || continue
+      existing_base="$(basename "$existing" .md)"
+      fm_close="$(awk 'NR>1 && $0=="---"{print NR; exit}' "$existing")"
+      if [ -n "$fm_close" ]; then
+        existing_body_tmp="$(mktemp)"
+        tail -n "+$((fm_close + 1))" "$existing" > "$existing_body_tmp"
+        if [ -s "$existing_body_tmp" ]; then
+          printf '%s\t%s\n' "$(hash_body "$existing_body_tmp")" "$existing_base" >> "$FP_TMP"
+        fi
+        rm -f "$existing_body_tmp"
+      fi
+    done
+    mv "$FP_TMP" "$FP_FILE"
+  fi
+
+  FP_HIT="$(grep -F "$(printf '%s\t' "$BODY_HASH")" "$FP_FILE" 2>/dev/null | head -n1)"
+  if [ -n "$FP_HIT" ]; then
+    DUP_ID="$(printf '%s' "$FP_HIT" | cut -f2)"
+    printf '%s\n' "${INBOX_DIR}/${DUP_ID}.md"
+    echo "normalize-capture.sh: duplicate body of ${DUP_ID} — not written" >&2
+    exit 3
+  fi
+fi
+
 if [ "$VALID" -eq 1 ]; then
   DEST="${INBOX_DIR}/${ID}.md"
   if ! write_frontmatter "$DEST"; then
@@ -221,6 +278,9 @@ if [ "$VALID" -eq 1 ]; then
   if [ ! -e "$DEST" ]; then
     echo "normalize-capture.sh: inbox event missing after write: $DEST" >&2
     exit 1
+  fi
+  if [ -n "$BODY_HASH" ]; then
+    printf '%s\t%s\n' "$BODY_HASH" "$ID" >> "$FP_FILE"
   fi
   printf '%s\n' "$DEST"
   exit 0

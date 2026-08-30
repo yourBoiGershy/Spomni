@@ -188,9 +188,13 @@ coverage_floor_set() {
 }
 
 # ---------------------------------------------------------------------------
-# run_log <outcome> <chats> <events> <quarantined> [warn] — append one
-# greppable status line to runs.log per the plan's failure-posture format:
-#   <ISO8601Z> <outcome> chats=<n> events=<n> quarantined=<n> [warn=…]
+# run_log <outcome> <chats> <events> <quarantined> [warn] [dedup] — append
+# one greppable status line to runs.log per the plan's failure-posture
+# format:
+#   <ISO8601Z> <outcome> chats=<n> events=<n> quarantined=<n> [warn=…] [dedup=<n>]
+# dedup (plan 41) is the count of normalize-capture.sh exit-3 (byte-identical
+# duplicate) hits this run — omitted when zero/absent so every pre-plan-41
+# call site and log line is untouched.
 # Sets RUN_LOGGED=1 so install_run_trap's EXIT trap knows a line was written.
 # ---------------------------------------------------------------------------
 RUN_LOGGED=0
@@ -201,11 +205,15 @@ run_log() {
   events="$3"
   quarantined="$4"
   warn="${5:-}"
+  dedup="${6:-0}"
 
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   line="${ts} ${outcome} chats=${chats} events=${events} quarantined=${quarantined}"
   if [ -n "$warn" ]; then
     line="${line} warn=${warn}"
+  fi
+  if [ -n "$dedup" ] && [ "$dedup" -ne 0 ] 2>/dev/null; then
+    line="${line} dedup=${dedup}"
   fi
 
   printf '%s\n' "$line" >> "$RUNS_LOG"

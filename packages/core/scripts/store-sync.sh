@@ -2,7 +2,7 @@
 # store-sync.sh — the one write-discipline entry point every runtime (laptop,
 # launchd lane, phone/cloud session) uses against a git-backed spomni store.
 #
-# Usage: store-sync.sh [<store-dir>] <status|pull|commit|push> [-m "<msg>"] [<store-dir>]
+# Usage: store-sync.sh [<store-dir>] <status|pull|commit|push|tick> [-m "<msg>"] [<store-dir>]
 #
 # The store-dir positional may come either before the subcommand or after
 # it (both forms are equivalent, e.g. sibling skills/docs invoke it as
@@ -24,6 +24,11 @@
 #             one every run), the staged+worktree change is reverted and
 #             treated as nothing-to-commit rather than a noise commit
 #   push    — git push origin HEAD; on rejection, pulls once and retries once
+#   tick    — pull, then commit, then (if anything landed) push, in one call;
+#             quiet when there's nothing to do. Prints a one-line summary:
+#             "store-sync: tick pulled=<ff|merge|none|skipped>
+#             committed=<sha|none> pushed=<yes|no|skipped>". Does not accept
+#             -m — the commit message is a fixed "store: sync tick <UTC iso>".
 #
 # Git identity: every git invocation that can create a commit (commit
 # itself, and pull's merges) falls back to -c user.name/-c user.email
@@ -44,7 +49,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 usage() {
-    echo "usage: store-sync.sh [<store-dir>] <status|pull|commit|push> [-m \"<msg>\"] [<store-dir>]" >&2
+    echo "usage: store-sync.sh [<store-dir>] <status|pull|commit|push|tick> [-m \"<msg>\"] [<store-dir>]" >&2
 }
 
 if [ "$#" -lt 1 ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
@@ -57,7 +62,7 @@ fi
 # positional after the subcommand/-m; otherwise the first arg is the
 # store-dir and the subcommand is the second arg.
 case "$1" in
-    status|pull|commit|push)
+    status|pull|commit|push|tick)
         store_dir=""
         sub="$1"
         shift
@@ -70,7 +75,7 @@ case "$1" in
 esac
 
 case "$sub" in
-    status|pull|commit|push) ;;
+    status|pull|commit|push|tick) ;;
     *)
         usage
         exit 2
@@ -313,6 +318,75 @@ do_push() {
     return 1
 }
 
+do_tick() {
+    commit_msg="store: sync tick $(date -u +%Y-%m-%dT%H:%M:%SZ) UTC"
+
+    pulled="skipped"
+    if has_origin; then
+        head_before="$(git -C "$abs_store_dir" rev-parse HEAD 2>/dev/null || echo "")"
+
+        set +e
+        pull_out="$(do_pull)"
+        pull_status=$?
+        set -e
+        if [ "$pull_status" -ne 0 ]; then
+            echo "$pull_out"
+            echo "store-sync: tick aborted at pull"
+            return 1
+        fi
+
+        head_after="$(git -C "$abs_store_dir" rev-parse HEAD 2>/dev/null || echo "")"
+        if [ "$head_before" = "$head_after" ]; then
+            pulled="none"
+        elif git -C "$abs_store_dir" rev-parse -q --verify HEAD^2 >/dev/null 2>&1; then
+            pulled="merge"
+        else
+            pulled="ff"
+        fi
+    fi
+
+    set +e
+    commit_out="$(do_commit)"
+    commit_status=$?
+    set -e
+    if [ "$commit_status" -ne 0 ]; then
+        echo "$commit_out"
+        echo "store-sync: tick aborted at commit"
+        return 1
+    fi
+
+    committed="$(printf '%s\n' "$commit_out" | sed -n 's/^store-sync: committed \([^ ]*\).*/\1/p' | head -1)"
+    if [ -z "$committed" ]; then
+        committed="none"
+    fi
+
+    ahead=0
+    if has_origin && git -C "$abs_store_dir" rev-parse -q --verify "@{u}" >/dev/null 2>&1; then
+        counts="$(git -C "$abs_store_dir" rev-list --left-right --count HEAD...@{u} 2>/dev/null || echo "0 0")"
+        ahead="$(echo "$counts" | awk '{print $1}')"
+    fi
+
+    pushed="skipped"
+    if has_origin; then
+        if [ "$committed" != "none" ] || [ "$ahead" -gt 0 ]; then
+            set +e
+            push_out="$(do_push)"
+            push_status=$?
+            set -e
+            if [ "$push_status" -ne 0 ]; then
+                echo "$push_out"
+                echo "store-sync: tick aborted at push"
+                return 1
+            fi
+            pushed="yes"
+        else
+            pushed="no"
+        fi
+    fi
+
+    echo "store-sync: tick pulled=${pulled} committed=${committed} pushed=${pushed}"
+}
+
 case "$sub" in
     status)
         do_status
@@ -328,6 +402,10 @@ case "$sub" in
         ;;
     push)
         do_push
+        exit $?
+        ;;
+    tick)
+        do_tick
         exit $?
         ;;
 esac

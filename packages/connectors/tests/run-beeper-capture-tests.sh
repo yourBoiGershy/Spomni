@@ -696,6 +696,102 @@ else
 fi
 
 # =============================================================================
+# chunk-41 spec 3: content dedup surfaces through the sweep. When the
+# normalizer returns 3 (byte-identical body already in inbox/), the chat's
+# cursor still advances and the runs.log `ok` line carries `dedup=<n>`
+# (separate from `events=`, which does NOT count deduped chats). Uses its
+# own single-chat fixture (one enabled account, one fixture chat) so the
+# expected dedup count is exactly 1: run the sweep once with fresh
+# cursors.tsv (one capture lands), delete cursors.tsv, then run again —
+# the stub re-serves the same first-page messages for the now-cursorless
+# chat, producing a byte-identical body the second time.
+# =============================================================================
+
+e2e_dedup_data="$E2E_ROOT/run-dedup/data"
+e2e_dedup_store="$E2E_ROOT/run-dedup/store"
+mkdir -p "$e2e_dedup_store"
+make_beeper_config "$e2e_dedup_data" "$e2e_dedup_store" "matrix"
+
+e2e_dedup_chats_single="$E2E_ROOT/run-dedup/chats-single.json"
+cat > "$e2e_dedup_chats_single" <<'EOF'
+{
+  "items": [
+    {
+      "id": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "network": "matrix",
+      "title": "Bea Sample",
+      "type": "single",
+      "participants": {
+        "items": [
+          { "name": "Ada Test", "ids": ["@ada-test:example.org"] },
+          { "name": "Bea Sample", "ids": ["@bea-sample:example.org"] }
+        ]
+      },
+      "lastActivity": "2026-08-29T14:32:10.500Z",
+      "unreadCount": 1
+    }
+  ],
+  "hasMore": false,
+  "oldestCursor": "cursor-chats-oldest-sample",
+  "newestCursor": "cursor-chats-newest-sample"
+}
+EOF
+
+e2e_dedup_log1="$E2E_ROOT/run-dedup/stub-argv-run1.log"
+
+(
+  export STUB_LOG="$e2e_dedup_log1"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$e2e_dedup_chats_single"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$e2e_dedup_data"
+) > "$E2E_ROOT/run-dedup/stdout-run1.log" 2>"$E2E_ROOT/run-dedup/stderr-run1.log"
+e2e_dedup_rc1=$?
+
+assert_eq "e2e content dedup: first run exits 0" "$e2e_dedup_rc1" "0"
+
+e2e_dedup_inbox_count_1="$(find "$e2e_dedup_store/inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
+assert_eq "e2e content dedup: first run lands exactly one inbox event" "$e2e_dedup_inbox_count_1" "1"
+
+# Reset the incremental cursor ledger so the second run re-fetches the same
+# (cursorless) first page for this chat, per the brief's scenario.
+rm -f "$e2e_dedup_data/cursors.tsv"
+
+e2e_dedup_log2="$E2E_ROOT/run-dedup/stub-argv-run2.log"
+
+(
+  export STUB_LOG="$e2e_dedup_log2"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$e2e_dedup_chats_single"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$e2e_dedup_data"
+) > "$E2E_ROOT/run-dedup/stdout-run2.log" 2>"$E2E_ROOT/run-dedup/stderr-run2.log"
+e2e_dedup_rc2=$?
+
+assert_eq "e2e content dedup: second run (cursors reset) exits 0" "$e2e_dedup_rc2" "0"
+
+e2e_dedup_runlog_last="$(tail -n1 "$e2e_dedup_data/runs.log" 2>/dev/null)"
+if printf '%s' "$e2e_dedup_runlog_last" | grep -Eq 'ok chats=1 events=0 quarantined=0 dedup=1$'; then
+  pass "e2e content dedup: second run's ok line carries events=0 dedup=1 (dedup not counted in events)"
+else
+  fail "e2e content dedup: unexpected runs.log last line: [$e2e_dedup_runlog_last]"
+fi
+
+e2e_dedup_inbox_count_2="$(find "$e2e_dedup_store/inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
+assert_eq "e2e content dedup: inbox still has exactly one file for the chat (no new file written)" "$e2e_dedup_inbox_count_2" "1"
+
+if [ -f "$e2e_dedup_data/cursors.tsv" ] && grep -q '^!sample-single-chat:example.org' "$e2e_dedup_data/cursors.tsv" 2>/dev/null; then
+  pass "e2e content dedup: cursors.tsv was written on the second run despite the dedup hit (cursor still advances)"
+else
+  fail "e2e content dedup: cursors.tsv missing or missing the chat's cursor after the second run"
+fi
+
+# =============================================================================
 # 7c. Unreachable: stub exits 7 (curl-style connect failure) on /v1/info.
 # =============================================================================
 

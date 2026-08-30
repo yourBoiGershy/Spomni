@@ -539,7 +539,7 @@ EOF
   template_rc=$?
   assert_eq "core template sync-lanes.tsv: parses cleanly under sync_lanes_list" "$template_rc" "0"
   template_row_count="$(printf '%s\n' "$template_rows" | grep -c .)"
-  assert_eq "core template sync-lanes.tsv: exactly 6 rows" "$template_row_count" "6"
+  assert_eq "core template sync-lanes.tsv: exactly 8 rows" "$template_row_count" "8"
   assert_contains "core template sync-lanes.tsv: feedback lane row present" "$template_rows" "feedback"
   template_learn_row="$(printf '%s\n' "$template_rows" | grep -E "^learn	900	true	")"
   template_learn_cmd="$(printf '%s' "$template_learn_row" | awk -F'\t' '{
@@ -550,6 +550,46 @@ EOF
   template_learn_resolved="$(SYNC_REPO_ROOT="$REPO_ROOT" sync_resolve_command "$template_data_dir" "$template_learn_cmd")"
   assert_contains "core template sync-lanes.tsv: learn lane row present (learn-sweep.sh)" "$template_learn_resolved" "learn-sweep.sh"
   assert_contains "core template sync-lanes.tsv: learn lane row present (--data-dir)" "$template_learn_resolved" "--data-dir $template_copy_dir/data"
+
+  # --- plan 41: staleness lane (hourly, packages/attention/scripts/staleness.sh) ---
+  assert_contains "core template sync-lanes.tsv: staleness lane row present" "$template_rows" "staleness"
+  template_staleness_row="$(printf '%s\n' "$template_rows" | grep -E "^staleness	3600	true	")"
+  if [ -n "$template_staleness_row" ]; then
+    pass "core template sync-lanes.tsv: staleness lane enabled with interval 3600"
+  else
+    fail "core template sync-lanes.tsv: staleness lane row missing/malformed (expected staleness<TAB>3600<TAB>true<TAB>...)"
+  fi
+  template_staleness_cmd="$(printf '%s' "$template_staleness_row" | awk -F'\t' '{
+    out = $4
+    for (i = 5; i <= NF; i++) out = out "\t" $i
+    print out
+  }')"
+  template_staleness_resolved="$(SYNC_REPO_ROOT="$REPO_ROOT" sync_resolve_command "$template_data_dir" "$template_staleness_cmd")"
+  assert_contains "core template sync-lanes.tsv: staleness lane command resolves to staleness.sh" "$template_staleness_resolved" "staleness.sh"
+
+  # --- plan 41: store-commit lane (900s, packages/core/scripts/store-sync.sh tick) ---
+  assert_contains "core template sync-lanes.tsv: store-commit lane row present" "$template_rows" "store-commit"
+  template_store_commit_row="$(printf '%s\n' "$template_rows" | grep -E "^store-commit	900	true	")"
+  if [ -n "$template_store_commit_row" ]; then
+    pass "core template sync-lanes.tsv: store-commit lane enabled with interval 900"
+  else
+    fail "core template sync-lanes.tsv: store-commit lane row missing/malformed (expected store-commit<TAB>900<TAB>true<TAB>...)"
+  fi
+  template_store_commit_cmd="$(printf '%s' "$template_store_commit_row" | awk -F'\t' '{
+    out = $4
+    for (i = 5; i <= NF; i++) out = out "\t" $i
+    print out
+  }')"
+  template_store_commit_resolved="$(SYNC_REPO_ROOT="$REPO_ROOT" sync_resolve_command "$template_data_dir" "$template_store_commit_cmd")"
+  assert_contains "core template sync-lanes.tsv: store-commit lane command resolves to store-sync.sh" "$template_store_commit_resolved" "store-sync.sh"
+  case "$template_store_commit_resolved" in
+    *store-sync.sh*tick*)
+      pass "core template sync-lanes.tsv: store-commit lane command invokes tick subcommand"
+      ;;
+    *)
+      fail "core template sync-lanes.tsv: store-commit lane resolved command missing 'tick' subcommand: $template_store_commit_resolved"
+      ;;
+  esac
 
   # --- (ix) tick/subcommand argument errors ---
   "$MCP_TICK" tick --claude-bin "$STUB_CLAUDE" --allowed-tools "Bash" >/dev/null 2>/dev/null

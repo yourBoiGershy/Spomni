@@ -17,6 +17,13 @@
 #      twice ("FAIL:").
 #   7. store-sync.sh refuses (exit 2, "FAIL:") when the store dir is the
 #      code checkout itself.
+#   8. tick on a clean clone with upstream is quiet
+#      ("pulled=none committed=none pushed=no").
+#   9. tick with a local change commits and pushes; remote HEAD matches.
+#   10. tick pulls in a non-conflicting remote change before committing and
+#       pushing its own.
+#   11. tick on a non-git store dir is a no-op.
+#   12. tick -m is rejected (usage, exit 2) — tick has a fixed commit message.
 #
 # bash 3.2 portable (no associative arrays, no mapfile). Never asserts on
 # rebase — store-sync.sh promises it never rebases.
@@ -345,6 +352,129 @@ if [ "$self_exit7" -eq 2 ] && printf '%s' "$self_output7" | grep -qF "FAIL:"; th
 else
   fail "store-sync.sh did not refuse the code checkout as a store dir (exit=$self_exit7)"
   echo "$self_output7"
+fi
+
+# ---------------------------------------------------------------------------
+# assertion 8: tick on a clean clone with upstream is quiet
+# ---------------------------------------------------------------------------
+
+scratch8="$(new_scratch_dir)"
+remote8="$scratch8/remote.git"
+git init -q --bare "$remote8"
+
+seed8="$scratch8/seed"
+init_git_store "$seed8"
+# Reindex + commit once via store-sync itself so index.json/stats.json exist
+# before the clone under test is made — otherwise the clone's first tick
+# would see those files as new (not just a timestamp bump) and commit.
+"$STORE_SYNC" "$seed8" commit -m "seed: reindex" >/dev/null 2>&1 || true
+git -C "$seed8" remote add origin "$remote8"
+git -C "$seed8" -c user.name=setup -c user.email=setup@example.com push -q origin HEAD:refs/heads/main
+git -C "$remote8" symbolic-ref HEAD refs/heads/main
+
+clone8="$scratch8/clone"
+git clone -q "$remote8" "$clone8"
+git -C "$clone8" checkout -q -B main origin/main 2>/dev/null || true
+
+tick_output8="$("$STORE_SYNC" "$clone8" tick 2>&1)"
+tick_exit8=$?
+
+if [ "$tick_exit8" -eq 0 ] \
+  && printf '%s' "$tick_output8" | grep -qF "tick pulled=none committed=none pushed=no"
+then
+  pass "tick on a clean clone with upstream is quiet (pulled=none committed=none pushed=no)"
+else
+  fail "tick on a clean clone did not report the quiet line as expected (exit=$tick_exit8)"
+  echo "$tick_output8"
+fi
+
+# ---------------------------------------------------------------------------
+# assertion 9: tick with a local change commits and pushes
+# ---------------------------------------------------------------------------
+
+echo "- **[told-by-user]** tick test fact" >> "$(ls "$clone8/people"/*.md | head -1)"
+
+tick_output9="$("$STORE_SYNC" "$clone8" tick 2>&1)"
+tick_exit9=$?
+
+remote_head9="$(git -C "$remote8" rev-parse main 2>/dev/null)"
+clone_head9="$(git -C "$clone8" rev-parse HEAD 2>/dev/null)"
+
+if [ "$tick_exit9" -eq 0 ] \
+  && printf '%s' "$tick_output9" | grep -qE "tick pulled=(none|ff|merge) committed=[0-9a-f]+ pushed=yes" \
+  && [ "$remote_head9" = "$clone_head9" ]
+then
+  pass "tick with a local change commits and pushes; remote HEAD matches clone HEAD"
+else
+  fail "tick with a local change did not commit+push as expected (exit=$tick_exit9, remote=$remote_head9, clone=$clone_head9)"
+  echo "$tick_output9"
+fi
+
+# ---------------------------------------------------------------------------
+# assertion 10: tick pulls in a non-conflicting remote change first
+# ---------------------------------------------------------------------------
+
+clone8b="$scratch8/clone-b"
+git clone -q "$remote8" "$clone8b"
+git -C "$clone8b" checkout -q -B main origin/main 2>/dev/null || true
+echo "from clone-b" > "$clone8b/notes.txt"
+git -C "$clone8b" add notes.txt
+git -C "$clone8b" -c user.name=b -c user.email=b@example.com commit -q -m "clone-b: add notes.txt"
+git -C "$clone8b" -c user.name=b -c user.email=b@example.com push -q origin HEAD:main
+
+echo "- **[told-by-user]** tick test fact 2" >> "$(ls "$clone8/people"/*.md | head -1)"
+
+tick_output10="$("$STORE_SYNC" "$clone8" tick 2>&1)"
+tick_exit10=$?
+
+remote_log10="$(git -C "$remote8" log --oneline main 2>/dev/null)"
+
+if [ "$tick_exit10" -eq 0 ] \
+  && printf '%s' "$tick_output10" | grep -qE "tick pulled=(ff|merge) committed=[0-9a-f]+ pushed=yes" \
+  && printf '%s' "$remote_log10" | grep -qF "clone-b: add notes.txt" \
+  && [ -f "$clone8/notes.txt" ]
+then
+  pass "tick pulls a non-conflicting remote change before committing+pushing its own"
+else
+  fail "tick did not pull+merge the remote change as expected (exit=$tick_exit10)"
+  echo "$tick_output10"
+fi
+
+# ---------------------------------------------------------------------------
+# assertion 11: tick on a non-git store dir is a no-op
+# ---------------------------------------------------------------------------
+
+scratch11="$(new_scratch_dir)"
+store11="$scratch11/store"
+mkdir -p "$store11"
+cp -R "$FIXTURE_STORE/." "$store11"
+
+tick_output11="$("$STORE_SYNC" "$store11" tick 2>&1)"
+tick_exit11=$?
+
+if [ "$tick_exit11" -eq 0 ] && printf '%s' "$tick_output11" | grep -qF "not a git repo"; then
+  pass "tick on a non-git store dir is a no-op (not a git repo)"
+else
+  fail "tick on a non-git store dir did not no-op as expected (exit=$tick_exit11)"
+  echo "$tick_output11"
+fi
+
+# ---------------------------------------------------------------------------
+# assertion 12: tick -m is rejected (usage, exit 2)
+# ---------------------------------------------------------------------------
+
+scratch12="$(new_scratch_dir)"
+store12="$scratch12/store"
+init_git_store "$store12"
+
+tick_output12="$("$STORE_SYNC" "$store12" tick -m "x" 2>&1)"
+tick_exit12=$?
+
+if [ "$tick_exit12" -eq 2 ] && printf '%s' "$tick_output12" | grep -qF "usage:"; then
+  pass "tick -m is rejected (usage, exit 2)"
+else
+  fail "tick -m was not rejected as expected (exit=$tick_exit12)"
+  echo "$tick_output12"
 fi
 
 echo ""
