@@ -13,7 +13,7 @@
 // directly (Node 22.6+ strips `.ts` types natively -- no build step needed,
 // matching how staleness.ts/reader.ts are already imported live by the
 // server) and drive `upcomingMeetings` against a `StoreReader` built the
-// same way the server builds one (`ensureFresh`), pointed at the 30-persona
+// same way the server builds one (`ensureFresh`), pointed at the 31-persona
 // fixture store (packages/core/fixtures/store/) for goldens anchored in it.
 //
 // Every fixture interaction file carries a `calendar-event` (confirmed by
