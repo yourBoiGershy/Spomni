@@ -4,27 +4,40 @@
 #
 # Usage:
 #   sync-scheduler.sh run <lane> [--data-dir <dir>]
+#   sync-scheduler.sh init [--force] [--data-dir <dir>]
+#   sync-scheduler.sh resolve <lane> [--data-dir <dir>]
 #   sync-scheduler.sh install [--dry-run] [--data-dir <dir>]
 #   sync-scheduler.sh uninstall <lane>|--all [--dry-run] [--data-dir <dir>]
 #   sync-scheduler.sh status [--data-dir <dir>]
 #
 # Config lives at <data-dir>/connectors/sync-scheduler/lanes.tsv (contract:
 # packages/core/contracts/sync-lanes.md). All lane/state/log primitives are
-# implemented by sync-lib.sh (sourced by path, sync-lanes 1.0.0 API).
+# implemented by sync-lib.sh (sourced by path, sync-lanes 1.1.0 API — adds
+# {{...}} placeholder expansion for lane commands).
 #
 # `run <lane>` is the launchd entrypoint: it delegates straight to
 # sync_run_lane, which records state, appends to the lane log, and exits with
 # the lane command's exit code.
+#
+# `init` copies packages/core/templates/sync-lanes.tsv verbatim to the data
+# dir's config path, creating parent dirs as needed. Refuses to overwrite an
+# existing config unless `--force` is given.
+#
+# `resolve <lane>` prints the lane's command with {{REPO_ROOT}}/{{DATA_DIR}}/
+# {{PRIVATE_DATA_ROOT}}/{{STORE_DIR}}/{{CLAUDE_BIN}} placeholders expanded,
+# without running it — for debugging routing.
 #
 # `install` renders one launchd agent per *enabled* configured lane from
 # launchd/com.spomni.sync.plist.template, writes it to
 # ~/Library/LaunchAgents, boots any prior instance out (ignoring failure),
 # then bootstraps the new one. It is idempotent. After installing the
 # current lane set it prunes any previously-installed
-# com.spomni.sync.* agent whose lane no longer has a config row.
+# com.spomni.sync.* agent whose lane no longer has a config row, then
+# unconditionally retires (bootout + remove) any installed pre-rename
+# com.relationship-agent.sync.* legacy agent.
 # `--dry-run` prints the rendered plists and the actions that would be taken
-# (including prune) without touching disk, ~/Library/LaunchAgents, or
-# launchctl.
+# (including prune and legacy retirement) without touching disk,
+# ~/Library/LaunchAgents, or launchctl.
 #
 # `uninstall <lane>` boots out and removes that lane's agent. `uninstall
 # --all` does the same for every currently-installed
@@ -46,6 +59,7 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+SYNC_REPO_ROOT="$REPO_ROOT"
 # shellcheck source=./sync-lib.sh
 . "$SCRIPT_DIR/sync-lib.sh"
 
@@ -55,6 +69,8 @@ LEGACY_LABEL_PREFIX="com.relationship-agent.sync."
 
 usage() {
 	echo "Usage: $0 run <lane> [--data-dir <dir>]" >&2
+	echo "       $0 init [--force] [--data-dir <dir>]" >&2
+	echo "       $0 resolve <lane> [--data-dir <dir>]" >&2
 	echo "       $0 install [--dry-run] [--data-dir <dir>]" >&2
 	echo "       $0 uninstall <lane>|--all [--dry-run] [--data-dir <dir>]" >&2
 	echo "       $0 status [--data-dir <dir>]" >&2
@@ -67,6 +83,7 @@ shift
 
 DATA_DIR="$REPO_ROOT/data"
 DRY_RUN=0
+FORCE=0
 POSITIONAL=()
 
 while [ $# -gt 0 ]; do
@@ -78,6 +95,10 @@ while [ $# -gt 0 ]; do
 			;;
 		--dry-run)
 			DRY_RUN=1
+			shift
+			;;
+		--force)
+			FORCE=1
 			shift
 			;;
 		*)
@@ -157,6 +178,47 @@ case "$SUBCOMMAND" in
 		exit $?
 		;;
 
+	init)
+		[ ${#POSITIONAL[@]} -eq 0 ] || usage
+		TEMPLATE_SOURCE="$REPO_ROOT/packages/core/templates/sync-lanes.tsv"
+		if [ ! -f "$TEMPLATE_SOURCE" ]; then
+			echo "sync-scheduler: init: missing template $TEMPLATE_SOURCE" >&2
+			exit 1
+		fi
+
+		if [ -f "$CONFIG_FILE" ] && [ "$FORCE" -ne 1 ]; then
+			echo "sync-scheduler: init: $CONFIG_FILE exists — not overwriting (use --force)"
+			exit 0
+		fi
+
+		mkdir -p "$(dirname "$CONFIG_FILE")"
+		cp "$TEMPLATE_SOURCE" "$CONFIG_FILE"
+		echo "Wrote $CONFIG_FILE"
+		exit 0
+		;;
+
+	resolve)
+		[ ${#POSITIONAL[@]} -eq 1 ] || usage
+		LANE="${POSITIONAL[0]}"
+		ROW="$(sync_lane_get "$CONFIG_FILE" "$LANE")"
+		STATUS=$?
+		if [ "$STATUS" -eq 2 ]; then
+			echo "sync-scheduler: resolve: unknown lane '${LANE}'" >&2
+			exit 2
+		elif [ "$STATUS" -ne 0 ]; then
+			echo "sync-scheduler: resolve: config invalid" >&2
+			exit 1
+		fi
+
+		COMMAND="$(printf '%s' "$ROW" | awk -F'\t' '{
+			out = $4
+			for (i = 5; i <= NF; i++) out = out "\t" $i
+			print out
+		}')"
+		sync_resolve_command "$DATA_DIR" "$COMMAND"
+		exit 0
+		;;
+
 	install)
 		[ ${#POSITIONAL[@]} -eq 0 ] || usage
 
@@ -213,6 +275,22 @@ EOF
 						fi
 						;;
 				esac
+			done
+		fi
+
+		# Retire legacy pre-rename agents unconditionally: a stale legacy
+		# agent pointing at a dead checkout is exactly the bug being fixed.
+		if [ -d "$HOME/Library/LaunchAgents" ]; then
+			for LEGACY_PLIST_PATH in "$HOME/Library/LaunchAgents/${LEGACY_LABEL_PREFIX}"*.plist; do
+				[ -e "$LEGACY_PLIST_PATH" ] || continue
+				LEGACY_BASENAME="$(basename "$LEGACY_PLIST_PATH" .plist)"
+				if [ "$DRY_RUN" -eq 1 ]; then
+					echo "Would retire legacy $LEGACY_BASENAME"
+				else
+					launchctl bootout "gui/$UID/$LEGACY_BASENAME" >/dev/null 2>&1 || true
+					rm -f "$LEGACY_PLIST_PATH"
+					echo "retired legacy $LEGACY_BASENAME"
+				fi
 			done
 		fi
 		exit 0

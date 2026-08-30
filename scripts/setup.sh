@@ -9,8 +9,9 @@
 # What it does, in order (each step prints OK/FAIL/SKIP; nothing here needs
 # a human): prerequisite check → npm ci for the query server → create or
 # wire the store → safety check on its location → run the store validator →
-# (optional) generate lanes.tsv with this checkout's absolute paths → print
-# the short list of things only you can do (accounts, TCC grant, Beeper).
+# (optional) copy the lanes.tsv template verbatim — no paths to edit, its
+# {{...}} placeholders resolve at run time — → print the short list of
+# things only you can do (accounts, TCC grant, Beeper).
 # Idempotent: re-run any time.
 set -u
 
@@ -87,7 +88,7 @@ if [ "$LANES" = 1 ]; then
   if [ -f "$dst" ]; then skip "$dst exists — not overwriting"
   else
     mkdir -p "$(dirname "$dst")"
-    sed "s|<ABS-REPO-ROOT>|$ROOT|g" packages/core/templates/sync-lanes.tsv > "$dst" && ok "wrote $dst (beeper lane, 15 min)"
+    cp packages/core/templates/sync-lanes.tsv "$dst" && ok "wrote $dst (beeper lane, 15 min; no paths to edit — placeholders resolve at run time)"
     echo "  install with: bash packages/connectors/scripts/sync-scheduler.sh install"
   fi
 fi
