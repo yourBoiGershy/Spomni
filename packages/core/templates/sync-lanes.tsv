@@ -47,6 +47,17 @@ feedback	900	true	/bin/bash {{REPO_ROOT}}/packages/ingestion/scripts/feedback-pa
 # ledger. Ships enabled; a 3-line digest lands in logs/learn.log.
 learn	900	true	/bin/bash {{REPO_ROOT}}/packages/attention/scripts/learn-sweep.sh {{STORE_DIR}} --data-dir {{PRIVATE_DATA_ROOT}}/data
 
+# Staleness lane (plan 41) — hourly deterministic check: a lane silent past
+# 2x its interval, or a capture lane green-but-empty for 24h, gets one self
+# wake-up (packages/attention/scripts/staleness.sh); delivered by the
+# sweep's fire step + notify lane.
+staleness	3600	true	/bin/bash {{REPO_ROOT}}/packages/attention/scripts/staleness.sh {{STORE_DIR}} --sync-data-dir {{DATA_DIR}}
+
+# Store commit lane (plan 41) — commits and pushes the private data repo
+# every tick via store-sync.sh tick; quiet when clean; a non-git store is a
+# no-op.
+store-commit	900	true	/bin/bash {{REPO_ROOT}}/packages/core/scripts/store-sync.sh {{STORE_DIR}} tick
+
 # MCP lanes (plan 28) — gmail/calendar sync runs as a headless Claude
 # session per tick, via packages/connectors/scripts/mcp-lane-tick.sh. These
 # rows are disabled by default; before enabling:

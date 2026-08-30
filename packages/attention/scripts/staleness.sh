@@ -16,6 +16,13 @@
 #      (falls back to last_start if last_end is empty). A lane with no
 #      state file has never run -> not stale. Missing lanes.tsv -> skip
 #      lane checks silently.
+#   3. Zero-yield capture lanes — for each enabled lane in the same
+#      lanes.tsv, <sync-data-dir>/connectors/<lane>-in/runs.log (one line
+#      per run: "<iso> <outcome> ... events=<n> ..."). Over the trailing
+#      24h window, non-"backfill-*" lines with outcome "ok" are counted; if
+#      there are >= 4 such runs and every one reports events=0, the lane is
+#      green but capturing nothing -> one staleness:<lane>-yield wake-up.
+#      Missing runs.log -> skip that lane's yield check silently.
 #
 # Usage:
 #   staleness.sh <store-dir> [--sync-data-dir <dir>] [--now <iso-utc>] [--dry-run]
@@ -33,6 +40,7 @@
 #
 # Prints one line per subject checked:
 #   staleness: <name> ok|stale|already-pending|never-run (<detail>)
+#   staleness: <lane>-yield ok|stale|never-run (<detail>)
 #
 # Exit 0 always, unless usage error (2) or jq is missing (2).
 
@@ -49,7 +57,8 @@ Usage: ${SCRIPT_NAME} <store-dir> [--sync-data-dir <dir>] [--now <iso-utc>] [--d
 
 Checks routine heartbeats (<store-dir>/heartbeats/*.json) and connector-lane
 scheduler state (<sync-data-dir>/connectors/sync-scheduler/) for silence
-past 2x their cadence, creating exactly one pending wake-up per stale
+past 2x their cadence, plus enabled capture lanes' runs.log for 24h of
+green-but-zero-events runs, creating exactly one pending wake-up per stale
 subject (skipping if one is already pending or fired-unresolved).
 EOF
   exit 2
@@ -303,6 +312,66 @@ if [ -f "${LANES_TSV}" ]; then
         "lane ${lane} has not run since ${ref_iso} (cadence ${interval}s) — check the schedule"
     else
       echo "staleness: ${lane} ok (last ran ${ref_iso})"
+    fi
+  done < "${LANES_TSV}"
+fi
+
+# --- 3. Zero-yield capture lanes -----------------------------------------
+
+if [ -f "${LANES_TSV}" ]; then
+  WINDOW_START_EPOCH=$((NOW_EPOCH - 86400))
+
+  while IFS="$(printf '\t')" read -r lane interval enabled command || [ -n "${lane}" ]; do
+    case "${lane}" in
+      ""|"#"*) continue ;;
+    esac
+    [ "${enabled}" = "true" ] || continue
+
+    runs_log="${SYNC_DATA_DIR}/connectors/${lane}-in/runs.log"
+    [ -f "${runs_log}" ] || continue
+
+    run_count=0
+    zero_count=0
+    total_events=0
+    while IFS=" " read -r ts outcome rest; do
+      [ -n "${ts}" ] || continue
+      case "${outcome}" in
+        backfill-*) continue ;;
+      esac
+      [ "${outcome}" = "ok" ] || continue
+
+      ts_epoch="$(iso_to_epoch "${ts}")"
+      [ -n "${ts_epoch}" ] || continue
+      [ "${ts_epoch}" -ge "${WINDOW_START_EPOCH}" ] || continue
+
+      events=""
+      for field in ${rest}; do
+        case "${field}" in
+          events=*)
+            events="${field#events=}"
+            ;;
+        esac
+      done
+
+      run_count=$((run_count + 1))
+      case "${events}" in
+        ''|*[!0-9]*) : ;;
+        *)
+          total_events=$((total_events + events))
+          if [ "${events}" = "0" ]; then
+            zero_count=$((zero_count + 1))
+          fi
+          ;;
+      esac
+    done < "${runs_log}"
+
+    if [ "${run_count}" -lt 4 ]; then
+      echo "staleness: ${lane}-yield never-run (${run_count} runs in 24h, need 4)"
+    elif [ "${zero_count}" -eq "${run_count}" ]; then
+      create_staleness_wakeup "${lane}-yield" \
+        "lane ${lane} ran ${run_count} times in 24h with 0 new events — is the ${lane} app open and signed in?"
+    else
+      echo "staleness: ${lane}-yield ok (${run_count} runs, ${total_events} events in 24h)"
     fi
   done < "${LANES_TSV}"
 fi

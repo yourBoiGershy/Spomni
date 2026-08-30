@@ -249,6 +249,11 @@ any order (dedup makes order safe):
     reason file): do **not** append to `processed.log`, do **not** delete
     anything, do **not** abort the run — continue to the next message.
     Count as quarantined.
+13. **On exit 3** (plan 41 — byte-identical duplicate of a body already in
+    `inbox/`, nothing written): append the message `id` to
+    `processed.log` same as exit 0 (it is durably captured, just under an
+    earlier event's id) — count as `dedup`, not an error and not a new
+    event.
 
 ## Step 3 — advance the checkpoint
 

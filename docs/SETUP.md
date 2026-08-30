@@ -181,6 +181,21 @@ lane will run without waiting for a tick:
 - Verify: `status` shows `INSTALLED yes`; force a first run with
   `launchctl kickstart gui/$UID/com.spomni.sync.<lane>` and check
   `LAST_EXIT 0`. If you get exit 126 → step 1.
+- **`store-commit` and `staleness` lanes ship enabled** (900s / 3600s — see
+  §5e below and the staleness note in §5d). Existing installs made before
+  plan 41 don't have these two rows: run `sync-scheduler.sh init --force`
+  to overwrite `lanes.tsv` with the current template (re-apply any local
+  interval/enabled edits afterward), or paste the two rows in by hand from
+  `packages/core/templates/sync-lanes.tsv` — then `install` either way.
+- **Capture-time dedup:** every capture path fingerprints each message's
+  body (sha256) in `<store>/inbox/.fingerprints` before writing; a
+  byte-identical repeat writes nothing (exit 3) and beeper's `runs.log`
+  line shows `dedup=N` instead of counting it as a new event. One-time
+  cleanup for duplicates that landed before this existed:
+  `bash packages/connectors/scripts/inbox-dedup.sh data/store` to list
+  them, then add `--apply` to delete the later copies (a capture that was
+  already filed is never deleted — checked against
+  `<data-dir>/ingestion/debrief-filed.log`).
 
 ### 5a. Headless gmail / calendar lanes (plan 28)
 
@@ -259,17 +274,54 @@ and answer with bash + jq — no `npm ci`, no server. Expect ≈ 5 s from clone
 to first `/who-next` answer on a laptop, ≤ 15 s in the cloud; measure with
 `bash packages/query/tests/bench-cold-start.sh --remote https://github.com/<you>/Spomni.git --warm`.
 
+Start with `store-sync.sh pull .` — the `store-commit` lane (§5e) may
+already have pushed newer state from the laptop than this clone last saw.
 A debrief from the phone ends with
 `store-sync.sh commit -m "debrief: …" . && store-sync.sh push .` — no typed
 git. Add `machinery/` to the data repo's `.gitignore`. Set
 `SPOMNI_GIT_NAME` / `SPOMNI_GIT_EMAIL` in the cloud environment if you want
 commits attributed to you (default author `Spomni <spomni@localhost>`).
 
-Routines stamp `heartbeats/<routine>.json`; the daily sweep's staleness step
-raises **one** wake-up when a routine or lane has been quiet for 2× its
-cadence. On this Mac the launchd lanes' state lives under the connectors
-worktree's `data/` — pass `--sync-data-dir` to `staleness.sh` if your store
-checkout differs.
+Routines stamp `heartbeats/<routine>.json`; the `staleness` lane (ships
+enabled, 3600s — `packages/attention/scripts/staleness.sh <store>
+--sync-data-dir <data-dir>`) and the daily sweep's own staleness step raise
+**one** wake-up each time a routine or lane has been quiet for 2× its
+cadence, or an enabled capture lane has logged ≥ 4 runs in the trailing 24h
+with 0 events every time (`<lane>-yield` — "is <app> open / signed in?").
+On this Mac the launchd lanes' state lives under the connectors worktree's
+`data/` — pass `--sync-data-dir` to `staleness.sh` if your store checkout
+differs.
+
+### 5e. Store commit lane (git audit trail, plan 41)
+
+The `store-commit` lane (ships enabled, 900s) turns every capture, fired
+wake-up, filing, and feedback reply into a commit by running
+`packages/core/scripts/store-sync.sh <store> tick` — pull (fast-forward,
+falling back to a plain merge, never a rebase), commit only if something
+changed (message `store: sync tick <UTC iso>`), then push only if a commit
+landed or the branch was already ahead. Quiet when the store is clean; a
+no-op if `<store>` isn't a git repo at all. Each tick prints one summary
+line:
+
+```
+store-sync: tick pulled=<ff|merge|none|skipped> committed=<sha|none> pushed=<yes|no|skipped>
+```
+
+Requirements:
+
+- The store must be a git clone with an `origin` you can push to
+  **non-interactively** — a credential helper or SSH key launchd can use
+  without a terminal prompt. Test this before trusting the lane:
+  `bash packages/core/scripts/store-sync.sh <store> tick` from a terminal
+  first.
+- Commit identity falls back to `Spomni <spomni@localhost>`; set
+  `SPOMNI_GIT_NAME` / `SPOMNI_GIT_EMAIL` in the environment if you want
+  commits attributed to you.
+
+Because every write ends up committed, `git -C data/store log` is now the
+audit trail for the whole system — captures, fired wake-ups, filings, and
+feedback replies all show up as commits, which is also why a phone/cloud
+session (§5d) starts with a pull.
 
 ## 6. Prove the whole machine
 
@@ -277,6 +329,8 @@ checkout differs.
 bash scripts/test-all.sh                                     # every suite + oss-guard
 bash packages/connectors/scripts/check-sync.sh data/store    # capture conformance (needs captures)
 bash packages/core/scripts/validate-store.sh data/store      # store sanity
+bash packages/core/scripts/store-sync.sh data/store tick     # if data/store is a git clone
+git -C data/store log -1                                     # confirm the tick landed a commit
 ```
 
 All green + a `LAST_EXIT 0` lane = the machine works. It's still empty.
@@ -329,6 +383,9 @@ leaves the machine). Override the endpoint/model with `OLLAMA_URL` /
 | Scheduler installed but lane never fires | `RunAtLoad` is false by design — first fire comes after one interval; kickstart to test now |
 | `check-store-location.sh` FAILs | Your store is somewhere it could leak (inside this repo, a sync folder, or pointed at the public remote) — move it |
 | Lane fires but writes to the wrong store | `sync-scheduler.sh resolve <lane>` to see the resolved command; check `data/store` (symlink target); re-run `install` from the checkout you actually use |
+| `store-commit` log shows `tick aborted at push` | Push failed non-interactively — check the store's git credentials (helper / SSH key) under launchd, then run `bash packages/core/scripts/store-sync.sh <store> tick` from a terminal to see the real git error |
+| `FAIL: merge conflict` from `store-sync.sh` | A real conflict — resolve it in the store by hand (`cd data/store && git status`); never rebase (see git safety doctrine) |
+| `dedup=N` every tick in beeper's `runs.log` | Normal after a cursor reset — previously-seen messages are recognized by fingerprint and skipped, not lost |
 
 ## Uninstall
 

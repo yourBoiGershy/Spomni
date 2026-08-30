@@ -276,6 +276,10 @@ bash packages/connectors/scripts/normalize-capture.sh <store-dir> \
   `processed.log` — it stays eligible for a future run. Continue the sweep
   with the next event; never abort the batch, never delete anything, on a
   quarantine.
+- **Exit 3** (plan 41) — byte-identical duplicate of a body already in
+  `inbox/`; nothing written, nothing quarantined. Append the dedup key to
+  `processed.log` same as exit 0 (it is durably captured under an earlier
+  event's id) — count as `dedup`, not an error.
 
 ## 9. Summary
 

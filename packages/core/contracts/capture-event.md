@@ -112,3 +112,19 @@ participant-hints:
   re-encode the `source` field's value, and readers must not reverse the
   sanitization to recover the original `source` — they should read the
   `source` field directly instead.
+
+### 1.2.0 addendum (plan 41): dedup index
+
+`<store-dir>/inbox/.fingerprints` is a dot-prefixed (validators and
+`check-sync.sh` ignore it — it isn't a capture event) append-only TSV of
+`sha256(body)<TAB>id`, one line per non-empty-body event currently in
+`inbox/`. Sole writer: `packages/connectors/scripts/normalize-capture.sh`
+(rebuilt from disk the first time it's missing); `packages/connectors/
+scripts/inbox-dedup.sh` also rebuilds it and can prune already-landed
+duplicates. Frontmatter differences (e.g. a re-fetch's fresh `captured_at`)
+never matter — only the body is hashed. A capture whose body byte-matches an
+existing inbox event is refused with **exit 3** (distinct from exit 0/1):
+nothing is written, nothing is quarantined, and the normalizer prints the
+existing event's path to stdout instead. Empty bodies are never
+deduplicated (capture stays lossy-tolerant). This is additive — no row-shape
+change, no `schema_version` bump.

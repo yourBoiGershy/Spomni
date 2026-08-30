@@ -35,6 +35,12 @@ Shared input tooling (e.g. `scripts/normalize-capture.sh`, and the sync schedule
 `scripts/sync-scheduler.sh` + `scripts/sync-lib.sh`) lives at the package root.
 `scripts/resolve-backfill-window.sh` (plan 24) resolves the onboarding-backfill
 window from `<data-dir>/config/onboarding-backfill.tsv` for all lane backfill modes.
+`scripts/normalize-capture.sh` exits **3** (plan 41) on a byte-identical
+duplicate of a body already in `inbox/` — nothing written, nothing
+quarantined; every input lane must treat exit 3 as a dedup, not an error.
+`scripts/inbox-dedup.sh` (plan 41) rebuilds `inbox/.fingerprints` and, with
+`--apply`, prunes already-landed duplicate `.md` files (never one already
+filed per `debrief-filed.log`, never anything in `inbox/quarantine/`).
 
 ## Provides
 
