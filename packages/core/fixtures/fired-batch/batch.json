@@ -7,7 +7,7 @@
     {
       "id": "2026-08-30-dana-whitfield",
       "due": "2026-08-30",
-      "people": ["dana-whitfield"],
+      "people": ["[[dana-whitfield]]"],
       "why": "birthday coming up",
       "origin": "standing",
       "kind": "nudge",
@@ -19,7 +19,7 @@
     {
       "id": "2026-08-30-sam-okafor",
       "due": "2026-08-30",
-      "people": ["sam-okafor"],
+      "people": ["[[sam-okafor]]"],
       "why": "job change: now leading partnerships at Meridian",
       "origin": "signal",
       "kind": "nudge",
@@ -31,7 +31,7 @@
     {
       "id": "2026-08-30-jordan-lee",
       "due": "2026-08-30",
-      "people": ["jordan-lee"],
+      "people": ["[[jordan-lee]]"],
       "why": "quarterly catch-up is due",
       "origin": "standing",
       "kind": "event-proposal",
@@ -53,7 +53,7 @@
       "event_id": "evt-123",
       "summary": "Weekly sync",
       "date": "2026-08-28",
-      "people": ["jordan-lee"],
+      "people": ["[[jordan-lee]]"],
       "line": "You never debriefed \"Weekly sync\" with [[jordan-lee]] on 2026-08-28."
     }
   ]

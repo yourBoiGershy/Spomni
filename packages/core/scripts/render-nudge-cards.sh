@@ -62,7 +62,7 @@ while IFS= read -r entry; do
 
     why="$(printf '%s' "${entry}" | jq -r '.why // empty')"
     signal_type="$(printf '%s' "${entry}" | jq -r '.signal_type // empty')"
-    people="$(printf '%s' "${entry}" | jq -r '(.people // []) | map("[[" + . + "]]") | join(", ")')"
+    people="$(printf '%s' "${entry}" | jq -r '(.people // []) | map(sub("^\\[\\["; "") | sub("\\]\\]$"; "") | "[[" + . + "]]") | join(", ")')"
     context="$(printf '%s' "${entry}" | jq -r '.context // empty')"
     draft="$(printf '%s' "${entry}" | jq -r '.draft // empty')"
     kind="$(printf '%s' "${entry}" | jq -r '.kind // "nudge"')"

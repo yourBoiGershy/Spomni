@@ -33,6 +33,13 @@ this renderer treats `mentions` as optional (defaults to `[]`) so it renders
 correctly today and the moment a future writer adds `mentions` per the
 shape below, no renderer change is needed.
 
+`entries[].people` entries may be bare slugs (`"aaron"`) or already
+wrapped (`"[[aaron]]"`) — the live writer passes the wakeup frontmatter
+`people` value straight through, which is already bracketed. The renderer
+strips any leading `[[` / trailing `]]` before wrapping, so each person is
+rendered exactly once as `[[slug]]` regardless of which form the input
+uses.
+
 ```json
 {
   "schema_version": "1.0.0",

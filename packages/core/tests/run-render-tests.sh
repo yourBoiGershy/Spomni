@@ -135,6 +135,24 @@ else
     echo "  actual:   $actual_footer"
   fi
 
+  # --- assertion: mixed bare/bracketed people slugs render as [[slug]] once ---
+  mixed_batch="$TMP_ROOT/mixed-people-batch.json"
+  jq '.entries[0].people = ["dana-whitfield", "[[sam-okafor]]"]' "$BATCH" > "$mixed_batch"
+  mixed_out="$("$RENDERER" "$mixed_batch" 2>"$TMP_ROOT/mixed-err.txt")"
+  mixed_status=$?
+  if [ "$mixed_status" -ne 0 ]; then
+    fail "render-nudge-cards.sh exited $mixed_status (expected 0) on the mixed bare/bracketed people batch"
+    cat "$TMP_ROOT/mixed-err.txt"
+  else
+    quad_bracket_count="$(printf '%s\n' "$mixed_out" | grep -c '\[\[\[\[')"
+    if [ "$quad_bracket_count" -eq 0 ] && printf '%s\n' "$mixed_out" | grep -qF '[[dana-whitfield]], [[sam-okafor]]'; then
+      pass "mixed bare and already-bracketed people slugs each render exactly as [[slug]] once"
+    else
+      fail "mixed bare/bracketed people slugs did not render correctly (quad-bracket count: $quad_bracket_count)"
+      printf '%s\n' "$mixed_out" | head -n2
+    fi
+  fi
+
   # --- assertion bad file: nonexistent/invalid JSON -> exit 2 ---
   bad_out="$("$RENDERER" "$TMP_ROOT/does-not-exist.json" 2>/dev/null)"
   bad_status=$?
