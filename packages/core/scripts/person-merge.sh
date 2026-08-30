@@ -123,7 +123,10 @@ if [ ! -f "${STORE_DIR}/people/${DROP_SLUG}.md" ]; then
   exit 2
 fi
 
-RESULT="$(python3 - "$STORE_DIR" "$KEEP_SLUG" "$DROP_SLUG" "$DATA_DIR" "$DRY_RUN" <<'PYEOF'
+RESULT_FILE="$(mktemp)"
+trap 'rm -f "$RESULT_FILE"' EXIT
+
+python3 - "$STORE_DIR" "$KEEP_SLUG" "$DROP_SLUG" "$DATA_DIR" "$DRY_RUN" > "$RESULT_FILE" <<'PYEOF'
 import datetime
 import glob
 import os
@@ -466,13 +469,14 @@ print("facts=%d threads=%d links_rewritten=%d files=%d identities=%d" % (
     len(merged_facts), len(merged_threads), links_rewritten, files_touched, identities_added
 ))
 PYEOF
-)"
 rc=$?
 
 if [ $rc -ne 0 ]; then
   echo "person-merge.sh: merge computation failed" >&2
   exit 1
 fi
+
+RESULT="$(cat "$RESULT_FILE")"
 
 # RESULT: "facts=<n> threads=<n> links_rewritten=<n> files=<m> identities=<n>"
 FACTS_N="$(printf '%s\n' "$RESULT" | sed -n 's/.*facts=\([0-9]*\).*/\1/p')"
