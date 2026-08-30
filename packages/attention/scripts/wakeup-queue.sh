@@ -53,6 +53,16 @@
 # touches status; decline is the standard dismiss mechanics. Both refuse
 # kind: nudge (and missing kind, which reads as nudge) entries.
 #
+# acted-on: the sweep's "acted-on detection" step (specs/outcome-recording.md
+# §2). Candidates are wake-ups with fired-on non-null and acted-on still
+# null. For each, scans <store>/interactions/*.md for one dated in
+# (fired-on, fired-on + 7 days] whose people overlap the wake-up's people:
+# a match writes acted-on: true immediately; no match but the window has
+# fully closed (today > fired-on + 7 days) writes acted-on: false; window
+# still open with no match leaves the field untouched. Once acted-on is
+# non-null it is never re-evaluated. Prints one "acted-on <id> -> true|false"
+# line per write; silent otherwise.
+#
 # Portable to bash 3.2 (macOS default): no associative arrays, no mapfile,
 # no ${var,,}. jq is used for JSON construction/output.
 
@@ -69,6 +79,7 @@ Usage:
   ${SCRIPT_NAME} <store-dir> dismiss <id> --reason <not-now|not-this-person|not-this-signal-type|already-handled>
   ${SCRIPT_NAME} <store-dir> confirm <id> --event-id <connector-event-id>
   ${SCRIPT_NAME} <store-dir> decline <id> --reason <not-now|not-this-person|not-this-signal-type|already-handled>
+  ${SCRIPT_NAME} <store-dir> acted-on [--today YYYY-MM-DD]
 
 Deterministic wake-up queue lifecycle over <store-dir>/wakeups/*.md, per
 packages/core/contracts/wakeup.md 1.2.0 and
@@ -132,7 +143,11 @@ date_add_days() {
   if [ "${DATE_MODE}" = "gnu" ]; then
     date -u -d "${d} + ${n} days" +%Y-%m-%d
   else
-    date -j -v"${n}d" -f "%Y-%m-%d" "${d}" +%Y-%m-%d
+    case "${n}" in
+      -*) adj="${n}d" ;;
+      *) adj="+${n}d" ;;
+    esac
+    date -j -v"${adj}" -f "%Y-%m-%d" "${d}" +%Y-%m-%d
   fi
 }
 
@@ -958,6 +973,78 @@ confirm_decline_op() {
 }
 
 # =============================================================================
+# op: acted-on — sweep's "acted-on detection" step
+# (specs/outcome-recording.md §2)
+# =============================================================================
+
+acted_on_op() {
+  TODAY=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --today)
+        [ "$#" -ge 2 ] || usage
+        TODAY="$2"
+        shift 2
+        ;;
+      *)
+        echo "${SCRIPT_NAME}: unknown argument: $1" >&2
+        usage
+        ;;
+    esac
+  done
+  [ -n "${TODAY}" ] || TODAY="$(date -u +%Y-%m-%d)"
+
+  [ -d "${WAKEUPS_DIR}" ] || return 0
+
+  INTERACTIONS_DIR="${STORE_DIR}/interactions"
+
+  for f in "${WAKEUPS_DIR}"/*.md; do
+    [ -e "${f}" ] || continue
+
+    fired_on="$(get_field_file "${f}" fired-on)"
+    [ -n "${fired_on}" ] || continue
+
+    acted_on="$(get_field_file "${f}" acted-on)"
+    [ -z "${acted_on}" ] || continue
+
+    window_end="$(date_add_days "${fired_on}" 7)"
+
+    id="$(get_field_file "${f}" id)"
+    people_raw="$(get_field_file "${f}" people)"
+    slugs="$(printf '%s' "${people_raw}" | grep -oE '\[\[[A-Za-z0-9_-]+\]\]' | sed -E 's/^\[\[//; s/\]\]$//')"
+
+    matched=0
+    if [ -d "${INTERACTIONS_DIR}" ] && [ -n "${slugs}" ]; then
+      for inter in "${INTERACTIONS_DIR}"/*.md; do
+        [ -e "${inter}" ] || continue
+        idate="$(get_field_file "${inter}" date)"
+        [ -n "${idate}" ] || continue
+        # window: (fired-on, fired-on + 7 days] — exclusive of fired-on,
+        # inclusive of the 7th day after.
+        if [[ "${idate}" > "${fired_on}" ]] && { [[ "${idate}" < "${window_end}" ]] || [ "${idate}" = "${window_end}" ]; }; then
+          ipeople_raw="$(get_field_file "${inter}" people)"
+          for slug in ${slugs}; do
+            if printf '%s' "${ipeople_raw}" | grep -qF "[[${slug}]]"; then
+              matched=1
+              break
+            fi
+          done
+        fi
+        [ "${matched}" -eq 1 ] && break
+      done
+    fi
+
+    if [ "${matched}" -eq 1 ]; then
+      set_field_file "${f}" acted-on true
+      echo "acted-on ${id} -> true"
+    elif [[ "${TODAY}" > "${window_end}" ]]; then
+      set_field_file "${f}" acted-on false
+      echo "acted-on ${id} -> false"
+    fi
+  done
+}
+
+# =============================================================================
 # dispatch
 # =============================================================================
 
@@ -980,8 +1067,11 @@ case "${OP}" in
   decline)
     confirm_decline_op decline "$@"
     ;;
+  acted-on)
+    acted_on_op "$@"
+    ;;
   *)
-    echo "${SCRIPT_NAME}: unknown op '${OP}' (expected list-due|fire|snooze|dismiss|confirm|decline)" >&2
+    echo "${SCRIPT_NAME}: unknown op '${OP}' (expected list-due|fire|snooze|dismiss|confirm|decline|acted-on)" >&2
     usage
     ;;
 esac
