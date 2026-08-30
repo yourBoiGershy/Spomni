@@ -16,7 +16,7 @@ mechanics) — that's plan 09's scope; see "Integration with plan 09" below.
 
 | Routine | Default cadence | Does |
 |---|---|---|
-| `sync-sweep` | 2–3×/day (param) | connector-in sweeps via the CLI (code-driven lane) → inbox → filing → store-sync commit; stamps `last-sweep` heartbeat (plan 09 deadman) |
+| `sync-sweep` | 2–3×/day (param) | connector-in sweeps via the CLI (code-driven lane) → inbox → filing → store-sync commit; stamps its heartbeat (`heartbeat-stamp.sh`, plan 09 deadman) |
 | `daily-attention` | each morning, after the first sync (param) | fire due wake-ups (06), signal pass (05), emit nudges sized to today's tier/budget from the week-plan |
 | `weekly-planning` | Sunday evening (param) | run capacity computation, write `signals/week-plan.json`, commit |
 
@@ -34,9 +34,9 @@ parameterizable in its routine definition, not hardcoded into this doc.
   lane sweep lands raw capture events in `inbox/`, the filing engine files
   them into the people store, and a store-sync commit lands the result on
   `main`.
-- **Heartbeat:** stamps `last-sweep` in the data repo on completion; plan
-  09's deadman rule fires a staleness wake-up if `last-sweep` goes stale
-  (> 2× the configured interval).
+- **Heartbeat:** none of its own — each connector lane's liveness is read
+  from the sync scheduler's `state/<lane>.tsv`; plan 09's staleness rule
+  fires one wake-up if a lane goes quiet for > 2× its `interval_seconds`.
 
 ### `daily-attention`
 
@@ -50,8 +50,8 @@ parameterizable in its routine definition, not hardcoded into this doc.
   capacity model). Before selecting, it checks week-plan staleness — a plan
   older than 8 days is regenerated first (invoking the same logic as
   `weekly-planning`) rather than selecting against stale capacity data.
-- **Heartbeat:** stamps its own completion marker per plan 09's
-  staleness→wake-up rule (same mechanism as `last-sweep`, distinct key).
+- **Heartbeat:** `heartbeat-stamp.sh <store> daily-attention --cadence-hours
+  24` at the end of every run (plan 09 staleness rule, see below).
 
 ### `weekly-planning`
 
@@ -63,9 +63,10 @@ parameterizable in its routine definition, not hardcoded into this doc.
   `signals/week-plan.json` (single writer: attention). Logs a one-line
   summary (tier + budget) and goes silent — no delivery, this is planning
   state, not a digest.
-- **Heartbeat:** stamps its own completion marker on successful commit; a
-  failed capacity computation must not leave a partial `week-plan.json`
-  write (loud log instead), so the heartbeat only stamps on success.
+- **Heartbeat:** `heartbeat-stamp.sh <store> weekly-planning --cadence-hours
+  168` on successful commit only; a failed capacity computation must not
+  leave a partial `week-plan.json` write (loud log instead), so the heartbeat
+  never stamps `--ok` on failure.
 
 ## Queue runtime model (plan 06)
 
@@ -162,15 +163,66 @@ backlog language about what the user missed.
   sends an outbound message. Every routine output is a draft or a queue
   entry that waits for the human to act on it.
 
-## Integration with plan 09
+## Cloud environment (plan 09)
 
-Plan 09 (stream-infrastructure, in progress) owns the cloud environment
-spec itself — base environment, git identity and repo-scoping, secrets,
-store-sync mechanics, and the deadman/staleness escalation machinery that
-every heartbeat above relies on. This doc deliberately defines only the
-cadence layer (which routines exist, their parameters, their ordering, and
-what each stamps); plan 09 folds its environment detail into this file as
-that work lands, rather than duplicating the cadence map there.
+The environment a phone/cloud session or scheduled routine runs in **is the
+user's private data repo**, not the machinery repo. Nothing here needs `npm`,
+a server, or a secret.
+
+- **Setup.** The data repo's `CLAUDE.md` (written by `init-store.sh` from
+  `packages/core/templates/data-repo-CLAUDE.md`) tells a cold session to
+  shallow-clone the machinery into `machinery/` (gitignored in the data repo)
+  and run everything from there with bash + jq. A routine's setup script does
+  the same: `git clone --depth 1 --single-branch <machinery-url> machinery` and
+  `export SPOMNI_STORE=.`.
+- **Git identity.** Cloud sandboxes have none; `store-sync.sh commit` falls
+  back to `SPOMNI_GIT_NAME` / `SPOMNI_GIT_EMAIL` (default `Spomni
+  <spomni@localhost>`) without touching global config.
+- **Secrets.** None. Gmail/Calendar are reached only through the first-party
+  claude.ai connectors the user linked (`composio-retired`), which are
+  session-scoped — there is nothing to store.
+- **Where routines can run.** `daily-attention` and `weekly-planning` run
+  anywhere the data repo is checked out. `sync-sweep`'s beeper lane is
+  **Mac-only** (desktop bridge) and stays under launchd; its gmail/calendar
+  lanes need a session that carries the connectors.
+- **Cold-start target (measured).** `packages/query/tests/bench-cold-start.sh`
+  is the single source. Baseline 2026-08-30, laptop, real GitHub remote,
+  private 127-person store: clone **1.25 s** + first `who-next-direct.sh`
+  answer **3.86 s** = **5.1 s** clone→answer (target ≤ 15 s cold, ≤ 5 s warm).
+  The 1 m 27 s figure that motivated this plan was the `npm ci` + MCP-server
+  path; the zero-setup path (plan 35) never takes it. Remaining lever: the
+  answer stage, owned by plan 38.
+
+### Store-sync (the write discipline)
+
+`packages/core/scripts/store-sync.sh status|pull|commit [-m msg]|push
+[<store-dir>]` is the only way any runtime writes the data repo back:
+`commit` reindexes (`reindex.sh` when plan 38's wrapper is present, else
+`build-index.sh` + `build-stats.sh`), runs `validate-store.sh`, and **refuses**
+a store that fails validation; `push` retries once through a pull-merge on a
+non-fast-forward race, then fails loudly; nothing ever rebases. A store dir
+that is not a git repo makes every subcommand a one-line no-op, so the same
+skills work on a plain directory.
+
+### Heartbeats + staleness (deadman)
+
+- **Routines** stamp `<store>/heartbeats/<routine>.json` (contract
+  `packages/core/contracts/heartbeat.md` 1.0.0: `routine`, `stamped_at`,
+  `cadence_hours`, `ok`) via `packages/core/scripts/heartbeat-stamp.sh <store>
+  <routine> --cadence-hours N [--ok|--fail]` at the end of every run — the
+  `last-sweep` / `last-daily-attention` one-line files this doc used to
+  describe are superseded by that contract.
+- **Connector lanes** are *not* stamped twice: their liveness is read from
+  the sync scheduler's existing `connectors/sync-scheduler/state/<lane>.tsv`
+  (`last_start`, `last_end`, `last_exit`) against `lanes.tsv`'s
+  `interval_seconds`.
+- **Staleness rule.** `packages/attention/scripts/staleness.sh <store>
+  [--sync-data-dir <dir>]` (called from `sweep`) treats anything quiet for more
+  than **2 × its cadence** as stale and creates **exactly one** pending
+  wake-up per stale subject (`origin: standing`, `source-signal:
+  staleness:<name>`, `signal-type: staleness`, `--person self`) — skipped while
+  one is already pending or fired-unresolved. A never-run routine or lane does
+  not alarm. A dead schedule announces itself once, then stays silent.
 
 ## References
 

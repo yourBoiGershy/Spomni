@@ -63,7 +63,10 @@ nothing.
   `contracts/answer-style.md` 1.0.0 — render rules for every user-facing
   answer/card (action-first, ≤2 lines/item, cap 5, draft on demand, no-guilt)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
-  `templates/profile.md`, `templates/sync-lanes.tsv`, `templates/user-model.md`
+  `templates/profile.md`, `templates/sync-lanes.tsv`, `templates/user-model.md`,
+  `templates/data-repo-CLAUDE.md` (the cold-session bootstrap `CLAUDE.md`
+  `init-store.sh` writes into a store when absent — zero-setup query/debrief
+  paths for a phone or cloud session opened directly on the data repo)
 - Store scripts: `scripts/build-index.sh` (people/ → index.json; projects the
   1.1.0 `kind`/`kind_source`/`kind_expires` columns when present, per plan 30),
   `scripts/build-stats.sh` (people/ + interactions/ → stats.json, per
@@ -95,7 +98,13 @@ nothing.
   forward-declared — written by plan 12), `scripts/eval-judge.sh`
   (structured-output haiku judge for eval graders, forward-declared — written by
   plan 12), `scripts/eval-suite.sh` (eval suite-manifest runner + cost-capped
-  summary, forward-declared — written by plan 12)
+  summary, forward-declared — written by plan 12), `scripts/heartbeat-stamp.sh`
+  (the one sanctioned way a scheduled routine writes its
+  `heartbeats/<routine>.json` completion stamp, per `contracts/heartbeat.md`),
+  `scripts/store-sync.sh` (the one write-discipline entry point every runtime —
+  laptop, launchd lane, phone/cloud session — uses against a git-backed store:
+  `status`/`pull`/`commit`/`push`; reindexes + runs `validate-store.sh` before
+  every commit and refuses to stage on failure; never rebases)
 - Fixtures: `fixtures/store/` (synthetic personas), `fixtures/corrupted/`
 
 ## Consumes
@@ -115,8 +124,8 @@ refusal for paths under that dir only.
 ## Owned paths
 
 `packages/core/**`. Core also owns the *shape* of the private data dir
-(`inbox/`, `people/`, `interactions/`, `wakeups/`, `index.json`) — see the single-writer
-table in docs/PROJECT-CONTEXT.md for who writes into each at runtime.
+(`inbox/`, `people/`, `interactions/`, `wakeups/`, `heartbeats/`, `index.json`) — see the
+single-writer table in docs/PROJECT-CONTEXT.md for who writes into each at runtime.
 
 ## Built by
 

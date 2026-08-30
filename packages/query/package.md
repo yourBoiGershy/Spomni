@@ -27,6 +27,12 @@ wrapping them is mechanical.
   directly and emitting a pre-filtered, pre-ranked JSON-lines candidate
   pool; read-only, never writes to the store (generates `index.json`/
   `stats.json` into a scratch copy if either is missing).
+- `tests/bench-cold-start.sh` (`[<store-dir>] [--remote <git-url-or-local-path>]
+  [--runs K] [--json] [--warm]`) — ROADMAP Goal 4's cold-start bench: shallow
+  clone + first `who-next-direct.sh` answer from an empty temp dir, against
+  the clone->answer <= 15s / warm <= 5s targets; read-only, never writes to
+  the given store. Superseded by plan 38's `bench-retrieval.sh` once that
+  folds these stages in as rows.
 - The nudge-card render consumed by output adapters
 - `server/` (`packages/query/server/`): an MCP tool surface, seven read-only tools over
   stdio (streamable HTTP behind `--http`, stubbed): `search_people`, `get_person`,

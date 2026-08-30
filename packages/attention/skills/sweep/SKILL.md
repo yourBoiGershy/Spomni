@@ -25,16 +25,9 @@ anchor date).
 ### 0. Preflight
 
 - Resolve `<store-dir>`; resolve `<today>`/`<now>`.
-- Confirm the day's first `sync-sweep` has run: `docs/runtime-cloud.md`
-  says `sync-sweep` "stamps `last-sweep` in the data repo on completion".
-  The concrete heartbeat file/format is plan 09's scope and not yet
-  finalized in this checkout — read `<store-dir>/last-sweep` if present
-  (an ISO timestamp, one line) and check its date matches `<today>`. If the
-  file is absent, or its date is before `<today>`, **log and continue —
-  never block**: `docs/runtime-cloud.md`'s "Ordering" rule says
-  `daily-attention` always runs after the morning's first sync, but this
-  skill has no authority to force that sync itself, only to note when the
-  precondition looks unmet.
+- Lane liveness is not a preflight concern here — it is checked
+  deterministically further down in step 3b (Staleness), against the sync
+  scheduler's own state files; this step never blocks on it.
 - Regenerate `<store-dir>/signals/week-plan.json` if it's missing, or its
   `generated_at` is more than 8 days old:
   `bash packages/attention/scripts/capacity.sh <store-dir> --today <today>`.
@@ -70,6 +63,25 @@ Invoke `packages/attention/skills/signal-scan/` against `<store-dir>` for
 `<today>`. Its promotions are dated ahead (`specs/ranking.md`'s due-date
 table) — nothing it writes this run fires today's batch unless it happens
 to already be due today.
+
+### 3b. Staleness
+
+```sh
+bash packages/attention/scripts/staleness.sh <store-dir> [--sync-data-dir <data-dir>] --now <now>
+```
+
+Reads routine heartbeats (`heartbeats/<routine>.json`,
+`packages/core/contracts/heartbeat.md` 1.0.0) and connector-lane scheduler
+state (`connectors/sync-scheduler/state/<lane>.tsv` measured against
+`lanes.tsv`'s `interval_seconds`), and creates exactly one `origin:
+standing` / `source-signal: staleness:<name>` / `[[self]]` wake-up per
+routine or lane that has gone quiet for more than 2× its cadence, deduped
+while a staleness wake-up for that same subject is already pending or
+fired-unresolved. Its wake-ups are `due` today, so step 4 below fires them
+in the same run. `--sync-data-dir` defaults to `<repo-root>/data` — the
+live Mac's launchd lanes write their state under the connectors worktree's
+own `data/` dir, so pass `--sync-data-dir` explicitly whenever that differs
+from this checkout's default. Log each `staleness: <name> ...` output line.
 
 ### 4. Fire
 
@@ -191,14 +203,18 @@ remains draft-only, unchanged (`CLAUDE.md`'s draft-never-send).
 
 ### 9. Heartbeat + exit
 
-Stamp the `daily-attention` heartbeat — `docs/runtime-cloud.md`'s "a
-routine stamps its own completion marker... distinct key" from
-`last-sweep` — by writing `<now>` to `<store-dir>/last-daily-attention`
-(the same one-line-ISO-timestamp convention `sync-sweep`'s `last-sweep`
-file uses, per the sibling connector's `last-sweep` write). **Silence
-principle:** if nothing fired in step 4 and no mention was added in step
-7, the run ends with only its log lines — no message, no summary, no
-digest (`docs/runtime-cloud.md`'s "Wake-up queue over digests" standing
+Stamp the `daily-attention` heartbeat (`packages/core/contracts/
+heartbeat.md` 1.0.0):
+
+```sh
+bash packages/core/scripts/heartbeat-stamp.sh <store-dir> daily-attention --cadence-hours 24 --ok
+```
+
+Use `--fail` in place of `--ok` if this run aborted after step 0 — still
+stamp; a failed run is still a heartbeat, the schedule is alive either way.
+**Silence principle:** if nothing fired in step 4 and no mention was added
+in step 7, the run ends with only its log lines — no message, no summary,
+no digest (`docs/runtime-cloud.md`'s "Wake-up queue over digests" standing
 rule).
 
 ## Run log format
@@ -216,12 +232,13 @@ step=preflight status=ok detail=last-sweep today, week-plan fresh
 step=inbox-filing status=skip detail=no unfiled items
 step=calendar-reconcile status=skip detail=calendar-reconcile not built
 step=signal-scan status=ok detail=2 promoted
+step=staleness status=ok detail=staleness: daily-attention ok, staleness: gmail-in ok
 step=fire status=ok detail=batch: wakeups/fired/2026-08-29T090000Z-batch.json
 step=acted-on-detection status=ok detail=acted-on wu-4412 -> true
 step=calibrate status=ok detail=ranking-weights.json rewritten
 step=undebriefed-mention status=ok detail=1 mention added (gcal-evt-7742)
 step=deliver status=ok detail=channel=beeper-self, done sent=1 outbox=1 pending=0 held=0
-step=heartbeat status=ok detail=last-daily-attention stamped
+step=heartbeat status=ok detail=heartbeats/daily-attention.json stamped
 ```
 
 ## On-demand use
