@@ -36,7 +36,11 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   `scripts/triage-inbox.sh` (read-only over `<store-dir>`; sole writer of
   the `data/ingestion/triage-held.log` ledger — deterministic, no-model
   pre-judgment hold pass over `inbox/`, applying `specs/import-triage.md`'s
-  five rule classes, plan 26), `scripts/derive-evidence.sh` (read-only over
+  five rule classes, plan 26), `scripts/shard-filing-batch.sh` (read-only
+  over `<store-dir>`; writes only its `--out-dir` — deterministic,
+  no-model person-sharded pre-pass over the eligible filing batch,
+  applying `specs/parallel-filing.md`'s D1 connected-components rule, plan
+  27), `scripts/derive-evidence.sh` (read-only over
   `people/`/`interactions/`/`wakeups/`/`stats.json`, never `inbox/`/`archive/`;
   emits the per-person evidence JSON-lines `relationship-scoring.md`'s judgment
   and `check-judgment.sh`'s `--evidence` gate both consume, plan 30),
@@ -64,7 +68,10 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   runs (plan 11 unit 13, amended by plan 24 for the 6-month configurable window +
   participation-signal scoring); `specs/import-triage.md` — the five
   deterministic, precision-first junk-hold rule classes and the D3
-  held-by-rule ledger convention (plan 26); `specs/user-model-derive.md` — the
+  held-by-rule ledger convention (plan 26); `specs/parallel-filing.md` —
+  the shard pre-pass's connected-components semantics, `skills/debrief/`'s
+  shard mode deviations, and the wave protocol a parallel filing run
+  follows end to end (plan 27); `specs/user-model-derive.md` — the
   trailing-90-day revealed-mix computation, axis assignment (kind map then
   heuristic), and draft/confirm write shape `scripts/derive-user-model.sh`
   implements (plan 30); `specs/review-tiers.md` — the five-step user-invoked
@@ -80,7 +87,12 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   `<capture-id>\t<rule-name>\t<held-at ISO 8601 Z>`, one line per held
   event; read by `skills/debrief/` batch mode (excluded alongside
   `debrief-filed.log`) and by humans directly, per `specs/import-triage.md`
-  D3 (plan 26); `data/ingestion/review-skips.log` (sole writer:
+  D3 (plan 26); `data/ingestion/debrief-filed.shard-<k>.log` (one per
+  active shard worker, sole writer: `skills/debrief/` shard mode) —
+  same shape as `debrief-filed.log`, merged into it by the wave
+  orchestrator (never by a shard worker itself) before the post-wave index
+  rebuild, per `specs/parallel-filing.md` D2/D3 (plan 27);
+  `data/ingestion/review-skips.log` (sole writer:
   `skills/review-tiers/`) — append-only, tab-separated `<slug>\t<ISO 8601 Z>`,
   one line per explicit skip, never resurfaced without `--include-skipped`
   (plan 30); `data/ingestion/review-judgments/<date>.jsonl` (sole writer:
@@ -156,6 +168,9 @@ Plans 03 (filing engine) and 04 (matching half). `skills/onboarding-seed/`,
 `scripts/triage-inbox.sh`, `specs/import-triage.md`, the
 `data/ingestion/triage-held.log` ledger, and `skills/debrief/`'s
 triage-held batch-mode exclusion by plan 26 (standard import pipeline).
+`scripts/shard-filing-batch.sh`, `specs/parallel-filing.md`, the
+`data/ingestion/debrief-filed.shard-<k>.log` ledger convention, and
+`skills/debrief/`'s shard mode by plan 27 (import speed & scaling).
 Plan 30 (kind/tier judgment + user-model + embeddings): `specs/user-model-derive.md`,
 `specs/review-tiers.md`, `specs/embeddings.md`, `specs/rescale.md`,
 `scripts/derive-evidence.sh`, `scripts/derive-user-model.sh`,

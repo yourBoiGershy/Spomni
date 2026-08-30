@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-08-31T18:00:00Z",
+  "week_start": "2026-08-31",
+  "tz_offset": "+00:00",
+  "working_window": { "start": "09:00", "end": "18:00" },
+  "weekly_tier": "busy",
+  "budget": { "min": 1, "max": 2 },
+  "days": [
+    { "date": "2026-08-31", "tier": "busy", "meeting_hours": 6.0, "largest_free_block_hours": 2.0, "events": 2 },
+    { "date": "2026-09-01", "tier": "busy", "meeting_hours": 4.5, "largest_free_block_hours": 1.5, "events": 3 },
+    { "date": "2026-09-02", "tier": "busy", "meeting_hours": 5.0, "largest_free_block_hours": 3.5, "events": 2 },
+    { "date": "2026-09-03", "tier": "normal", "meeting_hours": 2.5, "largest_free_block_hours": 3.5, "events": 4 },
+    { "date": "2026-09-04", "tier": "normal", "meeting_hours": 2.5, "largest_free_block_hours": 6.5, "events": 1 },
+    { "date": "2026-09-05", "tier": "open", "meeting_hours": 0.0, "largest_free_block_hours": 9.0, "events": 0 },
+    { "date": "2026-09-06", "tier": "open", "meeting_hours": 0.0, "largest_free_block_hours": 9.0, "events": 0 }
+  ]
+}

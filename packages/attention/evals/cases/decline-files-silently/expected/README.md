@@ -23,7 +23,7 @@ and this case's `prompt.md`:
   (`not-now`, `not-this-person`, `not-this-signal-type`,
   `already-handled`) is `already-handled`.
 - Per `packages/attention/skills/event-confirm/SKILL.md` step 4 and
-  `packages/attention/scripts/proposal-confirm.sh`'s decline semantics, the
+  `packages/attention/scripts/wakeup-queue.sh`'s decline semantics, the
   correct outcome is: `status: dismissed`, `dismiss-reason:
   already-handled` (or another enum value clearly justified by the
   utterance), `confirmed-on`/`created-event-id` still null, every other

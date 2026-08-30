@@ -18,6 +18,7 @@ packages/ingestion/evals/cases/16-debrief-contradiction
 packages/ingestion/evals/cases/confirm-first-tier-writes   # smoke
 packages/ingestion/evals/cases/episode-split-multiday   # smoke
 packages/ingestion/evals/cases/triage-held-respected   # smoke
+packages/ingestion/evals/cases/shard-mode-confined   # smoke
 packages/ingestion/evals/cases/kind-classification-corpus
 packages/ingestion/evals/cases/warrant-ordering
 packages/ingestion/evals/cases/de-saturation   # smoke

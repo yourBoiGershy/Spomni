@@ -1,6 +1,6 @@
 # package: core
 
-version: 0.4.0
+version: 0.5.0
 
 ## Purpose
 
@@ -39,7 +39,11 @@ nothing.
   `contracts/relationship-scoring.md` (kind vocabulary, judgment record,
   priors, breakdown string, drift prefilter, warrant rescale, per plan 30),
   `contracts/embeddings-index.md` (`<store>/index/embeddings.jsonl`, local
-  optional embeddings, per plan 30)
+  optional embeddings, per plan 30),
+  `contracts/week-plan.md` (`signals/week-plan.json`, the capacity-model
+  weekly nudge budget artifact, per plan 12 — this is the RENUMBERED cadence
+  plan, docs/plans/2026-08-29-12-cadence-capacity.md, not the earlier plan 12
+  eval-harness numbering)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
   `templates/profile.md`, `templates/sync-lanes.tsv`, `templates/user-model.md`
 - Store scripts: `scripts/build-index.sh` (people/ → index.json; projects the
@@ -48,7 +52,8 @@ nothing.
   `contracts/derived-index.md`), `scripts/validate-store.sh` (also validates
   person.md 1.1.0 kind fields, the optional `user-model.md` singleton, and the
   optional `index/embeddings.jsonl`, per plan 30), `scripts/wakeup-add.sh`
-  (the one sanctioned way any package appends a wake-up entry),
+  (the one sanctioned way any package appends a wake-up entry;
+  `--signal-type` sets the 1.1 outcome fields at creation (plan 05)),
   `scripts/person-set-kind.sh` (the one sanctioned way ingestion writes the
   five `kind*` person.md frontmatter fields — derived writes never overwrite
   a stated kind, per plan 30),
@@ -95,3 +100,4 @@ plan 30 (docs/plans/2026-08-29-30-semantic-scoring-user-model.md).
 `contracts/user-model.md`, `templates/user-model.md`,
 `contracts/relationship-scoring.md`, and `contracts/embeddings-index.md`
 by plan 30 (docs/plans/2026-08-29-30-semantic-scoring-user-model.md).
+`contracts/week-plan.md` by plan 12 (docs/plans/2026-08-29-12-cadence-capacity.md).

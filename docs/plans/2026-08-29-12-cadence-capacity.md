@@ -1,5 +1,5 @@
 # Plan 12: Cadence & capacity — scheduled routines, capacity-aware nudging
-Status: Ready
+Status: Done (2026-08-29, chunk-12-cadence-capacity — all 8 units; Wave C checker PASS, 0 findings; six test suites green)
 Package: attention (capacity model, week-plan writes) + core (week-plan contract) + docs (cadence map); amends plans 05 and 06
 Depends-on: 01; 05, 06, 09 (integrates — amends 05/06, extends 09's routine spec)
 

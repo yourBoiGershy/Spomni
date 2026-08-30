@@ -18,6 +18,14 @@
 #   4. Plain nudge creation (no --kind, no event flags) is unchanged: no
 #      kind/proposed-event lines in the created file, and the resulting
 #      store still passes validate-store.sh.
+#   5. --signal-type sets schema_version 1.1.0 and the five outcome-field
+#      lines (fired-on/dismiss-reason/acted-on/snooze-count/signal-type) in
+#      contract order right after source-signal.
+#   6. --signal-type combined with --kind event-proposal keeps
+#      schema_version 1.2.0, with the outcome-field block preceding kind:.
+#   7. --signal-type with a non-kebab-case value is rejected.
+#   8. --signal-type absent stays byte-shape identical to pre-plan-05
+#      output (regression).
 #
 # Each assertion runs against its own mktemp scratch store, cleaned up on
 # exit. bash 3.2 portable (no associative arrays, no mapfile).
@@ -284,6 +292,158 @@ if [ -f "$nudge_path" ]; then
   fi
 else
   fail "cannot check nudge shape or validate-store.sh — no file was created"
+fi
+
+# ---------------------------------------------------------------------------
+# assertion 5: --signal-type on a plain (nudge) origin:signal entry sets the
+# 1.1.0 outcome-field block right after source-signal, in contract order,
+# and the resulting store passes validate-store.sh
+# ---------------------------------------------------------------------------
+
+store5="$(new_scratch_store)"
+signal_path="$("$WAKEUP_ADD" "$store5" \
+  --due 2026-09-05 --person sam-oyelaran --why "job change: new role" \
+  --origin signal --source-signal 20260903T140000Z-job-change-sam-oyelaran \
+  --signal-type job-change \
+  2>&1)"
+signal_status=$?
+
+if [ "$signal_status" -eq 0 ] && [ -f "$signal_path" ]; then
+  pass "wakeup-add.sh exits 0 and creates a file for --signal-type job-change"
+else
+  fail "wakeup-add.sh exited $signal_status or produced no file for --signal-type job-change (output: $signal_path)"
+fi
+
+if [ -f "$signal_path" ]; then
+  if grep -qE '^schema_version: 1.1.0$' "$signal_path"; then
+    pass "--signal-type entry has schema_version 1.1.0"
+  else
+    fail "--signal-type entry does not have schema_version 1.1.0"
+    cat "$signal_path"
+  fi
+
+  expected_block="source-signal: 20260903T140000Z-job-change-sam-oyelaran
+fired-on:
+dismiss-reason:
+acted-on:
+snooze-count: 0
+signal-type: job-change"
+  actual_block="$(awk '/^source-signal:/{f=1} f{print} /^signal-type:/{exit}' "$signal_path")"
+  if [ "$actual_block" = "$expected_block" ]; then
+    pass "--signal-type entry has the five 1.1.0 outcome-field lines in order right after source-signal"
+  else
+    fail "--signal-type entry's outcome-field block does not match expected order"
+    echo "--- expected ---"
+    echo "$expected_block"
+    echo "--- actual ---"
+    echo "$actual_block"
+  fi
+
+  signal_validate_output="$("$VALIDATOR" "$store5" 2>&1)"
+  signal_validate_status=$?
+  if [ "$signal_validate_status" -eq 0 ]; then
+    pass "validate-store.sh exits 0 on the store containing the --signal-type entry"
+  else
+    fail "validate-store.sh exited $signal_validate_status (expected 0) on the store containing the --signal-type entry"
+    echo "$signal_validate_output"
+  fi
+else
+  fail "cannot check --signal-type shape or validate-store.sh — no file was created"
+fi
+
+# ---------------------------------------------------------------------------
+# assertion 6: --signal-type combined with --kind event-proposal sets
+# schema_version 1.2.0 and places the five outcome-field lines before kind:
+# ---------------------------------------------------------------------------
+
+store6="$(new_scratch_store)"
+event_signal_path="$("$WAKEUP_ADD" "$store6" \
+  --due 2026-09-05 --person sam-oyelaran --why "scheduling intent: coffee" \
+  --origin signal --source-signal 20260903T140000Z-scheduling-intent-sam-oyelaran \
+  --signal-type scheduling-intent \
+  --kind event-proposal \
+  --event-title "Coffee with Sam" \
+  --event-start "2026-09-08T10:00:00-07:00" \
+  --event-end "2026-09-08T11:00:00-07:00" \
+  --event-attendee sam-oyelaran \
+  2>&1)"
+event_signal_status=$?
+
+if [ "$event_signal_status" -eq 0 ] && [ -f "$event_signal_path" ]; then
+  pass "wakeup-add.sh exits 0 and creates a file for --signal-type + --kind event-proposal"
+else
+  fail "wakeup-add.sh exited $event_signal_status or produced no file for --signal-type + --kind event-proposal (output: $event_signal_path)"
+fi
+
+if [ -f "$event_signal_path" ]; then
+  if grep -qE '^schema_version: 1.2.0$' "$event_signal_path"; then
+    pass "--signal-type + --kind event-proposal entry has schema_version 1.2.0"
+  else
+    fail "--signal-type + --kind event-proposal entry does not have schema_version 1.2.0"
+    cat "$event_signal_path"
+  fi
+
+  signal_type_line="$(grep -n '^signal-type:' "$event_signal_path" | head -n 1 | cut -d: -f1)"
+  kind_line="$(grep -n '^kind:' "$event_signal_path" | head -n 1 | cut -d: -f1)"
+  if [ -n "$signal_type_line" ] && [ -n "$kind_line" ] && [ "$signal_type_line" -lt "$kind_line" ]; then
+    pass "the five 1.1.0 outcome-field lines (through signal-type) precede kind: for event-proposal"
+  else
+    fail "signal-type: (line $signal_type_line) does not precede kind: (line $kind_line)"
+    cat "$event_signal_path"
+  fi
+else
+  fail "cannot check --signal-type + --kind event-proposal shape — no file was created"
+fi
+
+# ---------------------------------------------------------------------------
+# assertion 7: --signal-type with a non-kebab-case value is rejected
+# (non-zero exit, no file created)
+# ---------------------------------------------------------------------------
+
+store7="$(new_scratch_store)"
+before_count7="$(ls "$store7/wakeups" | wc -l | tr -d ' ')"
+"$WAKEUP_ADD" "$store7" \
+  --due 2026-09-05 --person sam-oyelaran --why "job change: new role" \
+  --origin standing \
+  --signal-type "Bad Type" \
+  >/dev/null 2>&1
+bad_signal_type_status=$?
+after_count7="$(ls "$store7/wakeups" | wc -l | tr -d ' ')"
+
+if [ "$bad_signal_type_status" -ne 0 ] && [ "$after_count7" -eq "$before_count7" ]; then
+  pass "wakeup-add.sh rejects --signal-type \"Bad Type\" (exit $bad_signal_type_status, no file created)"
+else
+  fail "wakeup-add.sh did not reject --signal-type \"Bad Type\" (exit=$bad_signal_type_status, before=$before_count7, after=$after_count7)"
+fi
+
+# ---------------------------------------------------------------------------
+# assertion 8: --signal-type absent (default) is byte-shape unchanged —
+# schema_version 1.0.0, no signal-type:/snooze-count: lines (regression for
+# the pre-existing flag-less behavior)
+# ---------------------------------------------------------------------------
+
+store8="$(new_scratch_store)"
+no_flag_path="$("$WAKEUP_ADD" "$store8" \
+  --due 2026-09-05 --person sam-oyelaran --why "quarterly check-in" \
+  --origin standing \
+  2>&1)"
+no_flag_status=$?
+
+if [ "$no_flag_status" -eq 0 ] && [ -f "$no_flag_path" ]; then
+  if grep -qE '^schema_version: 1.0.0$' "$no_flag_path" \
+    && ! grep -qE '^signal-type:' "$no_flag_path" \
+    && ! grep -qE '^snooze-count:' "$no_flag_path" \
+    && ! grep -qE '^fired-on:' "$no_flag_path" \
+    && ! grep -qE '^dismiss-reason:' "$no_flag_path" \
+    && ! grep -qE '^acted-on:' "$no_flag_path"
+  then
+    pass "flag-less entry stays schema_version 1.0.0 with no 1.1.0 outcome-field lines"
+  else
+    fail "flag-less entry unexpectedly carries 1.1.0 outcome fields"
+    cat "$no_flag_path"
+  fi
+else
+  fail "wakeup-add.sh exited $no_flag_status or produced no file for the flag-less regression check (output: $no_flag_path)"
 fi
 
 echo ""

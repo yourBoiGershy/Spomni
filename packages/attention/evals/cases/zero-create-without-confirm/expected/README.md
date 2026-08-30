@@ -20,8 +20,8 @@ Per `packages/attention/tests/fixtures/event-confirm/zero-create-without-confirm
   else — silence, ambiguity, a non-answer... no response at all in this
   conversation — do nothing. Leave the wake-up entry exactly as-is"), the
   correct outcome is that the entire store is left byte-identical to the
-  seeded fixture: no connector call, no `proposal-confirm.sh` invocation of
-  either kind, no new file anywhere.
+  seeded fixture: no connector call, no `wakeup-queue.sh confirm`/`decline`
+  invocation of either kind, no new file anywhere.
 
 ## Graders
 
