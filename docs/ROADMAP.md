@@ -50,9 +50,9 @@ chronology. Incremental filing stays deterministic wherever no judgment is neede
 | 27 | Import speed & scaling (sharded parallel filing) | 26 | Done 2026-08-29 (PR #19); 0.65× at bench — confirm ~0.2× on a real wave |
 | 31 | Deterministic structured filing (calendar / metadata email, no model) + cold-start priors | 26, 27, 30 | Done 2026-08-30 (PRs #23, #24); 221 events in 18 s live |
 | 32 | One model call per chat thread (`summarize-thread` → `file-thread`, chatID dedup) | 31 | Done 2026-08-30 (PRs #25, #26) |
-| 36 A–C | Store currency (as-of / resolved threads, `refresh-person.sh`), person dedup (`person-merge.sh`, candidate detection), remainder speed (noise-sender triage, one-call email filing 7.8 → < 2 min, calendar ignore rules from 04 D5) | 31, 32 | **Proposed** — Goal 1, next build |
+| 36 A–C | Store currency (as-of / resolved threads, `refresh-person.sh`), person dedup (`person-merge.sh`, candidate detection), remainder speed (noise-sender triage, one-call email filing 7.8 → < 2 min, calendar ignore rules from 04 D5) | 31, 32 | **Built** 2026-08-30 (PR #36) — waves 0–2 merged: person.md 1.4.0, feedback-event 1.2.0, thread-summary 1.1.0 + `--kind email`, `refresh-person.sh`, `person-merge.sh` + `find-merge-candidates.sh`, noise-sender + calendar-ignore triage, onboarding-seed 2(d)/2(e)/4(b). Owed: wave 3 live (merge known dups, re-bench ≤ 8 min, currency check) |
 
-**Owed now:** 36 A–C (Goal 1); re-bench a fresh onboarding and record the step table.
+**Owed now:** 36 wave 3 live session (find-merge-candidates → confirm → merge; fresh onboarding re-bench, target ≤ 8 min; record the step table in plan 36 under "Bench").
 
 ### 2. Capture & sync — runs without you
 
@@ -148,9 +148,9 @@ card reaches the user; ≥ 80 % of meetings with tracked people auto-matched.
 | 16 | Eval harness — tool/agent/skill tiers | 08, 15 | Done 2026-08-29 |
 | 20 | Backfill blitz & ship-day shakedown — SHIP GATE | 03, 13, 18 | Done 2026-08-29 — GO |
 | 23 | Harness context economy | — | Done 2026-08-29 (branch `worktree-harness-context-economy`); **plan file missing** — written retroactively by 39 D1 |
-| 39 | Foundation slice — branch protection + re-enabled main guard **incl. 09's repo-scoping and `--only secrets` pre-push check**, CI matrix macOS+Ubuntu with npm cache, gitignore-fixture test, contract-currency check + writer fixes | — | **Proposed** — Goal 5 (waves A + B2–B5 only; B1/B6/C/D → Later) — `docs/plans/2026-08-30-39-foundation-harness-hardening.md` |
+| 39 | Foundation slice — branch protection + re-enabled main guard **incl. 09's repo-scoping and `--only secrets` pre-push check**, CI matrix macOS+Ubuntu with npm cache, gitignore-fixture test, contract-currency check + writer fixes | — | **Wave A Done** 2026-08-30 (PR #35): branch protection live on `main` (`test (macos-latest)`, `test (ubuntu-latest)`, `oss-guard-linux` required), git-guard main checks re-enabled + repo-scoped + `--only secrets` pre-push, CI matrix, gitignore-fixture test. Owed: B2–B5 (contract-currency check + writer fixes); B1/B6/C/D → Later — `docs/plans/2026-08-30-39-foundation-harness-hardening.md` |
 
-**Owed now:** 39 wave A first — it gates every later PR.
+**Owed now:** 39 waves B2–B5 (contract-currency check); wave A is live and gating every PR.
 
 Plans 05 and 06 are two plans within one package (DECISIONS.md `attention-merge`).
 Numbering collisions (11/12 → 13–16; 35 → 36) are recorded in the plan files.

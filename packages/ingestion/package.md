@@ -128,9 +128,12 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   unbuilt); `specs/onboarding-tiering-seed.md` — the cold-start tier-suggestion
   sequence, scoring model, and no-guilt presentation rules `skills/onboarding-seed/`
   runs (plan 11 unit 13, amended by plan 24 for the 6-month configurable window +
-  participation-signal scoring); `specs/import-triage.md` — the five
-  deterministic, precision-first junk-hold rule classes and the D3
-  held-by-rule ledger convention (plan 26); `specs/parallel-filing.md` —
+  participation-signal scoring); `specs/import-triage.md` — the seven
+  deterministic, precision-first junk-hold rule classes (rule 7,
+  `calendar-ignore` — declined-self/oversized-event calendar holds via the
+  `calendar-max-attendees` config row, absorbed from plan 04 D5 — added by
+  plan 36) and the D3 held-by-rule ledger convention (plan 26);
+  `specs/parallel-filing.md` —
   the shard pre-pass's connected-components semantics, `skills/debrief/`'s
   shard mode deviations, and the wave protocol a parallel filing run
   follows end to end (plan 27); `specs/user-model-derive.md` — the

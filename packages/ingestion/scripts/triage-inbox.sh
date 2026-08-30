@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # triage-inbox.sh — deterministic pre-judgment triage pass over inbox/,
-# implementing packages/ingestion/specs/import-triage.md's six rule
+# implementing packages/ingestion/specs/import-triage.md's seven rule
 # classes (first-match-wins, precision-first: any doubt falls through to
 # normal debrief judgment, never held).
 #
@@ -166,6 +166,32 @@ fi
 cat "$NOISE_LOCAL" >> "$NOISE_RULES"
 
 # ---------------------------------------------------------------------------
+# Rule 7 (calendar-ignore) config: calendar-max-attendees, from
+# <data-dir>/config/onboarding-backfill.tsv. This script's own --data-dir
+# names the ingestion dir directly (see the onboarding-seed SKILL.md note),
+# so the config file — same as file-structured.sh reads — lives one level
+# up: ${DATA_DIR}/../config/onboarding-backfill.tsv. Default 12 when the
+# file, or the calendar-max-attendees row, is absent or non-numeric.
+# ---------------------------------------------------------------------------
+
+CAL_MAX_ATTENDEES=12
+# dirname (pure string manipulation) rather than a literal "${DATA_DIR}/.."
+# path: DATA_DIR (the ingestion dir) may not exist yet as a real directory
+# on a fresh --data-dir (this script only mkdir -p's it lazily, on the
+# first held write) — a literal ".." path component requires every
+# preceding component to already exist on-disk to resolve, which would
+# make a not-yet-created ingestion dir silently hide a real config file
+# one level up. dirname has no such requirement.
+CAL_CONFIG_TSV="$(dirname "$DATA_DIR")/config/onboarding-backfill.tsv"
+if [ -f "$CAL_CONFIG_TSV" ]; then
+  cal_configured="$(awk -F'\t' '$1 == "calendar-max-attendees" { print $2; exit }' "$CAL_CONFIG_TSV" 2>/dev/null || true)"
+  case "$cal_configured" in
+    '' | *[!0-9]*) : ;;
+    *) CAL_MAX_ATTENDEES="$cal_configured" ;;
+  esac
+fi
+
+# ---------------------------------------------------------------------------
 # Frontmatter / body helpers (same shape as build-index.sh / derive-
 # participation.sh's awk passes over the same capture-event/person files).
 # ---------------------------------------------------------------------------
@@ -319,6 +345,7 @@ rule_otp=0
 rule_li=0
 rule_cold=0
 rule_noise=0
+rule_calignore=0
 
 # --- one-pass ledger partition (D4a): candidate ids are listed once, the
 # already-filed/already-held skip sets are built once from the ledgers, and
@@ -471,6 +498,29 @@ while IFS= read -r id; do
     done < "$NOISE_RULES"
   fi
 
+  # 7. calendar-ignore (type: calendar-event only) — declined-self, or
+  # non-self attendee count over calendar-max-attendees. Checked last;
+  # rule 2 (self-only-calendar) already claims solo blocks (empty/absent
+  # attendees, or self-only) before this ever runs, so a missing
+  # attendees array never reaches here. Precision-first (D4): an event
+  # whose attendees carry no responseStatus at all is indeterminate on
+  # the declined check (jq yields "" for a missing field, never
+  # "declined") and never falls through to a hold on that basis alone.
+  if [ -z "$rule" ] && [ "$type" = "calendar-event" ]; then
+    cal_declined="$(printf '%s' "$body" | jq -r '
+      ((.attendees // []) | map(select((.self // false))) | .[0].responseStatus) // ""
+    ' 2>/dev/null || echo "")"
+    if [ "$cal_declined" = "declined" ]; then
+      rule="calendar-ignore:skipped-declined"
+    else
+      cal_has_attendees="$(printf '%s' "$body" | jq -r 'if has("attendees") then "1" else "0" end' 2>/dev/null || echo "0")"
+      cal_other_count="$(printf '%s' "$body" | jq -r '(.attendees // []) | map(select((.self // false) | not)) | length' 2>/dev/null || echo "")"
+      if [ "$cal_has_attendees" = "1" ] && [ -n "$cal_other_count" ] && [ "$cal_other_count" -gt "$CAL_MAX_ATTENDEES" ] 2>/dev/null; then
+        rule="calendar-ignore:skipped-large:${cal_other_count}"
+      fi
+    fi
+  fi
+
   if [ -n "$rule" ]; then
     held=$((held + 1))
     case "$rule" in
@@ -480,6 +530,7 @@ while IFS= read -r id; do
       linkedin-invitation) rule_li=$((rule_li + 1)) ;;
       cold-pitch) rule_cold=$((rule_cold + 1)) ;;
       noise-sender:*) rule_noise=$((rule_noise + 1)) ;;
+      calendar-ignore:*) rule_calignore=$((rule_calignore + 1)) ;;
     esac
 
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -494,8 +545,8 @@ while IFS= read -r id; do
   fi
 done < "$ELIGIBLE_IDS"
 
-printf 'triage: scanned=%d held=%d already-filed=%d already-held=%d per-rule=noreply-marketing:%d,self-only-calendar:%d,otp-security:%d,linkedin-invitation:%d,cold-pitch:%d,noise-sender:%d\n' \
+printf 'triage: scanned=%d held=%d already-filed=%d already-held=%d per-rule=noreply-marketing:%d,self-only-calendar:%d,otp-security:%d,linkedin-invitation:%d,cold-pitch:%d,noise-sender:%d,calendar-ignore:%d\n' \
   "$scanned" "$held" "$already_filed" "$already_held" \
-  "$rule_noreply" "$rule_selfcal" "$rule_otp" "$rule_li" "$rule_cold" "$rule_noise"
+  "$rule_noreply" "$rule_selfcal" "$rule_otp" "$rule_li" "$rule_cold" "$rule_noise" "$rule_calignore"
 
 exit 0

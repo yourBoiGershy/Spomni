@@ -136,7 +136,7 @@ else
   fail "triage-held.log: expected exactly 5 lines, got $held_line_count"
 fi
 
-if grep -q '^triage: scanned=11 held=5 already-filed=0 already-held=0 per-rule=noreply-marketing:1,self-only-calendar:1,otp-security:1,linkedin-invitation:1,cold-pitch:1,noise-sender:0$' "$run1_out"; then
+if grep -q '^triage: scanned=11 held=5 already-filed=0 already-held=0 per-rule=noreply-marketing:1,self-only-calendar:1,otp-security:1,linkedin-invitation:1,cold-pitch:1,noise-sender:0,calendar-ignore:0$' "$run1_out"; then
   pass "triage-inbox.sh: summary line matches exactly (scanned=11 held=5, one per rule)"
 else
   fail "triage-inbox.sh: summary line mismatch — got: $(cat "$run1_out")"
@@ -174,7 +174,7 @@ else
   fail "idempotency: second run exit=$run2_status, triage-held.log now has $held_line_count_2 lines (expected 0 exit, still 5)"
 fi
 
-if grep -q '^triage: scanned=11 held=0 already-filed=0 already-held=5 per-rule=noreply-marketing:0,self-only-calendar:0,otp-security:0,linkedin-invitation:0,cold-pitch:0,noise-sender:0$' "$run2_out"; then
+if grep -q '^triage: scanned=11 held=0 already-filed=0 already-held=5 per-rule=noreply-marketing:0,self-only-calendar:0,otp-security:0,linkedin-invitation:0,cold-pitch:0,noise-sender:0,calendar-ignore:0$' "$run2_out"; then
   pass "idempotency: second run's summary line correctly reports held=0 already-held=5"
 else
   fail "idempotency: second run summary line mismatch — got: $(cat "$run2_out")"
@@ -401,7 +401,7 @@ else
     pass "rule 6 zero-false-holds: golden-noise-real-person.md (real-looking alex@example.net sender) correctly not held"
   fi
 
-  if grep -q 'per-rule=.*noise-sender:9$' "$noise_out"; then
+  if grep -q 'per-rule=.*noise-sender:9,calendar-ignore:0$' "$noise_out"; then
     pass "rule 6: summary line's noise-sender count is 9"
   else
     fail "rule 6: summary line missing noise-sender:9 — got: $(cat "$noise_out")"
@@ -462,6 +462,88 @@ else
 
   override_newname_held="$override_newname_data/triage-held.log"
   assert_ledger_line "$override_newname_held" "hold-noise-internal-bot" "noise-sender:internal-bot"
+fi
+
+# =============================================================================
+# Assertion group 11 — rule 7 (calendar-ignore): declined-self and
+# over-cap holds, a zero-false-hold small accepted meeting, a self-only
+# block still ledgered as rule 2 (first-match-wins), a no-response-data
+# event correctly not held (precision-first), and the calendar-max-
+# attendees config override raising the cap so a 15-attendee event is no
+# longer held. Dedicated store:
+# packages/ingestion/tests/fixtures/triage/store-calignore/, synthetic
+# PII only (example.net).
+# =============================================================================
+
+calignore_store="$REPO_ROOT/packages/ingestion/tests/fixtures/triage/store-calignore"
+
+if [ ! -d "$calignore_store" ]; then
+  fail "rule 7 fixture missing at $calignore_store"
+else
+  calignore_data="$WORK_DIR/calignore-data"
+  calignore_out="$WORK_DIR/calignore-out.txt"
+  "$TRIAGE" "$calignore_store" --data-dir "$calignore_data" > "$calignore_out" 2>/dev/null
+  calignore_status=$?
+
+  if [ "$calignore_status" -eq 0 ]; then
+    pass "rule 7: triage-inbox.sh exits 0 against the store-calignore fixture"
+  else
+    fail "rule 7: exited $calignore_status against the store-calignore fixture"
+  fi
+
+  calignore_held="$calignore_data/triage-held.log"
+
+  assert_ledger_line "$calignore_held" "hold-cal-declined" "calendar-ignore:skipped-declined"
+  assert_ledger_line "$calignore_held" "hold-cal-large" "calendar-ignore:skipped-large:15"
+  assert_ledger_line "$calignore_held" "hold-cal-self-only" "self-only-calendar"
+
+  calignore_held_count="$(wc -l < "$calignore_held" 2>/dev/null | tr -d ' ')"
+  if [ "$calignore_held_count" = "3" ]; then
+    pass "rule 7: exactly 3 held lines (declined, over-cap, and the self-only block claimed by rule 2 — no extras)"
+  else
+    fail "rule 7: expected exactly 3 held lines, got $calignore_held_count"
+  fi
+
+  if grep -q '^golden-cal-accepted-small	' "$calignore_held" 2>/dev/null; then
+    fail "rule 7 zero-false-holds: golden-cal-accepted-small.md (3-person accepted meeting) was incorrectly held"
+  else
+    pass "rule 7 zero-false-holds: golden-cal-accepted-small.md (3-person accepted meeting) correctly not held"
+  fi
+
+  if grep -q '^golden-cal-no-response-data	' "$calignore_held" 2>/dev/null; then
+    fail "rule 7 precision-first: golden-cal-no-response-data.md (attendees present, no responseStatus fields) was incorrectly held"
+  else
+    pass "rule 7 precision-first: golden-cal-no-response-data.md (attendees present, no responseStatus fields) correctly not held"
+  fi
+
+  if grep -q 'per-rule=.*calendar-ignore:2$' "$calignore_out"; then
+    pass "rule 7: summary line's calendar-ignore count is 2 (declined + over-cap; the self-only hold counts under self-only-calendar, not here)"
+  else
+    fail "rule 7: summary line missing calendar-ignore:2 — got: $(cat "$calignore_out")"
+  fi
+fi
+
+# --- calendar-max-attendees config override: the 15-attendee event is no
+# longer held once the local config raises the cap to 20. ------------------
+
+if [ -d "$calignore_store" ]; then
+  calignore_override_data="$WORK_DIR/calignore-override-data"
+  mkdir -p "$WORK_DIR/config"
+  printf 'calendar-max-attendees\t20\n' > "$WORK_DIR/config/onboarding-backfill.tsv"
+  "$TRIAGE" "$calignore_store" --data-dir "$calignore_override_data" >/dev/null 2>&1
+
+  calignore_override_held="$calignore_override_data/triage-held.log"
+  if grep -q '^hold-cal-large	' "$calignore_override_held" 2>/dev/null; then
+    fail "rule 7 config override: calendar-max-attendees=20 should have unheld the 15-attendee event, but it was still held"
+  else
+    pass "rule 7 config override: calendar-max-attendees=20 correctly unholds the 15-attendee event (15 <= 20)"
+  fi
+
+  if grep -q '^hold-cal-declined	' "$calignore_override_held" 2>/dev/null; then
+    pass "rule 7 config override: the declined-self hold is unaffected by the attendee-cap override"
+  else
+    fail "rule 7 config override: hold-cal-declined should still be held (declined-self is independent of the attendee cap)"
+  fi
 fi
 
 # =============================================================================
