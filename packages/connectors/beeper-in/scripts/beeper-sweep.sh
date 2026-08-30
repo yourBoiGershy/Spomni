@@ -30,17 +30,27 @@
 # rows from GET /v1/accounts and exits. No store writes, no cursor writes,
 # no run-log line.
 #
-# --backfill: onboarding one-shot deep-history mode (plan 24 U6). Resolves
-# the onboarding-backfill window (packages/connectors/scripts/
+# --backfill: onboarding one-shot deep-history mode (plan 24 U6, D6 fix).
+# Resolves the onboarding-backfill window (packages/connectors/scripts/
 # resolve-backfill-window.sh) and, per chat, paginates messages backward
-# (direction=before) from the chat's existing *incremental* cursor (or now,
-# if the chat has none) to the window start — so it only ever fetches
-# history older than what incremental sweeps already cover. State is fully
-# isolated (D5): backfill-cursors.tsv + backfill-last-sweep, siblings of the
-# incremental cursors.tsv/last-sweep — this mode never reads chat listing
-# from, or writes cursors/last-sweep to, the incremental files. Logged to
-# the same runs.log with a `backfill-` outcome marker. One-shot; not wired
-# into the sync scheduler.
+# (direction=before) from the chat's coverage-floor.tsv cursor (D6: the
+# oldest cursor of the incremental lane's first-ever fetched page — recorded
+# once by this same script's incremental path) down to the window start, so
+# it only ever fetches history the incremental lane's first newest-page
+# fetch didn't already re-cover. A chat with no incremental capture at all
+# yet has no floor: backfill starts from the newest page instead (unchanged
+# pre-D6 behavior, still correct there). A chat whose first incremental
+# capture predates this fix has no floor either: the legacy fallback derives
+# an oldest-covered timestamp from that chat's existing inbox capture events
+# and excludes messages at/after it. If bridge history is exhausted before
+# reaching the window start, the run's WARN records
+# `<chatID>=history-clamped@<oldest_ts>` — never silently implying full-
+# window coverage. State is fully isolated (D5): backfill-cursors.tsv +
+# backfill-last-sweep, siblings of the incremental cursors.tsv/last-sweep —
+# this mode never reads chat listing from, or writes cursors/last-sweep/
+# coverage-floor.tsv to, the incremental files (coverage-floor.tsv is
+# incremental-owned, same as cursors.tsv). Logged to the same runs.log with
+# a `backfill-` outcome marker. One-shot; not wired into the sync scheduler.
 #
 # Portable to bash 3.2 (macOS default): no associative arrays, no mapfile.
 
@@ -242,17 +252,31 @@ while IFS= read -r chat_json; do
   title="$(printf '%s' "$chat_json" | jq -r '.title // empty')"
   chat_type="$(printf '%s' "$chat_json" | jq -r '.type // empty')"
 
-  # existing_cursor always reads the *incremental* ledger (cursors.tsv),
-  # even in --backfill mode: backfill's whole point is fetching only
-  # history older than what incremental already covers (or, with no
-  # incremental cursor yet, older than the chat's newest page).
+  # existing_cursor reads the *incremental* ledger (cursors.tsv) — used only
+  # by the non-backfill (incremental) fetch below. --backfill (D6) starts
+  # from this chat's coverage-floor.tsv cursor instead (see block below);
+  # it never uses existing_cursor as its start bound (that was the D6 bug:
+  # "before the incremental cursor" re-covers the incremental lane's own
+  # newest page).
   existing_cursor="$(cursor_get "$chat_id")"
   cursor_rc=$?
   if [ "$BACKFILL" -eq 1 ]; then
-    if [ "$cursor_rc" -eq 0 ]; then
-      fetch_result="$(fetch_backfill_messages "$chat_id" "$existing_cursor" "$WINDOW_START_ISO")"
+    floor_cursor="$(coverage_floor_get "$chat_id")"
+    floor_rc=$?
+    if [ "$floor_rc" -eq 0 ]; then
+      fetch_result="$(fetch_backfill_messages "$chat_id" "$floor_cursor" "$WINDOW_START_ISO")"
     else
-      fetch_result="$(fetch_backfill_messages "$chat_id" "" "$WINDOW_START_ISO")"
+      # No floor: either the chat has no incremental capture at all yet
+      # (start from the newest page, pre-D6 behavior, correct here), or its
+      # first incremental capture predates this fix (legacy fallback —
+      # derive the oldest-covered timestamp from existing inbox events and
+      # exclude anything at/after it).
+      legacy_max_ts="$(beeper_legacy_oldest_covered_ts "$STORE_DIR_ABS" "$chat_id")"
+      if [ -n "$legacy_max_ts" ]; then
+        fetch_result="$(fetch_backfill_messages "$chat_id" "" "$WINDOW_START_ISO" "$legacy_max_ts")"
+      else
+        fetch_result="$(fetch_backfill_messages "$chat_id" "" "$WINDOW_START_ISO")"
+      fi
     fi
   elif [ "$cursor_rc" -eq 0 ]; then
     fetch_result="$(fetch_new_messages "$chat_id" "$existing_cursor")"
@@ -263,6 +287,16 @@ while IFS= read -r chat_json; do
   if [ "$fetch_rc" -ne 0 ]; then
     WARN="${WARN}${WARN:+,}${chat_id}=fetch-failed"
     continue
+  fi
+
+  # History clamp (D6): pagination exhausted bridge history before reaching
+  # the resolved window start — say so, never imply full-window coverage.
+  if [ "$BACKFILL" -eq 1 ]; then
+    clamped="$(printf '%s' "$fetch_result" | jq -r '.clamped // false' 2>/dev/null)"
+    if [ "$clamped" = "true" ]; then
+      clamp_ts="$(printf '%s' "$fetch_result" | jq -r '.oldestTs // empty' 2>/dev/null)"
+      WARN="${WARN}${WARN:+,}${chat_id}=history-clamped@${clamp_ts}"
+    fi
   fi
 
   msg_count="$(printf '%s' "$fetch_result" | jq -r '.items | length' 2>/dev/null)"
@@ -311,6 +345,17 @@ while IFS= read -r chat_json; do
         cursor_set "$chat_id" "$final_cursor" "$BACKFILL_CURSORS_FILE"
       else
         cursor_set "$chat_id" "$final_cursor"
+        # Coverage floor (D6): only on this chat's first-ever incremental
+        # capture (no prior cursor — cursor_rc from cursor_get above), record
+        # the fetched page's oldest cursor once. Write-once: never advanced
+        # again, never touched by --backfill except as its read-only start
+        # bound.
+        if [ "$cursor_rc" -ne 0 ]; then
+          floor_cursor="$(printf '%s' "$fetch_result" | jq -r '.oldestCursor // empty' 2>/dev/null)"
+          if [ -n "$floor_cursor" ] && ! coverage_floor_get "$chat_id" >/dev/null 2>&1; then
+            coverage_floor_set "$chat_id" "$floor_cursor"
+          fi
+        fi
       fi
     fi
   else

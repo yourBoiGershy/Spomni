@@ -68,6 +68,21 @@ directory) plus this package's own local state under
 `data/connectors/calendar/` (dedup ledger, checkpoint — never in the shared
 store).
 
+## Import-pipeline conformance
+
+Per `packages/core/contracts/import-pipeline.md` 1.0.0 (fetch/normalize
+stages, lane conformance declared here not in the core contract): fetch is
+the `calendar-sweep` skill's session-driven `list_events`/`list_calendars`
+MCP calls, using the fetch-to-file mechanism (D5) — max `pageSize` requested
+so pages land on disk as saved tool-result files; every per-event step
+(dedup key, raw archive, body, hints) reads that saved file via jq, never
+model context, with a verbatim-paste fallback for the inline-page residual
+(counted as `inline-spilled=<n>`). Raw archive lands at
+`<store-dir>/archive/raw/<capture-id>.json`; normalize is
+`normalize-capture.sh --file <body-file>` producing `inbox/<id>.md` per
+capture-event 1.2.0. See the SKILL doc's §3–§9 and "Fetch-to-file invariant"
+section for the full mechanism.
+
 ## Backfill mode (plan 24)
 
 `calendar-sweep`'s SKILL.md also documents an explicit-invocation-only

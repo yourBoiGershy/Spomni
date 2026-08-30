@@ -32,20 +32,51 @@ list, shapes, cursor semantics, and the chat-ID URL-encoding caveat.
 
 ## Backfill mode
 
-`scripts/beeper-sweep.sh --backfill` (plan 24 U6) is a one-shot onboarding
-mode, never wired into the sync scheduler (D4). It resolves the onboarding
-backfill window via `packages/connectors/scripts/resolve-backfill-window.sh
-<private-data-root>` (abort on non-zero exit, no fallback window) and, per
-chat, paginates messages backward (`direction=before`) from the chat's
-existing *incremental* cursor (or the newest page, if none) back to the
-window start — so it only ever fetches history the incremental sweep hasn't
-already covered. State is fully isolated (D5):
-`data/connectors/beeper-in/backfill-cursors.tsv` +
-`backfill-last-sweep`, siblings of the incremental `cursors.tsv`/
-`last-sweep` — this mode never reads or writes those incremental files.
-Runs are logged to the same `runs.log` with a `backfill-` outcome-line
-marker (e.g. `backfill-ok`, `backfill-partial`). Incremental invocation (no
-flag) is unaffected.
+`scripts/beeper-sweep.sh --backfill` (plan 24 U6; fixed under plan 26 D6) is
+a one-shot onboarding mode, never wired into the sync scheduler (D4). It
+resolves the onboarding backfill window via
+`packages/connectors/scripts/resolve-backfill-window.sh <private-data-root>`
+(abort on non-zero exit, no fallback window) and, per chat, paginates
+messages backward (`direction=before`) from the chat's coverage-floor
+cursor (see below) — or the newest page, if the chat has no incremental
+capture at all yet — back to the window start. State is fully isolated
+(D5): `data/connectors/beeper-in/backfill-cursors.tsv` + `backfill-last-
+sweep`, siblings of the incremental `cursors.tsv`/`last-sweep`/`coverage-
+floor.tsv` — this mode never reads or writes those incremental files. Runs
+are logged to the same `runs.log` with a `backfill-` outcome-line marker
+(e.g. `backfill-ok`, `backfill-partial`). Incremental invocation (no flag)
+is unaffected except for the one-time coverage-floor write described below.
+
+**D6 fix (plan 26).** The pre-fix version paginated backfill from the chat's
+*incremental* cursor, which is that cursor's *newest*-page value — so
+"before the incremental cursor" re-covered the very messages the
+incremental lane's first newest-page fetch had just captured, and backfill
+re-emitted a duplicate-subset capture event. Fix: the incremental lane's
+first-ever fetch for a chat (no prior cursor — a single newest-page GET)
+now also records that page's *oldest* cursor once to
+`data/connectors/beeper-in/coverage-floor.tsv` (`chatID<TAB>oldestCursor`,
+incremental-owned: written once, never advanced, never touched by
+`--backfill`). Backfill's start bound per chat is: the coverage-floor
+cursor when present (paginate `before` the floor, not the incremental
+cursor) → else, for chats whose first incremental capture predates this
+fix (no floor recorded), a legacy fallback that derives an oldest-covered
+timestamp from that chat's existing `inbox/` capture events and excludes
+messages at/after it → else (genuinely no prior incremental capture) the
+original newest-page start, which was already correct there. If bridge
+history is exhausted (`hasMore` false / no `oldestCursor`) before pagination
+reaches the resolved window start, the run's `warn=` field records
+`<chatID>=history-clamped@<oldest_ts>` rather than silently implying
+full-window coverage.
+
+## Import-pipeline conformance
+
+Per `packages/core/contracts/import-pipeline.md` 1.0.0 ("Lane conformance is
+declared, not assumed"), this lane's stages:
+
+| Stage | Conforms | Notes |
+|---|---|---|
+| fetch | Yes | `beeper_get` is the sole HTTP call site (GET-only, no state-changing calls); raw item bodies never transcribed by the model — `fetch_new_messages`/`fetch_backfill_messages` run as shell/jq only. No on-disk raw-provider archive (`<store>/archive/raw/`) is written by this lane — see `api-notes.md`/build notes for why the beeper HTTP response isn't separately archived beyond the normalized `inbox/` event body. |
+| normalize | Yes | Every fetch result is piped through the shared `packages/connectors/scripts/normalize-capture.sh`, envelope-only, one `chat-message` capture event per chat per sweep run, per capture-event 1.2.0. |
 
 ## Scheduling
 
