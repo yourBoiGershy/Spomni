@@ -28,6 +28,19 @@
 #   RA_EVAL_FORCE=1        forces skill-tier cases to run even if they
 #                          declare `runnable-when` (see eval-run-skill.sh).
 #   RA_EVAL_TIMEOUT_SECS   wall-clock guard forwarded to both runners.
+#   RA_EVAL_PRIVATE_MANIFEST=<abs path to a suite.txt>  private-manifest
+#                          mode (plan 34 D4): opts exactly ONE manifest
+#                          (matched by exact resolved path, `cd dir && pwd
+#                          -P`) into allowing its case/store/expected paths
+#                          to live under the private data dir that contains
+#                          that manifest (any path prefixed by the
+#                          manifest's own directory) instead of being
+#                          refused for resolving under data/. Every other
+#                          manifest keeps the refusal unchanged. Prints
+#                          `eval: private manifest mode (<dir>)` once when a
+#                          manifest matches. Forwarded to eval-run-skill.sh
+#                          per case as RA_EVAL_PRIVATE_DIR (empty for cases
+#                          from any non-matching manifest).
 #
 # eval-suite.sh's own knobs:
 #   RA_EVAL_MAX_COST_USD   suite-wide cost cap in USD (default 2.00). Cases
@@ -165,6 +178,21 @@ MANIFEST_REL_LIST=()
 MANIFEST_STATE_PATH=()
 MANIFEST_FULL_COUNT=()
 MANIFEST_INCLUDED_COUNT=()
+MANIFEST_PRIVATE_DIR=()
+
+# Private-manifest mode (plan 34 D4): correction-derived eval cases name
+# real people and so must live under the user's private data dir, which
+# every runner otherwise refuses on sight. RA_EVAL_PRIVATE_MANIFEST, when
+# set, names exactly one suite.txt (absolute path) that is allowed to point
+# its case/store/expected paths under that manifest's own directory (any
+# path prefixed by it) instead of being refused. Every other manifest keeps
+# the refusal unchanged — this is a per-manifest, exact-path opt-in, never a
+# blanket relaxation. Resolve with `pwd -P` (physical path, symlinks
+# resolved) so a worktree symlink doesn't cause a spurious mismatch.
+PRIVATE_MANIFEST_RESOLVED=""
+if [ -n "${RA_EVAL_PRIVATE_MANIFEST:-}" ] && [ -f "${RA_EVAL_PRIVATE_MANIFEST:-}" ]; then
+  PRIVATE_MANIFEST_RESOLVED="$(cd "$(dirname "$RA_EVAL_PRIVATE_MANIFEST")" && pwd -P)/$(basename "$RA_EVAL_PRIVATE_MANIFEST")"
+fi
 
 TOTAL_LINES=0
 for m in $MANIFEST_ARGS; do
@@ -183,6 +211,16 @@ for m in $MANIFEST_ARGS; do
 
   MANIFEST_REL_LIST+=("$m")
   MANIFEST_STATE_PATH+=("$STATE_PATH")
+
+  THIS_PRIVATE_DIR=""
+  if [ -n "$PRIVATE_MANIFEST_RESOLVED" ]; then
+    THIS_MANIFEST_RESOLVED="$(cd "$(dirname "$MANIFEST_PATH")" && pwd -P)/$(basename "$MANIFEST_PATH")"
+    if [ "$THIS_MANIFEST_RESOLVED" = "$PRIVATE_MANIFEST_RESOLVED" ]; then
+      THIS_PRIVATE_DIR="$(cd "$(dirname "$MANIFEST_PATH")" && pwd -P)"
+      echo "eval: private manifest mode (${THIS_PRIVATE_DIR})"
+    fi
+  fi
+  MANIFEST_PRIVATE_DIR+=("$THIS_PRIVATE_DIR")
 
   RERUN_STATE_MISSING=0
   if [ "$RERUN_FAILED" = "1" ] && [ ! -f "$STATE_PATH" ]; then
@@ -489,7 +527,18 @@ while [ "$idx" -lt "$TOTAL_CASES" ]; do
     else
       OUT_FILE="$WAVE_DIR/case_${w}.out"
       : > "$OUT_FILE"
-      "$RUNNER" "$CASE_ABS" > "$OUT_FILE" 2>&1 &
+      CASE_PRIVATE_DIR=""
+      case_manifest_rel="${CASE_MANIFEST[$w]}"
+      mi=0
+      n_manifests_lookup="${#MANIFEST_REL_LIST[@]}"
+      while [ "$mi" -lt "$n_manifests_lookup" ]; do
+        if [ "${MANIFEST_REL_LIST[$mi]}" = "$case_manifest_rel" ]; then
+          CASE_PRIVATE_DIR="${MANIFEST_PRIVATE_DIR[$mi]}"
+          break
+        fi
+        mi=$((mi + 1))
+      done
+      RA_EVAL_PRIVATE_DIR="$CASE_PRIVATE_DIR" "$RUNNER" "$CASE_ABS" > "$OUT_FILE" 2>&1 &
       W_IMMEDIATE+=("")
       W_OUT_FILE+=("$OUT_FILE")
       W_PID+=("$!")

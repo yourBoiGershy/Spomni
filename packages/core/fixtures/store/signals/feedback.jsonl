@@ -1,0 +1,3 @@
+{"ts":"2026-08-30T14:02:00Z","type":"dismiss","target":"wakeup:2026-08-30-jane-doe","from":null,"to":null,"reason":"not-this-signal-type","text":"I never do birthdays","channel":"beeper-self","source":"reply"}
+{"ts":"2026-08-30T14:05:00Z","type":"tier-correction","target":"person:jane-doe","from":"active","to":"close","reason":null,"text":"she's basically family","channel":null,"source":"session"}
+{"ts":"2026-08-30T14:09:00Z","type":"freeform","target":"wakeup:2026-08-30-jane-doe","from":null,"to":null,"reason":null,"text":"actually let's talk about this next week","channel":"beeper-self","source":"reply"}

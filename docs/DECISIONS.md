@@ -353,3 +353,19 @@ ambiguity — so a 6-month backfill files in seconds instead of minutes of paral
 model workers. Plan 31.
 Revisit if: derived tiers measurably mis-rank nudges (then weight derived lower in
 ranking, not reinstate the gate), or a lane's metadata turns out to need judgment.
+
+**feedback-ledger** · 2026-08-30
+One append-only ledger `signals/feedback.jsonl` (`feedback-event@1`) is the source of
+truth for every user feedback act (reply, correction, opt-out, draft edit,
+freeform); sole writer ingestion `feedback-file.sh`, called by attention's queue
+ops and core's stated tier/kind setters. `text` is the user's verbatim words
+(stated-by-user) and is never rewritten. Replies to delivered cards are parsed
+deterministically on every sync tick (`feedback-parse.sh`, numbered grammar,
+unparseable → freeform, never dropped). `never <signal>` is a stated opt-out
+write, not a proposal. Derived artifacts (weights, evals, proposals, report card)
+regenerate from the ledger. Why: feedback scattered across four writers could not
+be read back into prompts or evals — the cost of re-explaining yourself. Phase 2
+(kind outcome weights before enumeration, user-model revision proposals, weekly
+assistant report card) waits for ≥2 weeks of live ledger. Plan 34.
+Revisit if: the ledger grows past what a per-prompt tail read handles (then index,
+never rewrite).

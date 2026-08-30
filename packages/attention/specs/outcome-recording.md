@@ -19,6 +19,34 @@ Both mutate an *existing* `wakeups/<id>.md` file in place (appended state on
 the file the `wakeup-add.sh` creation path already wrote) — never a new file,
 per the "wakeups/ is retained history" note in plan 11.
 
+Every lifecycle write (`snooze`/`dismiss`/`confirm`/`decline`/the sweep's
+`acted-on: true` flips) also appends one `feedback-event@1` line via
+ingestion's `feedback-file.sh` — the sole writer of `<store>/signals/
+feedback.jsonl` (plan 34 D1). `wakeup-queue.sh` never writes the ledger
+itself; it shells out to `feedback-file.sh` after its own file write
+succeeds. Mapping:
+
+| Lifecycle write | `--type` | `--reason` | `--source` |
+|---|---|---|---|
+| `snooze --days N` | `snooze` | `"Nd"` | `--source` flag (default `session`) |
+| `snooze --until D` | `snooze` | `"until:D"` | `--source` flag (default `session`) |
+| `dismiss --reason <enum>` | `dismiss` | `<enum>` | `--source` flag (default `session`) |
+| `confirm --event-id …` | `acted-on` | `confirmed` | `--source` flag (default `session`) |
+| `decline --reason <enum>` | `dismiss` | `<enum>` | `--source` flag (default `session`) |
+| sweep flips `acted-on: true` | `acted-on` | (none) | `auto` |
+| sweep flips `acted-on: false` (or leaves `null`) | — appends nothing — | | |
+
+`snooze`/`dismiss`/`confirm`/`decline` also accept passthrough `--channel
+<c>` and `--source reply|session` (default `session`); `dismiss` additionally
+accepts passthrough `--text "<words>"` (the user's verbatim reply text, never
+rewritten). A missing `feedback-file.sh` (fixture stores/tests run without
+the ingestion package present) is not an error: `wakeup-queue.sh` prints
+`feedback: skipped (feedback-file.sh absent)` and continues; a ledger write
+that fails for any other reason prints `feedback: ledger write failed (exit
+n)` and does not alter the lifecycle op's own exit status. Attention keeps
+sole ownership of `wakeups/`; only ingestion's `feedback-file.sh` writes the
+ledger.
+
 ## 1. Lifecycle ops
 
 ### `fire`
@@ -131,6 +159,11 @@ state produces the same file contents, and running it again after new
 interactions are filed only ever changes entries currently at `acted-on:
 null`.
 
+Per the Scope section above: writing `acted-on: true` also appends one
+`feedback-event@1` line (`--type acted-on --source auto`, no `--reason`) via
+ingestion's `feedback-file.sh`. Writing `acted-on: false` — or leaving it
+`null` because the window is still open — appends nothing to the ledger.
+
 ## 3. `wakeup-queue.sh` CLI surface deltas (for plan 06)
 
 | Op | Signature (unchanged parts elided) | Delta from pre-1.1.0 behavior |
@@ -139,6 +172,11 @@ null`.
 | `fire` | `wakeup-queue.sh fire <id>` | Now also sets `fired-on` (only if currently `null`); no new flags. |
 | `snooze` | `wakeup-queue.sh snooze <id> <duration>` | Now also increments `snooze-count` (treating missing/`null` as `0`); no new flags. |
 | `dismiss` | `wakeup-queue.sh dismiss <id> --reason <enum>` | `--reason` becomes a **required** flag (was previously reason-less or free-text, per whatever pre-1.1 shape existed); invalid/missing value is a hard error, no write. |
+
+`snooze`/`dismiss`/`confirm`/`decline` (plan 34 D1) also take optional
+`--channel <c>` and `--source reply|session` (default `session`);
+`dismiss` also takes optional `--text "<words>"` — all three passthrough
+to the `feedback-file.sh` ledger append described in Scope above.
 
 Sweep entry point (`skills/sweep/SKILL.md`) gains one new pipeline step,
 "acted-on detection," positioned: `... → fire due wake-ups → acted-on

@@ -536,7 +536,8 @@ EOF
   template_rc=$?
   assert_eq "core template sync-lanes.tsv: parses cleanly under sync_lanes_list" "$template_rc" "0"
   template_row_count="$(printf '%s\n' "$template_rows" | grep -c .)"
-  assert_eq "core template sync-lanes.tsv: exactly 3 rows" "$template_row_count" "3"
+  assert_eq "core template sync-lanes.tsv: exactly 4 rows" "$template_row_count" "4"
+  assert_contains "core template sync-lanes.tsv: feedback lane row present" "$template_rows" "feedback"
 
   # --- (ix) tick/subcommand argument errors ---
   "$MCP_TICK" tick --claude-bin "$STUB_CLAUDE" --allowed-tools "Bash" >/dev/null 2>/dev/null

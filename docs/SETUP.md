@@ -196,6 +196,16 @@ bash packages/connectors/scripts/sync-scheduler.sh status
   missing tool, re-run `preflight` — the connector likely needs re-linking in
   claude.ai.
 
+### 5b. Feedback (plan 34)
+
+The `feedback` lane in `sync-lanes.tsv` ships enabled and parses your
+replies to delivered cards on every tick — reply with the card number:
+`1 done`, `1 snooze 2w`, `1 skip`, `1 never birthday`, `1 not-them`,
+`1 wrong-tier close`; anything else is kept verbatim as freeform feedback.
+Run `bash packages/ingestion/scripts/feedback-to-evals.sh <store> --data-dir
+<data-dir>/ingestion` any time to regenerate regression evals from your
+corrections; `test-all.sh` runs them when present.
+
 ## 6. Prove the whole machine
 
 ```sh

@@ -32,6 +32,14 @@
 #                          (default 300; macOS has no timeout(1), so this is
 #                          a backgrounded sleep-and-kill).
 #   RA_EVAL_DRY_RUN=1      print the claude command instead of running it.
+#   RA_EVAL_PRIVATE_DIR    absolute path to a private data dir this case's
+#                          store/expected are allowed to resolve under
+#                          (plan 34 D4, set by eval-suite.sh only for cases
+#                          whose manifest exactly matches
+#                          RA_EVAL_PRIVATE_MANIFEST — never set by hand).
+#                          When set, the data/ refusal below is skipped for
+#                          paths prefixed by this dir; every other data/
+#                          path is still refused.
 #
 # Emits exactly one `RESULT ...` line per run (silence is never valid):
 #   RESULT PASS  case=<name> cost_usd=<x> turns=<n>
@@ -137,10 +145,36 @@ resolve_path() {
 STORE_PATH="$(resolve_path "$STORE_REL")"
 EXPECTED_PATH="$(resolve_path "$EXPECTED_REL")"
 
+# Best-effort physical (symlink-resolved) form of a directory path, so the
+# private-dir prefix check below (RA_EVAL_PRIVATE_DIR is set by
+# eval-suite.sh via `pwd -P`) isn't fooled by a symlinked data dir (e.g.
+# `data/` -> a private repo, or macOS's /tmp -> /private/tmp). Falls back
+# to the path as given if it doesn't exist yet (later existence checks
+# handle that case with their own error).
+resolve_physical() {
+  if [ -d "$1" ]; then
+    (cd "$1" && pwd -P)
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
 refuse_if_under_data() {
   # $1 = label, $2 = resolved path
   case "$2" in
     "$REPO_ROOT"/data/*|*/data/*)
+      # Private-manifest mode (plan 34 D4): eval-suite.sh sets
+      # RA_EVAL_PRIVATE_DIR only for cases whose manifest exactly matched
+      # RA_EVAL_PRIVATE_MANIFEST. Paths under that dir are the intended
+      # exception; anything else under data/ is still refused.
+      if [ -n "${RA_EVAL_PRIVATE_DIR:-}" ]; then
+        PHYSICAL_PATH="$(resolve_physical "$2")"
+        case "$PHYSICAL_PATH" in
+          "$RA_EVAL_PRIVATE_DIR"/*|"$RA_EVAL_PRIVATE_DIR")
+            return 0
+            ;;
+        esac
+      fi
       echo "RESULT ERROR case=${CASE_NAME} reason=refused-data-path:$1=$2"
       exit 2
       ;;

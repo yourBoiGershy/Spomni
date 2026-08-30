@@ -5,9 +5,24 @@
 #
 # Usage:
 #   person-set-tier.sh <store-dir> <slug> --tier <t> --source <derived|stated-by-user> \
-#       [--today <YYYY-MM-DD>]
+#       [--today <YYYY-MM-DD>] \
+#       [--feedback-text "<words>"] [--feedback-channel <c>] \
+#       [--feedback-source reply|session]
 #   person-set-tier.sh <store-dir> <slug> --clear --source stated-by-user \
-#       [--today <YYYY-MM-DD>]
+#       [--today <YYYY-MM-DD>] \
+#       [--feedback-text "<words>"] [--feedback-channel <c>] \
+#       [--feedback-source reply|session]
+#
+# Feedback ledger (plan 34):
+#   - --feedback-text / --feedback-channel / --feedback-source are only
+#     meaningful with --source stated-by-user; with --source derived they
+#     are ignored (a log line notes it, nothing is written).
+#   - On a successful stated-by-user write (including --clear), the script
+#     appends one line to the feedback ledger via the ingestion package's
+#     feedback-file.sh (found relative to this script). If that script is
+#     absent (core tests must never depend on ingestion), the ledger step
+#     is skipped with a log line and the script still exits 0. A ledger
+#     write failure is logged but never changes this script's exit status.
 #
 # Rules:
 #   - Target people/<slug>.md must already exist (exit 1 otherwise).
@@ -53,6 +68,9 @@ new_tier=""
 new_source=""
 today=""
 do_clear=0
+feedback_text=""
+feedback_channel=""
+feedback_source="session"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -60,6 +78,9 @@ while [ "$#" -gt 0 ]; do
         --source) new_source="${2:-}"; shift 2 ;;
         --today) today="${2:-}"; shift 2 ;;
         --clear) do_clear=1; shift ;;
+        --feedback-text) feedback_text="${2:-}"; shift 2 ;;
+        --feedback-channel) feedback_channel="${2:-}"; shift 2 ;;
+        --feedback-source) feedback_source="${2:-}"; shift 2 ;;
         *) die "unknown argument: $1" ;;
     esac
 done
@@ -104,6 +125,7 @@ existing_source_line="$(awk -v s=2 -v e="$fm_end" '
     NR>=s && NR<e && $0 ~ /^tier_source:/ {print; exit}
 ' "$person_file")"
 existing_source_val="$(printf '%s' "$existing_source_line" | sed -E 's/^tier_source:[[:space:]]*//; s/[[:space:]]+$//; s/^"(.*)"$/\1/')"
+existing_tier_val="$(printf '%s' "$existing_tier_line" | sed -E 's/^tier:[[:space:]]*//; s/[[:space:]]+$//; s/^"(.*)"$/\1/')"
 
 # Legacy default: a tier with no tier_source reads as stated-by-user.
 if [ -n "$existing_tier_line" ] && [ -z "$existing_source_val" ]; then
@@ -174,6 +196,30 @@ fi
 
 mv "$tmp_file" "$person_file"
 trap - EXIT
+
+# --- feedback ledger (plan 34): only a stated-by-user write earns an entry ---
+if [ "$new_source" != "stated-by-user" ]; then
+    if [ -n "$feedback_text" ] || [ -n "$feedback_channel" ]; then
+        printf 'feedback: ignoring --feedback-* (source is not stated-by-user)\n'
+    fi
+else
+    feedback_script="$(dirname "$0")/../../ingestion/scripts/feedback-file.sh"
+    if [ ! -f "$feedback_script" ]; then
+        printf 'feedback: skipped (feedback-file.sh absent)\n'
+    else
+        to_val="$new_tier"
+        [ "$do_clear" -eq 1 ] && to_val="null"
+        set -- "$store_dir" --type tier-correction --target "person:${slug}" --source "$feedback_source" --to "$to_val"
+        [ -n "$existing_tier_val" ] && set -- "$@" --from "$existing_tier_val"
+        [ -n "$feedback_text" ] && set -- "$@" --text "$feedback_text"
+        [ -n "$feedback_channel" ] && set -- "$@" --channel "$feedback_channel"
+        "$feedback_script" "$@"
+        feedback_rc=$?
+        if [ "$feedback_rc" -ne 0 ]; then
+            printf 'feedback: ledger write failed (exit %d)\n' "$feedback_rc"
+        fi
+    fi
+fi
 
 if [ "$do_clear" -eq 1 ]; then
     printf 'cleared tier for %s\n' "$slug"
