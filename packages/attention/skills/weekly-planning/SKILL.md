@@ -45,7 +45,9 @@ If `capacity.sh` exits non-zero:
   must not) attempt any cleanup or partial-write handling of its own.
 - Log loudly: one clear error line naming the non-zero exit code, e.g.
   `weekly-planning: capacity.sh failed (exit <code>) — no week-plan written`.
-- Stamp **no** heartbeat.
+- Stamp the heartbeat with `--fail` (`bash packages/core/scripts/
+  heartbeat-stamp.sh <store-dir> weekly-planning --cadence-hours 168
+  --fail`) — the schedule is alive, this run failed; never `--ok` here.
 - Stop. Do not retry within this run, do not commit anything.
 
 A stale week-plan with a loud failure log beats a wrong fresh one written
@@ -55,18 +57,25 @@ recovers from a skipped week.
 
 ## 5. On success — commit and stamp
 
-- Commit `signals/week-plan.json` to the data repo via store-sync, with a
-  conventional one-line message:
+- Commit `signals/week-plan.json` to the data repo via store-sync:
 
-  ```
-  weekly-planning: week-plan <week_start> tier=<weekly_tier> budget=<min>-<max>
+  ```sh
+  bash packages/core/scripts/store-sync.sh commit -m "weekly-planning: week-plan <week_start> tier=<weekly_tier> budget=<min>-<max>" <store-dir>
   ```
 
   (`week_start`, `weekly_tier`, `budget.min`, `budget.max` read back from the
-  file `capacity.sh` just wrote.)
-- Stamp the routine's completion heartbeat per `docs/runtime-cloud.md`
-  (`weekly-planning`'s own completion marker — distinct key from
-  `last-sweep`, per plan 09's staleness→wake-up mechanism).
+  file `capacity.sh` just wrote.) When running in a cloud session, follow
+  with:
+
+  ```sh
+  bash packages/core/scripts/store-sync.sh push <store-dir>
+  ```
+- Stamp the routine's completion heartbeat (`packages/core/contracts/
+  heartbeat.md` 1.0.0):
+
+  ```sh
+  bash packages/core/scripts/heartbeat-stamp.sh <store-dir> weekly-planning --cadence-hours 168 --ok
+  ```
 
 ## 6. Log one summary line, then end — silence principle (binding)
 

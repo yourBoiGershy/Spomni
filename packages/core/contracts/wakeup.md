@@ -45,7 +45,7 @@ optional.
 | `schema_version` | semver string | yes | Contract version this file conforms to. |
 | `id` | string | yes | Unique within `wakeups/`. Also the filename stem. |
 | `due` | ISO 8601 date | yes | `YYYY-MM-DD`. When this entry should fire. Same-day entries are batched at delivery (per `wakeup-queue-over-digests`), not split across files. |
-| `people` | list of `[[slug]]` links | yes (≥1) | Who this wake-up is about. |
+| `people` | list of `[[slug]]` links | yes (≥1) | Who this wake-up is about. `self` is a reserved slug for the user themselves — a wake-up whose subject is the user's own machinery (e.g. plan 09 staleness: `source-signal: staleness:<routine>`) links `[[self]]`; the validator never requires `people/self.md` for it. Not valid as an event-proposal attendee. |
 | `why` | string | yes | One line: the trigger. Never bare cadence — must name the reason (per `docs/PROJECT-CONTEXT.md`'s "nudges carry a trigger and ammunition"), e.g. `"job change: now leading partnerships at Meridian"`, not `"90 days since last contact"`. |
 | `status` | enum | yes | One of: `pending`, `fired`, `snoozed`, `dismissed`. Set to `pending` at creation. |
 | `origin` | enum | yes | One of: `user-ask`, `signal`, `standing`. `user-ask` = explicit reminder request; `signal` = produced by a `signal-event.md`; `standing` = recurring rhythm (e.g. birthdays). |

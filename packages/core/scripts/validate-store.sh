@@ -9,7 +9,9 @@
 #   2. Enum fields are valid per contract (wakeup status/origin, signal
 #      confidence, person tier).
 #   3. Every [[slug]] wiki-link (frontmatter or body) resolves to
-#      people/<slug>.md.
+#      people/<slug>.md. Exception: `[[self]]` is a reserved slug for the
+#      user themselves (packages/core/contracts/wakeup.md) and never needs
+#      a people/self.md file.
 #   4. No orphan interactions (every interaction links >=1 existing person).
 #   5. No duplicate person slugs (kebab-cased `name` collisions).
 #   Plus a contract-called-out rule: every person `## Facts` bullet carries a
@@ -266,6 +268,9 @@ check_links_resolve() {
     local slug link_line
     while IFS= read -r slug; do
         [ -n "$slug" ] || continue
+        # `self` is reserved for the user themselves (packages/core/contracts/wakeup.md)
+        # and never resolves to a people/self.md file.
+        [ "$slug" = "self" ] && continue
         if ! grep -qxF "$slug" "$people_slugs_file"; then
             link_line=$(grep -nF "[[${slug}]]" "$file" | head -n1 | cut -d: -f1)
             [ -n "$link_line" ] || link_line=1

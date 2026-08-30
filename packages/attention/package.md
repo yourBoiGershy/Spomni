@@ -173,6 +173,15 @@ attention-merge).
   (step 8) does not read this itself, but hands off to `deliver-tick.sh`, which
   resolves the delivery channel from it (default `beeper-self`, fallback
   `gmail-self`); listed here because the sweep is the caller.
+- `heartbeat@1.0.0` (core, `packages/core/contracts/heartbeat.md`) — the sweep's
+  step 9 and `weekly-planning`'s success/failure steps are its sole producers here,
+  each calling `packages/core/scripts/heartbeat-stamp.sh` (creation-only, one
+  sanctioned writer per routine); `scripts/staleness.sh` is the sole reader,
+  consuming `heartbeats/<routine>.json` to notice a routine that has gone
+  silent past 2× its cadence.
+- `packages/core/scripts/store-sync.sh` (core) — `weekly-planning`'s step 5 uses
+  its `commit`/`push` subcommands to land `signals/week-plan.json`; same
+  sanctioned entry point every runtime uses against a git-backed store.
 
 ## Owned paths
 

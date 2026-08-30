@@ -1225,4 +1225,36 @@ else
   STORE_TESTS_STATUS=1
 fi
 
+# --- delegate to the store-sync.sh golden test, tallying its exit status
+#     alongside this script's own ---
+STORE_SYNC_TEST="$SCRIPT_DIR/test-store-sync.sh"
+echo ""
+echo "--- test-store-sync.sh ---"
+if [ -x "$STORE_SYNC_TEST" ]; then
+  "$STORE_SYNC_TEST"
+  store_sync_status=$?
+  if [ "$store_sync_status" -ne 0 ]; then
+    STORE_TESTS_STATUS=1
+  fi
+else
+  echo "FAIL: $STORE_SYNC_TEST not found or not executable"
+  STORE_TESTS_STATUS=1
+fi
+
+# --- delegate to the heartbeat-stamp.sh golden test, tallying its exit
+#     status alongside this script's own ---
+HEARTBEAT_STAMP_TEST="$SCRIPT_DIR/test-heartbeat-stamp.sh"
+echo ""
+echo "--- test-heartbeat-stamp.sh ---"
+if [ -x "$HEARTBEAT_STAMP_TEST" ]; then
+  "$HEARTBEAT_STAMP_TEST"
+  heartbeat_stamp_status=$?
+  if [ "$heartbeat_stamp_status" -ne 0 ]; then
+    STORE_TESTS_STATUS=1
+  fi
+else
+  echo "FAIL: $HEARTBEAT_STAMP_TEST not found or not executable"
+  STORE_TESTS_STATUS=1
+fi
+
 exit "$STORE_TESTS_STATUS"
