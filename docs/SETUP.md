@@ -229,6 +229,28 @@ Run `bash packages/ingestion/scripts/feedback-to-evals.sh <store> --data-dir
 <data-dir>/ingestion` any time to regenerate regression evals from your
 corrections; `test-all.sh` runs them when present.
 
+## 5d. From your phone (cloud session on the data repo)
+
+Open a Claude Code cloud session on your **private data repo** (not this
+one). Its `CLAUDE.md` (written by `init-store.sh` from
+`packages/core/templates/data-repo-CLAUDE.md`; add it by hand to an older
+store) tells the session to shallow-clone the machinery into `machinery/`
+and answer with bash + jq — no `npm ci`, no server. Expect ≈ 5 s from clone
+to first `/who-next` answer on a laptop, ≤ 15 s in the cloud; measure with
+`bash packages/query/tests/bench-cold-start.sh --remote https://github.com/<you>/Spomni.git --warm`.
+
+A debrief from the phone ends with
+`store-sync.sh commit -m "debrief: …" . && store-sync.sh push .` — no typed
+git. Add `machinery/` to the data repo's `.gitignore`. Set
+`SPOMNI_GIT_NAME` / `SPOMNI_GIT_EMAIL` in the cloud environment if you want
+commits attributed to you (default author `Spomni <spomni@localhost>`).
+
+Routines stamp `heartbeats/<routine>.json`; the daily sweep's staleness step
+raises **one** wake-up when a routine or lane has been quiet for 2× its
+cadence. On this Mac the launchd lanes' state lives under the connectors
+worktree's `data/` — pass `--sync-data-dir` to `staleness.sh` if your store
+checkout differs.
+
 ## 6. Prove the whole machine
 
 ```sh

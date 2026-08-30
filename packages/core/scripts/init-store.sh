@@ -6,6 +6,8 @@
 # Idempotent, never deletes:
 #   - creates inbox/, people/, interactions/, wakeups/ if missing
 #   - writes <store-dir>/README.md if absent (private-store reminder)
+#   - writes <store-dir>/CLAUDE.md if absent (cold-session bootstrap, from
+#     templates/data-repo-CLAUDE.md)
 #   - runs build-index.sh + build-stats.sh so index.json/stats.json exist
 #     even when the store is empty
 #   - runs validate-store.sh and exits with its status
@@ -51,6 +53,10 @@ This is your private Spomni store — your contact graph, kept only for you.
 Keep it in a private repo or private directory, never checked in anywhere public.
 Never place it inside the Spomni code checkout — code and data are separate.
 EOF
+fi
+
+if [ ! -e "$abs_store_dir/CLAUDE.md" ]; then
+    cp "$SCRIPT_DIR/../templates/data-repo-CLAUDE.md" "$abs_store_dir/CLAUDE.md"
 fi
 
 "$SCRIPT_DIR/build-index.sh" "$abs_store_dir"

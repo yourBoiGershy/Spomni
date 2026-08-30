@@ -427,11 +427,23 @@ written:
    A validation failure on a case this skill just filed is a bug in this
    skill's writes, not the store — do not silently continue; surface it.
 3. Append the capture event's `id` to `data/ingestion/debrief-filed.log`.
+4. Commit through store-sync when the store is a git repo (private data
+   repo): `bash packages/core/scripts/store-sync.sh commit -m "debrief: <event id or one-line summary>" <store-dir>`.
+   store-sync re-runs reindex + validate itself and refuses (`FAIL:`, exit 1)
+   on a broken store — surface that, never hand-fix with raw git. In a
+   cloud/phone session (no local scheduler will push for you) follow with
+   `bash packages/core/scripts/store-sync.sh push <store-dir>`. When the
+   store is not a git repo the script prints a one-line no-op and exits 0 —
+   run it anyway; it is harmless. Batch mode: one commit after the batch,
+   not per event. Shard mode: the wave orchestrator commits once after its
+   post-wave rebuild/validation, never a shard worker.
 
 Steps 1-2 run once per event in single-event mode, or once after each
 event (not batched to the end) in batch mode, outside shard mode, so a
 mid-batch failure leaves the index/validation state consistent with
-whatever was actually filed so far.
+whatever was actually filed so far. Step 4 runs once per batch (or once
+per event in single-event mode) — never per episode within a multi-episode
+event, and never per shard worker.
 
 **Shard mode deviation.** Steps 1-2 (`build-index.sh` + `validate-store.sh`)
 are skipped per event in shard mode — the wave orchestrator runs both

@@ -8,7 +8,19 @@
 > Moved to plan 39: 6b, 6c, 7 (git-guard + branch protection). Later: 4, 8, 6a
 > pre-push installer (39 A2's hook check covers the push boundary). Work units:
 > wave A = 1, 2, 3(row); wave B = 6, 8; wave C = 10, 11, 12; wave D unchanged.
-Status: In progress — REVISED 2026-08-30 (v2; v1 was Composio-era and is superseded here)
+Status: BUILT 2026-08-30 on branch `chunk-09-phone-cloud-infra` — deliverables 1, 2, 3, 5 (trimmed scope: waves A–C); wave D live proof pending. REVISED 2026-08-30 (v2; v1 was Composio-era and is superseded here)
+
+> **Built 2026-08-30.** Shipped: `store-sync.sh` (store dir before or after the
+> subcommand; calls `reindex.sh` when present, else build-index + build-stats),
+> `heartbeat.md` 1.0.0 + `heartbeat-stamp.sh`, `attention/scripts/staleness.sh`
+> (routines via heartbeats, lanes via the scheduler's `state/<lane>.tsv`, exactly
+> one wake-up per stale subject, `[[self]]` reserved slug), `templates/
+> data-repo-CLAUDE.md` written by `init-store.sh`, debrief §5c step 4, sweep 3b/9
+> and weekly-planning §5 wired, `query/tests/bench-cold-start.sh` (interim — fold
+> into 38's `bench-retrieval.sh` when it lands). Measured 2026-08-30 laptop, real
+> GitHub remote, private store: clone 1.25 s + answer 3.86 s = **5.1 s** (target
+> ≤ 15 s). The 1 m 27 s figure was the `npm ci`/server path plan 35 already
+> bypasses; the remaining lever is `who-next-direct.sh` itself (plan 38).
 Package: core (`store-sync.sh`, `heartbeat-stamp.sh`, contracts) + attention (staleness step in sweep) + query (cold-start bench) + harness (`.claude/hooks/`, `scripts/setup.sh`) + docs
 Depends-on: 01, 06, 19 (all done); 35 (done — zero-setup query path is the baseline this plan measures)
 Branch: `chunk-09-phone-cloud-infra`
