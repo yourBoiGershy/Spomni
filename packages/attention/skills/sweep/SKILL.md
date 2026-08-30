@@ -1,6 +1,6 @@
 ---
 name: sweep
-description: The `daily-attention` routine's entry skill — runs the sub-steps in fixed order (each tolerating an unbuilt/absent neighbour), fires due wake-ups through `wakeup-queue.sh`, applies the un-debriefed once-then-drop mention, and hands the resulting batch to an output adapter.
+description: The `daily-attention` routine's entry skill — runs the sub-steps in fixed order (each tolerating an unbuilt/absent neighbour), fires due wake-ups through `wakeup-queue.sh`, applies the un-debriefed once-then-drop mention, and hands the resulting batch to connectors' delivery tick.
 ---
 
 # sweep
@@ -9,10 +9,10 @@ The `daily-attention` routine from `docs/runtime-cloud.md`'s cadence map
 (default: each morning, after that day's first `sync-sweep`). This skill is
 the single scheduled caller of `wakeup-queue.sh fire` (per `docs/
 runtime-cloud.md`'s "Queue runtime model" — on-demand chat sessions may also
-call it directly, see "On-demand use" below). It ships today even though
-several neighbouring steps (calendar-reconcile, the output adapter) haven't
-landed yet — every step below either does its job or logs a one-line skip
-and moves on, so this skill is never blocked waiting on a sibling plan.
+call it directly, see "On-demand use" below). It ships today even though one
+neighbouring step (calendar-reconcile) hasn't landed yet — every step below
+either does its job or logs a one-line skip and moves on, so this skill is
+never blocked waiting on a sibling plan.
 
 `<store-dir>` — the private data dir (`data/store` in dev checkouts, the
 cloud runtime's mounted data repo path in production). `<today>` /`<now>` —
@@ -155,11 +155,39 @@ never a duplicate one).
 
 ### 8. Deliver
 
-Hand the batch path (if any) to the output adapter. Plan 07's output
-adapters are **unbuilt today** — log `deliver: batch at <path> (no adapter
-yet — batch file is the delivery)` when a batch exists, or nothing at all
-when step 4 produced no batch. This step never messages, never sends —
-draft-never-send holds throughout (`CLAUDE.md`).
+```sh
+bash packages/connectors/scripts/deliver-tick.sh <store-dir> --today <today> --now <now>
+```
+
+`deliver-tick.sh` (connectors, plan 33) is idempotent and self-contained: it
+renders every `wakeups/fired/*-batch.json` not already recorded in
+`<store-dir>/outbox/delivered.log`, always writes `outbox/<today>.md`, and
+sends via the profile's `## Notify` channel (default `beeper-self` — Beeper
+note-to-self, self-only; fallback `gmail-self`), holding for quiet hours
+when applicable. This step runs every sweep, batch or no batch — a
+nothing-fired run still lets the tick catch up on any previously-fired,
+not-yet-delivered batch. Read its stdout and fold it into this step's log
+line; the lines it may print are:
+
+- `deliver: nothing new` — no undelivered batch, nothing to do
+- `deliver: channel=<c>` — the resolved `## Notify` channel for this run
+- `deliver: quiet-hours hold n=<k>` — `k` batches held, not delivered this run
+- `deliver: gmail-self pending (session) <batch>` — batch staged to
+  `outbox/pending-gmail/`, needs a live session to send (see below)
+- `deliver: beeper skipped (<reason>), outbox only` — Beeper unavailable/
+  disabled; batch is still recorded in `outbox/<today>.md`
+- `deliver: send-failed <batch>` — a send attempt failed; batch stays
+  undelivered for the next run to retry
+- `deliver: done sent=<a> outbox=<b> pending=<c> held=<d>` — run summary
+
+When the run's output includes a `gmail-self pending (session)` line, this
+sweep (itself a session) invokes the `gmail-self-notify` skill
+(`packages/connectors/gmail-out/skills/gmail-self-notify/`) once, after
+`deliver-tick.sh` returns, to email every file under
+`<store-dir>/outbox/pending-gmail/*.txt` to the user's own `gmail_address`
+only. The only send this step ever makes is to the user themselves
+(`docs/DECISIONS.md` `notify-self-is-a-send`) — outreach to anyone else
+remains draft-only, unchanged (`CLAUDE.md`'s draft-never-send).
 
 ### 9. Heartbeat + exit
 
@@ -192,7 +220,7 @@ step=fire status=ok detail=batch: wakeups/fired/2026-08-29T090000Z-batch.json
 step=acted-on-detection status=ok detail=acted-on wu-4412 -> true
 step=calibrate status=ok detail=ranking-weights.json rewritten
 step=undebriefed-mention status=ok detail=1 mention added (gcal-evt-7742)
-step=deliver status=ok detail=batch at wakeups/fired/2026-08-29T090000Z-batch.json (no adapter yet)
+step=deliver status=ok detail=channel=beeper-self, done sent=1 outbox=1 pending=0 held=0
 step=heartbeat status=ok detail=last-daily-attention stamped
 ```
 

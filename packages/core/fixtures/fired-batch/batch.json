@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0.0",
+  "fired_at": "2026-08-30T13:00:00Z",
+  "today": "2026-08-30",
+  "budget": { "max": 3, "used_before": 0, "used_after": 2 },
+  "entries": [
+    {
+      "id": "2026-08-30-dana-whitfield",
+      "due": "2026-08-30",
+      "people": ["[[dana-whitfield]]"],
+      "why": "birthday coming up",
+      "origin": "standing",
+      "kind": "nudge",
+      "signal_type": "birthday",
+      "context": "Dana turns 34 on Sept 20.",
+      "draft": "",
+      "proposed_event": null
+    },
+    {
+      "id": "2026-08-30-sam-okafor",
+      "due": "2026-08-30",
+      "people": ["[[sam-okafor]]"],
+      "why": "job change: now leading partnerships at Meridian",
+      "origin": "signal",
+      "kind": "nudge",
+      "signal_type": "job-change",
+      "context": "Sam moved to Meridian as Head of Partnerships last month.",
+      "draft": "Congrats on the new role at Meridian!\nWould love to catch up sometime.",
+      "proposed_event": null
+    },
+    {
+      "id": "2026-08-30-jordan-lee",
+      "due": "2026-08-30",
+      "people": ["[[jordan-lee]]"],
+      "why": "quarterly catch-up is due",
+      "origin": "standing",
+      "kind": "event-proposal",
+      "signal_type": null,
+      "context": "It's been a while since you and Jordan connected in person.",
+      "draft": "",
+      "proposed_event": {
+        "title": "Coffee with Jordan",
+        "start": "2026-09-05T10:00:00-04:00",
+        "end": "2026-09-05T10:30:00-04:00"
+      }
+    }
+  ],
+  "held_budget": [],
+  "held_adjacent": [],
+  "mentions": [
+    {
+      "kind": "undebriefed-meeting",
+      "event_id": "evt-123",
+      "summary": "Weekly sync",
+      "date": "2026-08-28",
+      "people": ["[[jordan-lee]]"],
+      "line": "You never debriefed \"Weekly sync\" with [[jordan-lee]] on 2026-08-28."
+    }
+  ]
+}

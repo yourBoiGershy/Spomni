@@ -70,7 +70,11 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   plan 30), `scripts/check-judgment.sh` (read-only judgment-record validator
   against `relationship-scoring.md`'s shape/gate/caps/expiry/sticky-kind rules,
   the pre-write/pre-presentation gate `skills/review-tiers/` runs every record
-  through, plan 30), `scripts/summarize-thread.sh` (one headless model call
+  through, plan 30), `scripts/profile-set-notify.sh` (sole writer of
+  `profile.md`'s `## Notify` section — the stated-by-user notification
+  channel/beeper-chat-id/gmail-address/quiet-hours bullets, per
+  `contracts/profile.md` 1.1.0, plan 33),
+  `scripts/summarize-thread.sh` (one headless model call
   per `chat-message` capture, emitting `thread-summary` 1.0.0 strict JSON —
   no store writes, per `specs/thread-summary.md`, plan 32),
   `scripts/file-thread.sh` (deterministic writer consuming that JSON —

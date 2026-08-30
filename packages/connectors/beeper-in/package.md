@@ -9,7 +9,9 @@ headless Server, same API surface — `docs/plans/2026-08-29-13-beeper-capture.m
 polled for new messages across whichever bridged networks the user opts in, landed
 as raw capture events in `inbox/`. Per-network enablement is opt-in with nothing
 enabled by default (`docs/DECISIONS.md#beeper-personal-bridge`); the API's send
-capability is never called (`docs/DECISIONS.md#draft-never-send`). Structuring/
+capability is never called from this sub-package (GET-only forever) — the
+sole self-only send lives in `packages/connectors/beeper-out/`
+(`docs/DECISIONS.md#notify-self-is-a-send`). Structuring/
 filing is out of scope here (`ingestion`'s job) — this package only guarantees
 access + lossless raw capture, per "dumb edges, smart middle."
 

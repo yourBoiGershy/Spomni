@@ -52,6 +52,9 @@ nothing.
   weekly nudge budget artifact, per plan 12 — this is the RENUMBERED cadence
   plan, docs/plans/2026-08-29-12-cadence-capacity.md, not the earlier plan 12
   eval-harness numbering),
+  `contracts/nudge-card.md` (renders a fired wake-up batch into one
+  numbered, unsent-marked chat message via `scripts/render-nudge-cards.sh`;
+  1.0.0, per plan 33),
   `contracts/answer-style.md` 1.0.0 — render rules for every user-facing
   answer/card (action-first, ≤2 lines/item, cap 5, draft on demand, no-guilt)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
