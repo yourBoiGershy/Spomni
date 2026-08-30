@@ -1,4 +1,9 @@
 # Plan 07: Output skills & adapters (the voice)
+
+> **Consolidation 2026-08-30 — Later.** Scope is now **one unit**: `skills/brief/`
+> (unit 4). `skills/query/` dropped (plans 08 + 35 cover it). Units 1, 3, 5, 6 shipped
+> in plan 33. Store budget = 2 calls (`get_person include_interactions` +
+> `upcoming_meetings`, plan 38 G); does not consume any plan-04 artifact.
 Status: Ready
 Package: query (query + brief) + connectors/file-out, connectors/gmail-out (adapters)
 Depends-on: 01; renders 06's batches; brief uses 04's artifacts
