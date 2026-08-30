@@ -127,6 +127,19 @@ What exists that this plan wires together:
   Gmail MCP): the headless tick writes outbox + logs `deliver: gmail-self
   pending (session)`; the sweep skill (a session) completes it via the
   gmail-out skill.
+- **D5b Notification, not just delivery (verified live 2026-08-30).** A
+  message posted to the note-to-self chat is an *outgoing* message from the
+  user's own account: Beeper never notifies on it and marks it read at once,
+  so a delivered card is silent. The one thing that does ring is the chat
+  reminder (`POST /v1/chats/{id}/reminders`, beeper-out `--reminder`) —
+  confirmed firing as a desktop notification. Constraint: **one reminder per
+  chat; setting a new one replaces the old.** So `deliver-tick.sh` must, after
+  a successful post, set the chat reminder to `now` (or to the quiet-hours
+  exit when holding) — never layer several. Any user-set reminder on that chat
+  (e.g. a manual follow-up date) would be clobbered; rule: before setting,
+  read the current reminder and if it is in the future and not ours, keep it
+  and log `deliver: reminder kept (user)`. Per-card reminders belong to the
+  wake-up queue (snooze in plan 34), not to Beeper.
 - **D6 Sweep step 8 wired.** `skills/sweep/SKILL.md` step 8 becomes
   `bash packages/connectors/scripts/deliver-tick.sh <store-dir> [--today
   <today> --now <now>]`; for `gmail-self` it then invokes
