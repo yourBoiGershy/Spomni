@@ -4,6 +4,7 @@
 # Usage:
 #   beeper-sweep.sh [--data-dir <dir>]
 #   beeper-sweep.sh [--data-dir <dir>] --list-accounts
+#   beeper-sweep.sh [--data-dir <dir>] --backfill
 #
 # Implements the plan's Sweep algorithm (steps 1-8), see
 # docs/plans/2026-08-29-13-beeper-capture.md:
@@ -29,6 +30,18 @@
 # rows from GET /v1/accounts and exits. No store writes, no cursor writes,
 # no run-log line.
 #
+# --backfill: onboarding one-shot deep-history mode (plan 24 U6). Resolves
+# the onboarding-backfill window (packages/connectors/scripts/
+# resolve-backfill-window.sh) and, per chat, paginates messages backward
+# (direction=before) from the chat's existing *incremental* cursor (or now,
+# if the chat has none) to the window start — so it only ever fetches
+# history older than what incremental sweeps already cover. State is fully
+# isolated (D5): backfill-cursors.tsv + backfill-last-sweep, siblings of the
+# incremental cursors.tsv/last-sweep — this mode never reads chat listing
+# from, or writes cursors/last-sweep to, the incremental files. Logged to
+# the same runs.log with a `backfill-` outcome marker. One-shot; not wired
+# into the sync scheduler.
+#
 # Portable to bash 3.2 (macOS default): no associative arrays, no mapfile.
 
 set -u
@@ -37,8 +50,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 NORMALIZE_SCRIPT="${REPO_ROOT}/packages/connectors/scripts/normalize-capture.sh"
 
+RESOLVE_WINDOW_SCRIPT="${REPO_ROOT}/packages/connectors/scripts/resolve-backfill-window.sh"
+
 DATA_DIR="${REPO_ROOT}/data/connectors/beeper-in"
 LIST_ACCOUNTS=0
+BACKFILL=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -50,12 +66,20 @@ while [ $# -gt 0 ]; do
       LIST_ACCOUNTS=1
       shift
       ;;
+    --backfill)
+      BACKFILL=1
+      shift
+      ;;
     *)
       echo "beeper-sweep.sh: unrecognized argument: $1" >&2
       exit 1
       ;;
   esac
 done
+
+# Exported so lib.sh's exit trap (install_run_trap) can mark a synthesized
+# `error` outcome as `backfill-error` when this mode is active.
+BEEPER_BACKFILL="$BACKFILL"
 
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/lib.sh"
@@ -103,16 +127,23 @@ fi
 # Normal sweep. RUNS_LOG is set by beeper_load_config on every code path
 # (including the early skip-disabled/skip-no-token returns), so the trap is
 # safe to arm right away.
+#
+# LOG_PREFIX carries the `backfill-` outcome marker (plan 24 U6) onto every
+# run_log call below when --backfill is active; incremental invocation
+# (LOG_PREFIX="") is byte-identical to before this flag existed.
 # ---------------------------------------------------------------------------
 install_run_trap
 
+LOG_PREFIX=""
+[ "$BACKFILL" -eq 1 ] && LOG_PREFIX="backfill-"
+
 case "$LOAD_RC" in
   2)
-    run_log "skip-disabled" 0 0 0
+    run_log "${LOG_PREFIX}skip-disabled" 0 0 0
     exit 0
     ;;
   3)
-    run_log "skip-no-token" 0 0 0
+    run_log "${LOG_PREFIX}skip-no-token" 0 0 0
     exit 0
     ;;
 esac
@@ -124,11 +155,37 @@ case "$STORE_DIR" in
   *) STORE_DIR_ABS="${REPO_ROOT}/${STORE_DIR}" ;;
 esac
 
+# --backfill only: resolve the onboarding-backfill window and set up the
+# isolated backfill-cursors.tsv/backfill-last-sweep state (D5) before any
+# network call. <data-dir> for resolve-backfill-window.sh is the private
+# data root (sibling of data/store, parent of data/connectors/*) — derived
+# from DATA_DIR (data/connectors/beeper-in) by stripping two path segments,
+# per docs/data-layout.md's `data/{store,connectors}` shape.
+WINDOW_START_ISO=""
+if [ "$BACKFILL" -eq 1 ]; then
+  ROOT_DATA_DIR="$(cd "${DATA_DIR}/../.." 2>/dev/null && pwd)"
+  if [ -z "$ROOT_DATA_DIR" ]; then
+    run_log "backfill-error" 0 0 0 "could not resolve private data root from --data-dir ${DATA_DIR}"
+    exit 1
+  fi
+
+  window_line="$("$RESOLVE_WINDOW_SCRIPT" "$ROOT_DATA_DIR")"
+  window_rc=$?
+  if [ "$window_rc" -ne 0 ] || [ -z "$window_line" ]; then
+    run_log "backfill-error" 0 0 0 "resolve-backfill-window.sh failed (see stderr)"
+    exit 1
+  fi
+  WINDOW_START_ISO="${window_line%%	*}"
+
+  BACKFILL_CURSORS_FILE="${DATA_DIR}/backfill-cursors.tsv"
+  BACKFILL_LAST_SWEEP_FILE="${DATA_DIR}/backfill-last-sweep"
+fi
+
 # Step 2: reachability probe.
 info_resp="$(beeper_get "/v1/info")"
 info_rc=$?
 if [ "$info_rc" -ne 0 ] || [ -z "$info_resp" ]; then
-  run_log "skip-unreachable" 0 0 0
+  run_log "${LOG_PREFIX}skip-unreachable" 0 0 0
   exit 0
 fi
 
@@ -150,16 +207,21 @@ else
   WARN="${WARN}${WARN:+,}accounts-check-failed"
 fi
 
-# Step 4: list chats bounded by last-sweep (first page only on a first run).
+# Step 4: list chats bounded by last-sweep (first page only on a first
+# run); --backfill instead bounds by the resolved window start, deliberately
+# reaching deep (list_new_chats already paginates multi-page whenever its
+# `since` argument is non-empty).
 LAST_SWEEP=""
-if [ -f "$LAST_SWEEP_FILE" ]; then
+if [ "$BACKFILL" -eq 1 ]; then
+  LAST_SWEEP="$WINDOW_START_ISO"
+elif [ -f "$LAST_SWEEP_FILE" ]; then
   LAST_SWEEP="$(cat "$LAST_SWEEP_FILE" 2>/dev/null)"
 fi
 
 CHATS_TMP="$(mktemp)"
 if ! list_new_chats "$LAST_SWEEP" > "$CHATS_TMP"; then
   rm -f "$CHATS_TMP"
-  run_log "skip-unreachable" 0 0 0 "$WARN"
+  run_log "${LOG_PREFIX}skip-unreachable" 0 0 0 "$WARN"
   exit 0
 fi
 
@@ -180,9 +242,19 @@ while IFS= read -r chat_json; do
   title="$(printf '%s' "$chat_json" | jq -r '.title // empty')"
   chat_type="$(printf '%s' "$chat_json" | jq -r '.type // empty')"
 
+  # existing_cursor always reads the *incremental* ledger (cursors.tsv),
+  # even in --backfill mode: backfill's whole point is fetching only
+  # history older than what incremental already covers (or, with no
+  # incremental cursor yet, older than the chat's newest page).
   existing_cursor="$(cursor_get "$chat_id")"
   cursor_rc=$?
-  if [ "$cursor_rc" -eq 0 ]; then
+  if [ "$BACKFILL" -eq 1 ]; then
+    if [ "$cursor_rc" -eq 0 ]; then
+      fetch_result="$(fetch_backfill_messages "$chat_id" "$existing_cursor" "$WINDOW_START_ISO")"
+    else
+      fetch_result="$(fetch_backfill_messages "$chat_id" "" "$WINDOW_START_ISO")"
+    fi
+  elif [ "$cursor_rc" -eq 0 ]; then
     fetch_result="$(fetch_new_messages "$chat_id" "$existing_cursor")"
   else
     fetch_result="$(fetch_new_messages "$chat_id")"
@@ -234,7 +306,13 @@ while IFS= read -r chat_json; do
 
   if [ "$normalize_rc" -eq 0 ]; then
     EVENTS_COUNT=$((EVENTS_COUNT + 1))
-    [ -n "$final_cursor" ] && cursor_set "$chat_id" "$final_cursor"
+    if [ -n "$final_cursor" ]; then
+      if [ "$BACKFILL" -eq 1 ]; then
+        cursor_set "$chat_id" "$final_cursor" "$BACKFILL_CURSORS_FILE"
+      else
+        cursor_set "$chat_id" "$final_cursor"
+      fi
+    fi
   else
     QUARANTINED_COUNT=$((QUARANTINED_COUNT + 1))
   fi
@@ -243,12 +321,18 @@ done < "$CHATS_TMP"
 rm -f "$CHATS_TMP"
 
 # Step 8: last-sweep advances only because chat listing succeeded above.
-printf '%s\n' "$RUN_START" > "$LAST_SWEEP_FILE"
+# --backfill writes only its own isolated backfill-last-sweep — cursors.tsv
+# and last-sweep (the incremental files) are never touched by this mode.
+if [ "$BACKFILL" -eq 1 ]; then
+  printf '%s\n' "$RUN_START" > "$BACKFILL_LAST_SWEEP_FILE"
+else
+  printf '%s\n' "$RUN_START" > "$LAST_SWEEP_FILE"
+fi
 
 if [ "$QUARANTINED_COUNT" -gt 0 ]; then
-  OUTCOME="partial"
+  OUTCOME="${LOG_PREFIX}partial"
 else
-  OUTCOME="ok"
+  OUTCOME="${LOG_PREFIX}ok"
 fi
 
 run_log "$OUTCOME" "$CHATS_COUNT" "$EVENTS_COUNT" "$QUARANTINED_COUNT" "$WARN"

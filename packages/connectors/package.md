@@ -29,6 +29,8 @@ Each subdirectory is a sub-package and gets its own mini `package.md` when built
 
 Shared input tooling (e.g. `scripts/normalize-capture.sh`, and the sync scheduler
 `scripts/sync-scheduler.sh` + `scripts/sync-lib.sh`) lives at the package root.
+`scripts/resolve-backfill-window.sh` (plan 24) resolves the onboarding-backfill
+window from `<data-dir>/config/onboarding-backfill.tsv` for all lane backfill modes.
 
 ## Provides
 

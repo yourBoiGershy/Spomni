@@ -764,6 +764,169 @@ fi
 
 rm -rf "$CONNECTOR_STATE_DIR" "$incremental_checkpoint_before" "$incremental_log_before"
 
+# ---------------------------------------------------------------------------
+# resolve-backfill-window.sh (packages/connectors/scripts/resolve-backfill-window.sh,
+# plan 24 U3/U10) — window resolution for onboarding backfill mode, per
+# packages/core/contracts/onboarding-backfill.md.
+# ---------------------------------------------------------------------------
+
+RESOLVE_WINDOW="$REPO_ROOT/packages/connectors/scripts/resolve-backfill-window.sh"
+
+if [ ! -f "$RESOLVE_WINDOW" ]; then
+  echo "SKIP: $RESOLVE_WINDOW not found — cannot run resolve-backfill-window.sh tests."
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+else
+  RBW_DATA_DIR="$(mktemp -d)"
+
+  # (a) missing config file -> exit 0, default window_months of 6
+  out="$("$RESOLVE_WINDOW" "$RBW_DATA_DIR" 2>&1)"
+  status=$?
+  months="$(printf '%s' "$out" | cut -f2)"
+  if [ "$status" -eq 0 ] && [ "$months" = "6" ]; then
+    pass "resolve-backfill-window: missing config file defaults to window_months 6"
+  else
+    fail "resolve-backfill-window: missing config file did not default to 6 (status $status, out: $out)"
+  fi
+
+  # (b) window_months=2 -> second field 2, window_start ~ now-2 months
+  mkdir -p "$RBW_DATA_DIR/config"
+  printf 'window_months\t2\n' > "$RBW_DATA_DIR/config/onboarding-backfill.tsv"
+  out="$("$RESOLVE_WINDOW" "$RBW_DATA_DIR" 2>&1)"
+  status=$?
+  window_start="$(printf '%s' "$out" | cut -f1)"
+  months="$(printf '%s' "$out" | cut -f2)"
+  expected_prefix="$(date -u -v-2m +%Y-%m)"
+  if [ "$status" -eq 0 ] && [ "$months" = "2" ] && [ "${window_start%%-??T*}" = "$expected_prefix" ]; then
+    pass "resolve-backfill-window: window_months=2 resolves to months=2 and window_start ~ now-2mo"
+  else
+    fail "resolve-backfill-window: window_months=2 case failed (status $status, out: $out, expected prefix $expected_prefix)"
+  fi
+
+  # (c) malformed row (no tab) -> non-zero exit, non-empty stderr, empty stdout
+  printf 'not-a-valid-row-no-tab\n' > "$RBW_DATA_DIR/config/onboarding-backfill.tsv"
+  status=0
+  "$RESOLVE_WINDOW" "$RBW_DATA_DIR" >/dev/null 2>/dev/null || status=$?
+  err="$("$RESOLVE_WINDOW" "$RBW_DATA_DIR" 2>&1 1>/dev/null)"
+  stdout_only="$("$RESOLVE_WINDOW" "$RBW_DATA_DIR" 2>/dev/null)"
+  if [ "$status" -ne 0 ] && [ -n "$err" ] && [ -z "$stdout_only" ]; then
+    pass "resolve-backfill-window: malformed row (no tab) fails closed (non-zero, stderr, no stdout)"
+  else
+    fail "resolve-backfill-window: malformed row (no tab) did not fail closed (status $status, err: $err, stdout: $stdout_only)"
+  fi
+
+  # (d) unknown key -> non-zero exit, non-empty stderr, empty stdout
+  printf 'bogus_key\tvalue\n' > "$RBW_DATA_DIR/config/onboarding-backfill.tsv"
+  status=0
+  "$RESOLVE_WINDOW" "$RBW_DATA_DIR" >/dev/null 2>/dev/null || status=$?
+  err="$("$RESOLVE_WINDOW" "$RBW_DATA_DIR" 2>&1 1>/dev/null)"
+  stdout_only="$("$RESOLVE_WINDOW" "$RBW_DATA_DIR" 2>/dev/null)"
+  if [ "$status" -ne 0 ] && [ -n "$err" ] && [ -z "$stdout_only" ]; then
+    pass "resolve-backfill-window: unknown key fails closed (non-zero, stderr, no stdout)"
+  else
+    fail "resolve-backfill-window: unknown key did not fail closed (status $status, err: $err, stdout: $stdout_only)"
+  fi
+
+  # (e) window_months=0 -> non-zero exit, non-empty stderr, empty stdout
+  printf 'window_months\t0\n' > "$RBW_DATA_DIR/config/onboarding-backfill.tsv"
+  status=0
+  "$RESOLVE_WINDOW" "$RBW_DATA_DIR" >/dev/null 2>/dev/null || status=$?
+  err="$("$RESOLVE_WINDOW" "$RBW_DATA_DIR" 2>&1 1>/dev/null)"
+  stdout_only="$("$RESOLVE_WINDOW" "$RBW_DATA_DIR" 2>/dev/null)"
+  if [ "$status" -ne 0 ] && [ -n "$err" ] && [ -z "$stdout_only" ]; then
+    pass "resolve-backfill-window: window_months=0 fails closed (non-zero, stderr, no stdout)"
+  else
+    fail "resolve-backfill-window: window_months=0 did not fail closed (status $status, err: $err, stdout: $stdout_only)"
+  fi
+
+  # (f) self rows + comments + window_months=3 -> exit 0, months=3
+  cat > "$RBW_DATA_DIR/config/onboarding-backfill.tsv" <<'EOF'
+# onboarding backfill config
+self	me@example.com
+self	me-alt@example.com
+
+window_months	3
+EOF
+  out="$("$RESOLVE_WINDOW" "$RBW_DATA_DIR" 2>&1)"
+  status=$?
+  months="$(printf '%s' "$out" | cut -f2)"
+  if [ "$status" -eq 0 ] && [ "$months" = "3" ]; then
+    pass "resolve-backfill-window: self rows + comments + window_months=3 resolves to months=3"
+  else
+    fail "resolve-backfill-window: self rows + comments + window_months=3 case failed (status $status, out: $out)"
+  fi
+
+  rm -rf "$RBW_DATA_DIR"
+fi
+
+# ---------------------------------------------------------------------------
+# calendar-in backfill ledger isolation (plan 24 D5, calendar-sweep SKILL.md
+# "Backfill mode" §8 adaptation): dedup reads BOTH processed.log (incremental)
+# and backfill-processed.log (backfill), keyed <event-id>:<updated>; a
+# successful backfill capture appends ONLY to backfill-processed.log, never
+# touching processed.log. calendar-sweep is session-driven (no standalone
+# script), so this simulates the documented dedup/append rules the same way
+# the gmail-in namespace-isolation block above does.
+# ---------------------------------------------------------------------------
+
+CAL_STATE_DIR="$(mktemp -d)"
+CAL_STATE="$CAL_STATE_DIR/calendar"
+mkdir -p "$CAL_STATE"
+
+CAL_INCREMENTAL_LOG="$CAL_STATE/processed.log"
+CAL_BACKFILL_LOG="$CAL_STATE/backfill-processed.log"
+
+printf 'evt-already-incremental:2026-08-01T00:00:00Z\n' > "$CAL_INCREMENTAL_LOG"
+
+cal_incremental_log_before="$(mktemp)"
+cp "$CAL_INCREMENTAL_LOG" "$cal_incremental_log_before"
+
+# simulate a backfill pass: one dedup key already in the incremental ledger,
+# one already in a prior backfill pass's ledger, two genuinely new keys.
+simulate_calendar_backfill_pass() {
+  target_log="$1"
+  printf 'evt-already-in-backfill:2026-07-01T00:00:00Z\n' > "$CAL_BACKFILL_LOG"
+  batch_keys="evt-already-incremental:2026-08-01T00:00:00Z evt-already-in-backfill:2026-07-01T00:00:00Z evt-backfill-only-1:2026-06-01T00:00:00Z evt-backfill-only-2:2026-05-01T00:00:00Z"
+  for dedup_key in $batch_keys; do
+    if grep -qxF "$dedup_key" "$CAL_INCREMENTAL_LOG" 2>/dev/null; then
+      continue  # already captured incrementally — skip, dedup read-only
+    fi
+    if grep -qxF "$dedup_key" "$CAL_BACKFILL_LOG" 2>/dev/null; then
+      continue  # already captured by a prior backfill pass
+    fi
+    printf '%s\n' "$dedup_key" >> "$target_log"
+  done
+}
+
+simulate_calendar_backfill_pass "$CAL_BACKFILL_LOG"
+
+if grep -qxF "evt-backfill-only-1:2026-06-01T00:00:00Z" "$CAL_BACKFILL_LOG" 2>/dev/null \
+  && grep -qxF "evt-backfill-only-2:2026-05-01T00:00:00Z" "$CAL_BACKFILL_LOG" 2>/dev/null; then
+  pass "calendar backfill ledger: new dedup keys appended to backfill-processed.log"
+else
+  fail "calendar backfill ledger: expected new dedup keys missing from backfill-processed.log"
+fi
+
+if grep -qxF "evt-already-incremental:2026-08-01T00:00:00Z" "$CAL_BACKFILL_LOG" 2>/dev/null; then
+  fail "calendar backfill ledger: a key already in processed.log was duplicated into backfill-processed.log (dedup must check both ledgers)"
+else
+  pass "calendar backfill ledger: a key already in processed.log was correctly skipped (dedup checks both ledgers)"
+fi
+
+cal_dup_count="$(grep -cxF "evt-already-in-backfill:2026-07-01T00:00:00Z" "$CAL_BACKFILL_LOG" 2>/dev/null)"
+if [ "$cal_dup_count" -eq 1 ]; then
+  pass "calendar backfill ledger: a key already in backfill-processed.log was not re-appended (dedup checks its own ledger too)"
+else
+  fail "calendar backfill ledger: a key already in backfill-processed.log was duplicated ($cal_dup_count occurrences)"
+fi
+
+if diff -q "$cal_incremental_log_before" "$CAL_INCREMENTAL_LOG" >/dev/null 2>&1; then
+  pass "calendar backfill ledger: incremental processed.log byte-identical after backfill pass"
+else
+  fail "calendar backfill ledger: incremental processed.log was modified by a backfill pass"
+fi
+
+rm -rf "$CAL_STATE_DIR" "$cal_incremental_log_before"
+
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 

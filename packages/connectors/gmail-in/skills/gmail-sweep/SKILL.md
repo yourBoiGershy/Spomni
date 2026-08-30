@@ -221,3 +221,65 @@ gmail-sweep: fetched=<N> captured=<N> deduped=<N> quarantined=<N> pages=<N> drai
 
 Plus, list the banned mutating tools found present in step 0's enumeration
 ("present but never called").
+
+## Backfill mode (one-shot, explicit invocation only)
+
+Backfill is a **separate, explicitly-invoked mode** of this same skill — "run
+gmail-sweep in backfill mode" — for a one-shot deep sweep over a wider
+historical window during onboarding. It is **never** implied by a normal
+sweep run, and it is **never** a `sync-lanes` scheduler row (chunk 19); it
+only runs when a human or an onboarding flow says so explicitly.
+
+**State backfill mode owns** (isolated from, and never overlapping with,
+"State this skill owns" above):
+
+```
+data/connectors/gmail/backfill-checkpoint     one line: ISO 8601 Z timestamp
+                                               of the newest message-Date
+                                               successfully captured by a
+                                               backfill run so far, advanced
+                                               only when a backfill run's
+                                               window fully drains (same rule
+                                               as Step 1/Step 3, applied to
+                                               this file)
+data/connectors/gmail/backfill-processed.log  append-only dedup ledger for
+                                               backfill runs, one Gmail
+                                               message `id` per line
+```
+
+**Hard isolation rule:** a backfill run never reads, writes, or advances the
+incremental `data/connectors/gmail/checkpoint` or
+`data/connectors/gmail/processed.log` files — those are Step 1/Step 3's
+files, owned exclusively by normal incremental sweeps. Backfill writes only
+to `backfill-checkpoint` and `backfill-processed.log`.
+
+**Window resolution.** Instead of Step 1's checkpoint-based window, resolve
+the backfill window by running:
+
+```sh
+bash packages/connectors/scripts/resolve-backfill-window.sh <data-dir>
+```
+
+This prints `window_start_iso<TAB>window_months` on stdout, or exits
+non-zero with a stderr message on malformed config — on a non-zero exit,
+**abort the backfill run** and show that stderr verbatim; do not fall back
+to any default window. On success, query with `after:<window-start-date>`
+and `before:<today's-date>` (both derived from the resolved window start and
+the run's own UTC "now", same `search_threads` call shape as Step 1).
+
+**Dedup is read-only against both ledgers.** Before fetching a message
+(Step 2.1's dedup check), skip it if its `id` appears in **either**
+`data/connectors/gmail/processed.log` (incremental) **or**
+`data/connectors/gmail/backfill-processed.log` (backfill) — this prevents
+re-capturing messages an incremental sweep already landed. On successful
+capture (Step 2.11), append the `id` only to `backfill-processed.log`,
+never to `processed.log`.
+
+**Everything else is identical to the incremental sweep and is not
+re-specified here** — apply Step 0's tool enumeration, Step 1's page budget
+and drain tracking, Step 2's per-message loop (fetch, archive, classify,
+hints, body, normalize, quarantine-continue), and Step 3's checkpoint-advance
+rule (≥1 message captured this run AND the window fully drained) verbatim,
+substituting `backfill-checkpoint` / `backfill-processed.log` for
+`checkpoint` / `processed.log` throughout. Step 4's summary line applies
+unchanged, prefixed `gmail-sweep (backfill):` instead of `gmail-sweep:`.

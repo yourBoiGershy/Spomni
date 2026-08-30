@@ -24,7 +24,10 @@ nothing.
   `packages/<pkg>/evals/cases/<name>/` format — prompt.md frontmatter,
   graders/ protocol, xfail discipline, suite manifests — per plan 12),
   `contracts/sync-lanes.md` (`<data-dir>/connectors/sync-scheduler/lanes.tsv`, the
-  scheduled-syncs runner's lane config, per plan 19)
+  scheduled-syncs runner's lane config, per plan 19),
+  `contracts/onboarding-backfill.md` (`<data-dir>/config/onboarding-backfill.tsv`,
+  the user-configurable onboarding-backfill window + self-identity config, per
+  plan 24)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
   `templates/profile.md`, `templates/sync-lanes.tsv`
 - Store scripts: `scripts/build-index.sh` (people/ → index.json),
@@ -65,3 +68,5 @@ by plan 12 (docs/plans/2026-08-29-12-eval-harness.md); the forward-declared
 The `wakeup.md` 1.2.0 event-proposal bump is by plan 21
 (docs/plans/2026-08-29-21-calendar-intelligence.md); `wakeup-add.sh`'s
 event-proposal creation flags are a later work unit of the same plan.
+`contracts/onboarding-backfill.md` by plan 24
+(docs/plans/2026-08-29-24-onboarding-backfill-priority-seeding.md).

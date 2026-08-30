@@ -884,6 +884,341 @@ fi
 
 fi # SWEEP_SCRIPT / NORMALIZE_SCRIPT present
 
+# =============================================================================
+# 8. --backfill mode (plan 24 U6/U11). Same route_stub + fixture harness as
+#    section 7, plus resolve-backfill-window.sh (called directly to pin the
+#    window boundary for the straddling-page test). <data-root> layout:
+#    <root>/connectors/beeper-in is the --data-dir passed to beeper-sweep.sh
+#    (so it can strip two segments back to <root> the same way the sweep
+#    script itself does); <root>/config/onboarding-backfill.tsv is optional
+#    per-test config.
+# =============================================================================
+
+RESOLVE_WINDOW_SCRIPT="$REPO_ROOT/packages/connectors/scripts/resolve-backfill-window.sh"
+
+if [ ! -x "$SWEEP_SCRIPT" ] || [ ! -x "$NORMALIZE_SCRIPT" ]; then
+  fail "backfill: beeper-sweep.sh or normalize-capture.sh not found/executable — skipping backfill subtests"
+elif [ ! -x "$RESOLVE_WINDOW_SCRIPT" ]; then
+  fail "backfill: resolve-backfill-window.sh not found/executable at $RESOLVE_WINDOW_SCRIPT"
+else
+
+BF_ROOT="$SANDBOX/backfill"
+mkdir -p "$BF_ROOT"
+
+# =============================================================================
+# 8a. Isolation: a --backfill-only run (no prior incremental run) must write
+#     backfill-cursors.tsv + backfill-last-sweep, and must NOT create
+#     cursors.tsv / last-sweep (the incremental ledger) at all.
+# =============================================================================
+
+bf1_root="$BF_ROOT/1-isolation"
+bf1_data_root="$bf1_root/data-root"
+bf1_data="$bf1_data_root/connectors/beeper-in"
+bf1_store="$bf1_root/store"
+mkdir -p "$bf1_store" "$bf1_data"
+make_beeper_config "$bf1_data" "$bf1_store" "matrix local-whatsapp_ba_test1"
+
+bf1_log="$bf1_root/stub-argv.log"
+
+(
+  export STUB_LOG="$bf1_log"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$bf1_data" --backfill
+) > "$bf1_root/stdout.log" 2>"$bf1_root/stderr.log"
+bf1_rc=$?
+
+assert_eq "backfill isolation: sweep exits 0" "$bf1_rc" "0"
+
+if [ -f "$bf1_data/backfill-cursors.tsv" ]; then
+  pass "backfill isolation: backfill-cursors.tsv was created"
+else
+  fail "backfill isolation: backfill-cursors.tsv missing at $bf1_data/backfill-cursors.tsv"
+fi
+
+if [ -f "$bf1_data/backfill-last-sweep" ]; then
+  pass "backfill isolation: backfill-last-sweep was created"
+else
+  fail "backfill isolation: backfill-last-sweep missing at $bf1_data/backfill-last-sweep"
+fi
+
+if [ -f "$bf1_data/cursors.tsv" ]; then
+  fail "backfill isolation: cursors.tsv was created by a --backfill-only run (must stay absent)"
+else
+  pass "backfill isolation: cursors.tsv (incremental ledger) stays absent"
+fi
+
+if [ -f "$bf1_data/last-sweep" ]; then
+  fail "backfill isolation: last-sweep was created by a --backfill-only run (must stay absent)"
+else
+  pass "backfill isolation: last-sweep (incremental ledger) stays absent"
+fi
+
+bf1_runlog_last="$(tail -n1 "$bf1_data/runs.log" 2>/dev/null)"
+if printf '%s' "$bf1_runlog_last" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z backfill-ok chats=2 events=2 quarantined=0$'; then
+  pass "backfill isolation: runs.log carries the backfill- outcome prefix"
+else
+  fail "backfill isolation: unexpected runs.log last line: [$bf1_runlog_last]"
+fi
+
+# =============================================================================
+# 8b. Window bound: a page straddling the window start must have its
+#     older-than-window items filtered out. Timestamps are computed from the
+#     actual window boundary (window_months=1, resolved for real) rather than
+#     hardcoded, so this test is immune to drift in "now".
+# =============================================================================
+
+bf2_root="$BF_ROOT/2-window-bound"
+bf2_data_root="$bf2_root/data-root"
+bf2_data="$bf2_data_root/connectors/beeper-in"
+bf2_store="$bf2_root/store"
+mkdir -p "$bf2_store" "$bf2_data" "$bf2_data_root/config"
+make_beeper_config "$bf2_data" "$bf2_store" "matrix local-whatsapp_ba_test1"
+printf 'window_months\t1\n' > "$bf2_data_root/config/onboarding-backfill.tsv"
+
+bf2_window_line="$("$RESOLVE_WINDOW_SCRIPT" "$bf2_data_root")"
+bf2_window_start="$(printf '%s' "$bf2_window_line" | cut -f1)"
+
+if [ -z "$bf2_window_start" ]; then
+  fail "backfill window bound: could not resolve a window start to pin the test to"
+else
+  bf2_in_ts="$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' -v+1d "$bf2_window_start" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null)"
+  bf2_out_ts="$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' -v-1d "$bf2_window_start" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null)"
+
+  bf2_straddle_fixture="$bf2_root/messages-straddle.json"
+  cat > "$bf2_straddle_fixture" <<EOF
+{
+  "items": [
+    {
+      "id": "msg-bf-in-window",
+      "chatID": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "senderID": "@bea-sample:example.org",
+      "senderName": "Bea Sample",
+      "timestamp": "$bf2_in_ts",
+      "sortKey": "0000000002",
+      "type": "TEXT",
+      "text": "IN-WINDOW-MESSAGE-MARKER",
+      "isSender": false,
+      "attachments": [],
+      "linkedMessageID": null,
+      "reactions": []
+    },
+    {
+      "id": "msg-bf-out-window",
+      "chatID": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "senderID": "@bea-sample:example.org",
+      "senderName": "Bea Sample",
+      "timestamp": "$bf2_out_ts",
+      "sortKey": "0000000001",
+      "type": "TEXT",
+      "text": "OUT-OF-WINDOW-MESSAGE-MARKER",
+      "isSender": false,
+      "attachments": [],
+      "linkedMessageID": null,
+      "reactions": []
+    }
+  ],
+  "hasMore": false,
+  "oldestCursor": "cursor-bf-straddle-oldest",
+  "newestCursor": "cursor-bf-straddle-newest"
+}
+EOF
+
+  bf2_log="$bf2_root/stub-argv.log"
+  (
+    export STUB_LOG="$bf2_log"
+    export STUB_INFO="$info_body"
+    export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+    export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+    export STUB_MSG_FIRST="$bf2_straddle_fixture"
+    export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+    BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$bf2_data" --backfill
+  ) > "$bf2_root/stdout.log" 2>"$bf2_root/stderr.log"
+  bf2_rc=$?
+
+  assert_eq "backfill window bound: sweep exits 0" "$bf2_rc" "0"
+
+  if grep -rq 'IN-WINDOW-MESSAGE-MARKER' "$bf2_store"/inbox/*.md 2>/dev/null; then
+    pass "backfill window bound: in-window message was captured"
+  else
+    fail "backfill window bound: expected in-window message not found in any inbox event"
+  fi
+
+  if grep -rq 'OUT-OF-WINDOW-MESSAGE-MARKER' "$bf2_store"/inbox/*.md 2>/dev/null; then
+    fail "backfill window bound: out-of-window message leaked into a captured inbox event"
+  else
+    pass "backfill window bound: out-of-window message was filtered out (not captured)"
+  fi
+fi
+
+# =============================================================================
+# 8c. No duplicate coverage: a --backfill run AFTER an incremental run must
+#     request older history (cursor=<incremental cursor>&direction=before)
+#     and must not re-capture the messages the incremental run already
+#     covered.
+# =============================================================================
+
+bf3_root="$BF_ROOT/3-no-dup-coverage"
+bf3_data_root="$bf3_root/data-root"
+bf3_data="$bf3_data_root/connectors/beeper-in"
+bf3_store="$bf3_root/store"
+mkdir -p "$bf3_store" "$bf3_data"
+make_beeper_config "$bf3_data" "$bf3_store" "matrix local-whatsapp_ba_test1"
+
+bf3_incr_log="$bf3_root/stub-argv-incremental.log"
+(
+  export STUB_LOG="$bf3_incr_log"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$bf3_data"
+) > "$bf3_root/stdout-incremental.log" 2>"$bf3_root/stderr-incremental.log"
+bf3_incr_rc=$?
+assert_eq "backfill no-dup coverage: prior incremental run exits 0" "$bf3_incr_rc" "0"
+
+bf3_bf_log="$bf3_root/stub-argv-backfill.log"
+(
+  export STUB_LOG="$bf3_bf_log"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-page-backfill-older.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$bf3_data" --backfill
+) > "$bf3_root/stdout-backfill.log" 2>"$bf3_root/stderr-backfill.log"
+bf3_bf_rc=$?
+assert_eq "backfill no-dup coverage: backfill run exits 0" "$bf3_bf_rc" "0"
+
+if grep -q 'direction=before' "$bf3_bf_log" 2>/dev/null && grep -q 'cursor=' "$bf3_bf_log" 2>/dev/null; then
+  pass "backfill no-dup coverage: backfill requested cursor-bound direction=before pages (fetching only older history)"
+else
+  fail "backfill no-dup coverage: expected a cursor-bound direction=before request in $bf3_bf_log"
+fi
+
+if grep -rq 'msg-bf-older-001' "$bf3_store"/inbox/*.md 2>/dev/null; then
+  pass "backfill no-dup coverage: backfill captured the genuinely-older fixture message"
+else
+  fail "backfill no-dup coverage: expected older-fixture message id not found in any inbox event"
+fi
+
+# msg-sample-001/002/003 are the incremental fixture's message ids: the
+# backfill run must not re-request/re-capture them (it fetched the "older"
+# fixture instead, driven by direction=before + the incremental cursor).
+# The shared messages-page.json fixture is chat-agnostic (same message ids
+# regardless of which chat requests it), so both of the incremental run's
+# two chats produce one inbox event apiece containing these ids — that's the
+# ceiling. The no-dup-coverage property is that the *backfill* run's
+# request/response never touched them (established by the direction=before +
+# cursor= assertion above): if backfill had re-captured them, this count
+# would grow past that ceiling (to 3 or 4, from backfill's own two chats).
+bf3_dup_ids="$(grep -rl 'msg-sample-00[123]' "$bf3_store"/inbox/*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "backfill no-dup coverage: incremental fixture's message ids appear only in the incremental run's own events (2 chats), never re-captured by backfill" "$bf3_dup_ids" "2"
+
+# =============================================================================
+# 8d. Incremental unaffected: an incremental run's cursor advancement is
+#     identical whether or not a --backfill run happened in between.
+# =============================================================================
+
+incr_stub_run() {
+  # $1 = data_dir — runs one incremental sweep with the shared stub/fixtures.
+  (
+    export STUB_LOG="$(mktemp)"
+    export STUB_INFO="$info_body"
+    export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+    export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+    export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+    export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+    BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$1"
+  ) > /dev/null 2>&1
+}
+
+bf4a_root="$BF_ROOT/4a-baseline"
+bf4a_data="$bf4a_root/data-root/connectors/beeper-in"
+bf4a_store="$bf4a_root/store"
+mkdir -p "$bf4a_store" "$bf4a_data"
+make_beeper_config "$bf4a_data" "$bf4a_store" "matrix local-whatsapp_ba_test1"
+incr_stub_run "$bf4a_data"
+incr_stub_run "$bf4a_data"
+
+bf4b_root="$BF_ROOT/4b-with-backfill"
+bf4b_data="$bf4b_root/data-root/connectors/beeper-in"
+bf4b_store="$bf4b_root/store"
+mkdir -p "$bf4b_store" "$bf4b_data"
+make_beeper_config "$bf4b_data" "$bf4b_store" "matrix local-whatsapp_ba_test1"
+incr_stub_run "$bf4b_data"
+(
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-page-backfill-older.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$bf4b_data" --backfill
+) > /dev/null 2>&1
+# The backfill run legitimately adds its own inbox events (older history) —
+# that's not a violation. What "incremental unaffected" means is that the
+# trailing incremental run's own contribution is unchanged: count events
+# right after the interleaved backfill, then confirm the final incremental
+# run adds none (same no-op behavior as the baseline's second run).
+bf4b_events_post_backfill="$(find "$bf4b_store/inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
+incr_stub_run "$bf4b_data"
+bf4b_events_final="$(find "$bf4b_store/inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
+
+if diff -q "$bf4a_data/cursors.tsv" "$bf4b_data/cursors.tsv" >/dev/null 2>&1; then
+  pass "backfill incremental-unaffected: second incremental run's cursors.tsv is identical with/without an interleaved backfill run"
+else
+  fail "backfill incremental-unaffected: cursors.tsv diverged — diff: $(diff "$bf4a_data/cursors.tsv" "$bf4b_data/cursors.tsv" 2>&1 | tr '\n' ' ')"
+fi
+
+assert_eq "backfill incremental-unaffected: the trailing incremental run adds zero new inbox events after an interleaved backfill (same no-op as the baseline's second run)" "$bf4b_events_final" "$bf4b_events_post_backfill"
+
+# =============================================================================
+# 8e. Default-window pin (contract check): with NO
+#     <data-root>/config/onboarding-backfill.tsv present, --backfill must
+#     still run using the default 6-month window (missing file is valid per
+#     packages/core/contracts/onboarding-backfill.md — the helper defaults
+#     window_months to 6). Per the brief: if the implementation instead
+#     skips/errors here, this assertion is left as a documented expected-fail
+#     rather than silently patched, and reported as a finding.
+# =============================================================================
+
+bf5_root="$BF_ROOT/5-default-window"
+bf5_data_root="$bf5_root/data-root"
+bf5_data="$bf5_data_root/connectors/beeper-in"
+bf5_store="$bf5_root/store"
+mkdir -p "$bf5_store" "$bf5_data"
+make_beeper_config "$bf5_data" "$bf5_store" "matrix local-whatsapp_ba_test1"
+# Deliberately no $bf5_data_root/config/onboarding-backfill.tsv.
+
+bf5_log="$bf5_root/stub-argv.log"
+(
+  export STUB_LOG="$bf5_log"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$bf5_data" --backfill
+) > "$bf5_root/stdout.log" 2>"$bf5_root/stderr.log"
+bf5_rc=$?
+
+assert_eq "backfill default-window pin: sweep exits 0 with no onboarding-backfill.tsv present" "$bf5_rc" "0"
+
+bf5_runlog_last="$(tail -n1 "$bf5_data/runs.log" 2>/dev/null)"
+if printf '%s' "$bf5_runlog_last" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z backfill-ok chats=2 events=2 quarantined=0$'; then
+  pass "backfill default-window pin: runs with the default 6-month window (no skip/error) per onboarding-backfill.md's missing-file-is-valid rule"
+else
+  fail "backfill default-window pin: expected a backfill-ok run using the default window; got runs.log last line: [$bf5_runlog_last] (see brief: if this is a real skip/error, it is a FINDING, not something this test suite should route around)"
+fi
+
+fi # SWEEP_SCRIPT / NORMALIZE_SCRIPT / RESOLVE_WINDOW_SCRIPT present
+
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 

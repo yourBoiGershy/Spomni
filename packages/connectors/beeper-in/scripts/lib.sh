@@ -6,6 +6,9 @@
 #   cursor_get / cursor_set        — cursors.tsv read/advance
 #   run_log / install_run_trap     — runs.log writer + EXIT-trap safety net
 #   list_new_chats / fetch_new_messages — pagination helpers over /v1/chats(/*/messages)
+#   fetch_backfill_messages        — --backfill mode's direction=before pagination
+#                                     helper (plan 24 U6); reads/writes no state of
+#                                     its own — cursor isolation lives in the sweep
 #
 # Read-only forever: beeper_get is GET-only (no -X, no --data). Allowed paths:
 # /v1/info, /v1/accounts, /v1/chats, /v1/chats/*/messages.
@@ -102,37 +105,44 @@ beeper_get() {
 }
 
 # ---------------------------------------------------------------------------
-# cursor_get <chatID> — print the chat's newestCursor from cursors.tsv on
-# stdout and return 0 if found; return 1 (no output) if the chat has no
-# saved cursor yet (its first capture is a newest-page fetch, no cursor).
+# cursor_get <chatID> [file] — print the chat's newestCursor from the given
+# cursors file on stdout and return 0 if found; return 1 (no output) if the
+# chat has no saved cursor yet (its first capture is a newest-page fetch, no
+# cursor). [file] defaults to $CURSORS_FILE (the incremental ledger); pass
+# $BACKFILL_CURSORS_FILE explicitly to read the isolated backfill ledger
+# instead — the two are never conflated (D5).
 # ---------------------------------------------------------------------------
 cursor_get() {
   chat_id="$1"
+  file="${2:-$CURSORS_FILE}"
 
-  [ -f "$CURSORS_FILE" ] || return 1
+  [ -f "$file" ] || return 1
 
   awk -F'\t' -v id="$chat_id" '
     $1 == id { c = $2; found = 1 }
     END { if (found) { print c; exit 0 } else { exit 1 } }
-  ' "$CURSORS_FILE"
+  ' "$file"
 }
 
 # ---------------------------------------------------------------------------
-# cursor_set <chatID> <cursor> — rewrite cursors.tsv via temp file + mv,
-# replacing any existing line for chatID with the new cursor. Callers must
-# only advance a chat's cursor after its capture event normalized
-# successfully (contract lives in the sweep, not here).
+# cursor_set <chatID> <cursor> [file] — rewrite the given cursors file via
+# temp file + mv, replacing any existing line for chatID with the new
+# cursor. [file] defaults to $CURSORS_FILE; pass $BACKFILL_CURSORS_FILE
+# explicitly for backfill writes so the incremental ledger is never touched
+# (D5). Callers must only advance a chat's cursor after its capture event
+# normalized successfully (contract lives in the sweep, not here).
 # ---------------------------------------------------------------------------
 cursor_set() {
   chat_id="$1"
   cursor="$2"
+  file="${3:-$CURSORS_FILE}"
 
   tmp="$(mktemp)"
-  if [ -f "$CURSORS_FILE" ]; then
-    awk -F'\t' -v id="$chat_id" '$1 != id' "$CURSORS_FILE" > "$tmp"
+  if [ -f "$file" ]; then
+    awk -F'\t' -v id="$chat_id" '$1 != id' "$file" > "$tmp"
   fi
   printf '%s\t%s\n' "$chat_id" "$cursor" >> "$tmp"
-  mv "$tmp" "$CURSORS_FILE"
+  mv "$tmp" "$file"
 }
 
 # ---------------------------------------------------------------------------
@@ -163,7 +173,9 @@ run_log() {
 # ---------------------------------------------------------------------------
 # install_run_trap — arm an EXIT trap that writes an `error` status line if
 # the script exits without run_log having been called (silence impossible).
-# Call once, after beeper_load_config has set RUNS_LOG.
+# Call once, after beeper_load_config has set RUNS_LOG. If $BEEPER_BACKFILL
+# is "1" the synthesized outcome carries the same `backfill-` marker used by
+# the sweep's own explicit run_log calls in that mode.
 # ---------------------------------------------------------------------------
 install_run_trap() {
   trap '_beeper_run_exit_trap' EXIT
@@ -171,7 +183,9 @@ install_run_trap() {
 
 _beeper_run_exit_trap() {
   if [ "${RUN_LOGGED:-0}" -ne 1 ]; then
-    run_log "error" 0 0 0 "exited without logging a run status"
+    outcome="error"
+    [ "${BEEPER_BACKFILL:-0}" -eq 1 ] && outcome="backfill-error"
+    run_log "$outcome" 0 0 0 "exited without logging a run status"
   fi
 }
 
@@ -297,6 +311,74 @@ fetch_new_messages() {
       fi
     done
   fi
+
+  jq -cs --arg fc "$final_cursor" '{items: ., finalCursor: $fc}' "$items_tmp"
+  rm -f "$items_tmp"
+}
+
+# ---------------------------------------------------------------------------
+# fetch_backfill_messages <chatID> [start-cursor] <window-start-ISO> —
+# --backfill mode only (plan 24 U6). Paginates backward (direction=before)
+# from [start-cursor] (the chat's existing *incremental* cursor, passed in
+# by the caller — never read from here) or, with no start-cursor, from the
+# newest page (chat's first-ever capture, incremental or backfill). Stops
+# once a page's oldest message predates window-start, once the API reports
+# no more history, or after $MAX_PAGES_PER_CHAT pages (remainder is simply
+# not reached this one-shot run — no resume bookkeeping, per D4). Messages
+# older than window-start within a straddling page are filtered out. Emits
+# one JSON object on stdout: {items: [Message, …], finalCursor: "<oldest
+# cursor reached, or the input start-cursor if no page was fetched>"}.
+# Returns 1 on a beeper_get failure.
+# ---------------------------------------------------------------------------
+fetch_backfill_messages() {
+  chat_id="$1"
+  cursor="${2:-}"
+  window_start="$3"
+
+  encoded_chat_id="$(beeper_urlencode "$chat_id")"
+  items_tmp="$(mktemp)"
+  final_cursor="$cursor"
+  page=0
+
+  while :; do
+    page=$((page + 1))
+    if [ "$page" -gt "$MAX_PAGES_PER_CHAT" ]; then
+      break
+    fi
+
+    if [ -z "$cursor" ]; then
+      path="/v1/chats/${encoded_chat_id}/messages"
+    else
+      encoded_cursor="$(beeper_urlencode "$cursor")"
+      path="/v1/chats/${encoded_chat_id}/messages?cursor=${encoded_cursor}&direction=before"
+    fi
+
+    resp="$(beeper_get "$path")" || { rm -f "$items_tmp"; return 1; }
+    if [ -z "$resp" ]; then
+      rm -f "$items_tmp"
+      return 1
+    fi
+
+    # Keep only messages at/after window-start — a page may straddle it.
+    printf '%s' "$resp" | jq -c --arg ws "$window_start" \
+      '.items[]? | select(.timestamp >= $ws)' >> "$items_tmp"
+
+    oldest_ts="$(printf '%s' "$resp" | jq -r '[.items[].timestamp] | min // empty' 2>/dev/null)"
+    oldest_cursor="$(printf '%s' "$resp" | jq -r '.oldestCursor // .cursors.oldest // empty')"
+    has_more="$(printf '%s' "$resp" | jq -r '.hasMore // false')"
+
+    [ -n "$oldest_cursor" ] && final_cursor="$oldest_cursor"
+
+    if [ -n "$oldest_ts" ] && [ "$oldest_ts" \< "$window_start" ]; then
+      break
+    fi
+
+    if [ "$has_more" != "true" ] || [ -z "$oldest_cursor" ]; then
+      break
+    fi
+
+    cursor="$oldest_cursor"
+  done
 
   jq -cs --arg fc "$final_cursor" '{items: ., finalCursor: $fc}' "$items_tmp"
   rm -f "$items_tmp"

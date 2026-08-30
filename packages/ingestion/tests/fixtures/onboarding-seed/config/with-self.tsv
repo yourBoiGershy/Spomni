@@ -1,0 +1,4 @@
+# onboarding-backfill.tsv fixture — one self identity, used by
+# run-seed-tests.sh's derive-participation.sh assertions.
+self	me@example.com
+window_months	6

@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-08-29T00:00:00Z",
+  "people": {
+    "gmail-engaged": {
+      "tier": null,
+      "touchpoints": 1,
+      "median_gap_days": null,
+      "interactions": [
+        {"id": "2026-07-01-gmail-engaged", "date": "2026-07-01", "calendar": false, "others": []}
+      ]
+    },
+    "gmail-inbound": {
+      "tier": null,
+      "touchpoints": 1,
+      "median_gap_days": null,
+      "interactions": [
+        {"id": "2026-07-02-gmail-inbound", "date": "2026-07-02", "calendar": false, "others": []}
+      ]
+    },
+    "beeper-engaged-fallback": {
+      "tier": null,
+      "touchpoints": 1,
+      "median_gap_days": null,
+      "interactions": [
+        {"id": "2026-07-03-beeper-fallback", "date": "2026-07-03", "calendar": false, "others": []}
+      ]
+    },
+    "window-filtered": {
+      "tier": null,
+      "touchpoints": 2,
+      "median_gap_days": 213,
+      "interactions": [
+        {"id": "2026-08-01-window-filtered-a", "date": "2026-08-01", "calendar": false, "others": []},
+        {"id": "2026-01-01-window-filtered-b", "date": "2026-01-01", "calendar": false, "others": []}
+      ]
+    }
+  }
+}

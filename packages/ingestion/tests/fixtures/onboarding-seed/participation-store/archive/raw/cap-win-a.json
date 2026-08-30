@@ -1,0 +1,8 @@
+{
+  "id": "fixture-msg-win-a",
+  "threadId": "fixture-thread-win-a",
+  "date": "2026-08-01T10:00:00Z",
+  "sender": "faye.fixture@example.com",
+  "toRecipients": ["me@example.com"],
+  "plaintextBody": "In-window fixture email, inbound only, no group — for the in-window filtering assertion."
+}

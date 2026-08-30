@@ -1,0 +1,6 @@
+clamp-case	3	inner-circle	suggested: inner-circle | base: inner-circle (median_gap_days=10) | signals: user-engaged(+2), co-attended(+1)
+tie21	3	inner-circle	suggested: inner-circle | base: inner-circle (median_gap_days=21) | signals: user-engaged(+2)
+close45	3	inner-circle	suggested: inner-circle | base: close (median_gap_days=45) | signals: co-attended(+1)
+active-boosted	3	inner-circle	suggested: inner-circle | base: active (median_gap_days=60) | signals: user-engaged(+2)
+active90-silent	0	dormant	suggested: dormant | base: active (median_gap_days=90) | class: silent-group (low)
+dormant95-never	-1	dormant	suggested: dormant | base: dormant (median_gap_days=95) | class: never-answered (very low)
