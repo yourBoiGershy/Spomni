@@ -515,6 +515,24 @@ EOF
   printf '{not valid json\n' > "$C_EMB_MALFORMED/index/embeddings.jsonl"
   plan30_assert_finding "$C_EMB_MALFORMED" 1 "malformed JSON" \
     "validate-store.sh flags a malformed JSON line in embeddings.jsonl"
+
+  C_EMB_NONUNIT="$PLAN30_TMP_ROOT/case-embeddings-nonunit-vector"
+  plan30_min_store "$C_EMB_NONUNIT"
+  cp "$C_EMB_VALID/people/sample-person.md" "$C_EMB_NONUNIT/people/sample-person.md"
+  mkdir -p "$C_EMB_NONUNIT/index"
+  sed 's/"vector": \[0.18257418583505536, -0.3651483716701107, 0.5477225575051661, 0.7302967433402214\]/"vector": [0.1, -0.2, 0.3, 0.4]/' \
+    "$PLAN30_EMBEDDINGS_VALID" > "$C_EMB_NONUNIT/index/embeddings.jsonl"
+  plan30_assert_finding "$C_EMB_NONUNIT" 1 "not unit-normalized" \
+    "validate-store.sh flags a non-unit-norm vector in embeddings.jsonl"
+
+  C_EMB_ZERO="$PLAN30_TMP_ROOT/case-embeddings-zero-vector"
+  plan30_min_store "$C_EMB_ZERO"
+  cp "$C_EMB_VALID/people/sample-person.md" "$C_EMB_ZERO/people/sample-person.md"
+  mkdir -p "$C_EMB_ZERO/index"
+  sed 's/"vector": \[0.18257418583505536, -0.3651483716701107, 0.5477225575051661, 0.7302967433402214\]/"vector": [0, 0, 0, 0]/' \
+    "$PLAN30_EMBEDDINGS_VALID" > "$C_EMB_ZERO/index/embeddings.jsonl"
+  plan30_assert_finding "$C_EMB_ZERO" 0 "store clean" \
+    "validate-store.sh accepts an all-zero vector (the norm exemption)"
 fi
 
 rm -rf "$PLAN30_TMP_ROOT"

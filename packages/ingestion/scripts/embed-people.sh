@@ -35,6 +35,14 @@
 # POST /api/embed on failure. Never a cloud endpoint — see spec "Locality +
 # optionality".
 #
+# Normalization invariant: every vector resolved above (whichever of the
+# three paths produced it) is L2-normalized to unit length before it is
+# written to embeddings.jsonl — |v| = 1 within float precision, per
+# packages/core/contracts/embeddings-index.md's `vector` field note. This
+# lets every consumer's cosine similarity reduce to a plain dot product. A
+# zero vector (norm 0) cannot be normalized and is written as-is, with a
+# warning to stderr.
+#
 # Unavailable behavior: when EMBED_CMD is unset and the Ollama availability
 # probe (`curl -s -m 2 "$OLLAMA_URL/api/tags"`) fails, prints exactly
 # "embeddings: unavailable" to stdout, exits 0, and touches nothing (no
@@ -304,6 +312,16 @@ for f in $(ls "$PEOPLE_DIR"/*.md 2>/dev/null | sort); do
   fi
 
   vec="$(embed_text "$content")" || { rm -f "$TMP_OUT" "$EXISTING" "$EMBED_FAIL_FLAG"; trap - EXIT; echo "embeddings: unavailable"; exit 0; }
+
+  # L2-normalize to unit length (see header "Normalization invariant"). A
+  # zero vector cannot be normalized and is passed through unchanged, with
+  # a warning to stderr.
+  norm="$(printf '%s' "$vec" | jq '(map(. * .) | add | sqrt)')"
+  if [ "$norm" = "0" ]; then
+    echo "embed-people.sh: warning: zero vector for slug '${slug}', left unnormalized" >&2
+  else
+    vec="$(printf '%s' "$vec" | jq -c --argjson n "$norm" 'map(. / $n)')"
+  fi
 
   dims="$(printf '%s' "$vec" | jq 'length')"
 

@@ -46,6 +46,7 @@ VALIDATE_STORE="$REPO_ROOT/packages/core/scripts/validate-store.sh"
 SRC_STORE="$REPO_ROOT/packages/ingestion/tests/fixtures/scoring/store"
 FIXTURES_DIR="$REPO_ROOT/packages/ingestion/tests/fixtures/embeddings"
 SHIM="$FIXTURES_DIR/fake-embed.sh"
+SHIM_NONUNIT="$FIXTURES_DIR/fake-embed-nonunit.sh"
 EXPECTED_DIR="$FIXTURES_DIR/expected"
 
 NOW="2026-08-29T00:00:00Z"
@@ -64,7 +65,7 @@ fail() {
 }
 
 # --- scripts + fixtures must exist ---
-for f in "$EMBED_PEOPLE" "$NEAREST" "$CLUSTER" "$VALIDATE_STORE" "$SHIM"; do
+for f in "$EMBED_PEOPLE" "$NEAREST" "$CLUSTER" "$VALIDATE_STORE" "$SHIM" "$SHIM_NONUNIT"; do
   if [ ! -x "$f" ]; then
     echo "FAIL: $f missing or not executable"
     echo ""
@@ -298,6 +299,47 @@ if diff -q "$STORE_B/index/embeddings.jsonl" "$STORE_B/index/embeddings.jsonl.be
 else
   fail "9g: embeddings.jsonl changed across the unavailable-mode calls"
 fi
+
+# =============================================================================
+# Assertion 11: every vector in a real embed-people.sh run is unit-norm.
+# =============================================================================
+off_norm="$(jq -c '.vector | (map(. * .) | add | sqrt)' "$STORE_A/index/embeddings.jsonl.after-1" | \
+  awk '{ d = $1 - 1; if (d < 0) d = -d; if (d > 1e-6) print }')"
+if [ -z "$off_norm" ]; then
+  pass "11: every line in embed-people.sh's output has |v| within 1e-6 of 1.0"
+else
+  fail "11: at least one vector's norm is off by more than 1e-6: $off_norm"
+fi
+
+# =============================================================================
+# Assertion 12: sabotage proof — a copy of embed-people.sh with the
+# normalization step removed must FAIL assertion 11's norm check, and only
+# does so because fake-embed-nonunit.sh actually emits non-unit vectors
+# (fake-embed.sh already self-normalizes, so it can't distinguish a
+# sabotaged script from a correct one).
+# =============================================================================
+SABOTAGED="$(mktemp)"
+awk '
+  /# L2-normalize to unit length/ { skip = 9; next }
+  skip > 0 { skip--; next }
+  { print }
+' "$EMBED_PEOPLE" > "$SABOTAGED"
+chmod +x "$SABOTAGED"
+
+if grep -q 'map(. / \$n)' "$SABOTAGED"; then
+  fail "12-setup: sabotaged copy still contains the normalization step — awk strip failed"
+else
+  STORE_SABOTAGE="$(fresh_store)"
+  EMBED_CMD="$SHIM_NONUNIT" EMBED_NOW="$NOW" bash "$SABOTAGED" "$STORE_SABOTAGE" >/dev/null 2>&1
+  sabotage_off_norm="$(jq -c '.vector | (map(. * .) | add | sqrt)' "$STORE_SABOTAGE/index/embeddings.jsonl" | \
+    awk '{ d = $1 - 1; if (d < 0) d = -d; if (d > 1e-6) print }')"
+  if [ -n "$sabotage_off_norm" ]; then
+    pass "12: sabotaged embed-people.sh (normalization removed) produces non-unit vectors — norm assertion correctly catches it"
+  else
+    fail "12: sabotaged embed-people.sh unexpectedly produced unit vectors (sabotage proof did not bite)"
+  fi
+fi
+rm -f "$SABOTAGED"
 
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"

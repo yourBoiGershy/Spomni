@@ -1,6 +1,6 @@
 # Contract: embeddings index
 
-`schema_version: 1.0.0`
+`schema_version: 1.1.0`
 
 ## Purpose
 
@@ -68,7 +68,7 @@ One JSON object per line (JSONL), one line per person.
 | `slug` | string | Must match an existing `people/<slug>.md` filename stem. |
 | `model` | string, non-empty | The embedding model used, e.g. `nomic-embed-text`. |
 | `dims` | integer | Vector length. Must equal `len(vector)`. |
-| `vector` | array of numbers | Length `dims`. |
+| `vector` | array of numbers | Length `dims`; **L2-normalized** (unit length, `\|v\| = 1 ± 1e-6`) by the writer — cosine reduces to a dot product for consumers, and any consumer may rely on unit norm. |
 | `embedded_at` | ISO 8601 datetime | When this line was (re)computed. |
 | `content_hash` | string | `sha256` of the person's `person.md` content plus filed interaction summaries linked to that person. Re-embedding is triggered only when this hash changes — an unchanged hash means the existing line is reused as-is. |
 
@@ -80,6 +80,10 @@ One JSON object per line (JSONL), one line per person.
 - `model` must be non-empty.
 - No two lines may share the same `slug` (one embedding per person; a
   re-embed replaces the line rather than appending a duplicate).
+- `vector`'s L2 norm must be within `1e-6` of `1.0`, unless it is the
+  all-zero vector (norm `0`) — the writer's one exemption, for content
+  whose embed call returned an all-zero result and could not be
+  normalized.
 
 ## Uses
 
@@ -116,6 +120,13 @@ Additive fields (a new optional key on each JSONL line) are a
 valid, same convention as `ranking-weights.md`. Changing an existing
 field's type or meaning, or changing the locality/optionality rules above,
 is a major bump.
+
+## Changelog
+
+- `1.1.0` (2026-08-30): tightened the `vector` field to require L2
+  normalization (unit length) by the writer, with a corresponding
+  validation rule and a zero-vector exemption. Additive tightening of an
+  existing invariant, not a shape change — minor bump.
 
 ## Notes
 

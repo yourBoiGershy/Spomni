@@ -52,7 +52,8 @@
 #  10. `index/embeddings.jsonl` (optional, per `contracts/embeddings-index.md`):
 #      each non-empty line must be valid JSON with a `slug` resolving to
 #      people/<slug>.md, a non-empty `model`, an integer `dims` > 0, a
-#      `vector` array of numbers whose length equals `dims`, a non-empty
+#      `vector` array of numbers whose length equals `dims` and whose L2
+#      norm is within 1e-6 of 1.0 (or exactly 0), a non-empty
 #      `embedded_at`, and a 64-hex-char `content_hash`.
 #
 # Output: one finding per line, "path/to/file.md:LINE: message", to stdout.
@@ -663,8 +664,22 @@ if [ -f "$store_dir/index/embeddings.jsonl" ]; then
             report "$f" "$ln" "missing or non-array required field: vector"
         elif [ "$e_vector_all_numbers" != "true" ]; then
             report "$f" "$ln" "vector must be an array of numbers"
-        elif [ -n "$e_dims" ] && [ "$e_vector_len" != "$e_dims" ]; then
-            report "$f" "$ln" "vector length (${e_vector_len}) does not match dims (${e_dims})"
+        else
+            if [ -n "$e_dims" ] && [ "$e_vector_len" != "$e_dims" ]; then
+                report "$f" "$ln" "vector length (${e_vector_len}) does not match dims (${e_dims})"
+            fi
+
+            # Norm rule: |v| must be within 1e-6 of 1.0, unless it is the
+            # all-zero vector (norm 0) — the writer's one exemption, per
+            # contracts/embeddings-index.md's validation rules.
+            e_vector_norm=$(printf '%s' "$line" | jq -r '(.vector | map(. * .) | add | sqrt)')
+            norm_ok=$(awk -v n="$e_vector_norm" 'BEGIN {
+                d = n - 1; if (d < 0) d = -d;
+                if (n == 0 || d <= 1e-6) print "yes"; else print "no"
+            }')
+            if [ "$norm_ok" != "yes" ]; then
+                report "$f" "$ln" "vector is not unit-normalized: |v| = ${e_vector_norm} (expected 1 ± 1e-6, or 0)"
+            fi
         fi
 
         [ -n "$e_embedded_at" ] || report "$f" "$ln" "missing or empty required field: embedded_at"
