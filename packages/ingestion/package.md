@@ -1,6 +1,6 @@
 # package: ingestion
 
-version: 0.1.0
+version: 0.2.0
 
 ## Purpose
 
@@ -13,13 +13,20 @@ provenance labeling. Ingestion is the sole writer of the people-store.
 
 - The populated store: `people/`, `interactions/`, `index.json` (single writer at
   runtime); `profile.md` (single writer at runtime — stated preferences and, after
-  user confirmation, style notes)
+  user confirmation, style notes); `user-model.md` (single writer at runtime — the
+  draft/confirmed investment-mix singleton, plan 30); `index/embeddings.jsonl`
+  (single writer at runtime — `scripts/embed-people.sh`, plan 30)
 - Skills: `skills/debrief/` (filing engine), `skills/calendar-reconcile/`
   (attendee↔person matching, event links, un-debriefed + upcoming-briefworthy
   artifacts), `skills/onboarding-seed/` (session-driven, one-shot fresh-install
   pass: sequences the three lanes' backfill modes, normal filing,
   `build-stats.sh`, and the two seed-time scripts below into one batched,
-  human-confirmed tier-suggestion presentation, per plan 24)
+  human-confirmed tier-suggestion presentation, per plan 24), `skills/review-tiers/`
+  (user-invoked, repeatable review pass: gates on a confirmed `user-model.md`,
+  prepares embedding/prior context, judges kind + attention warrant per person via
+  the model with `check-judgment.sh`-validated records, presents <=20
+  breakdown-annotated suggestions for confirm/adjust/skip — never a tier write
+  without confirmation, never scheduled — per plan 30)
 - Scripts: `scripts/derive-participation.sh` (read-only; derives per-person
   `user_engaged`/`group_linked` participation flags from preserved raw
   capture events, ephemeral input to onboarding tier suggestions — never
@@ -29,7 +36,26 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   `scripts/triage-inbox.sh` (read-only over `<store-dir>`; sole writer of
   the `data/ingestion/triage-held.log` ledger — deterministic, no-model
   pre-judgment hold pass over `inbox/`, applying `specs/import-triage.md`'s
-  five rule classes, plan 26)
+  five rule classes, plan 26), `scripts/derive-evidence.sh` (read-only over
+  `people/`/`interactions/`/`wakeups/`/`stats.json`, never `inbox/`/`archive/`;
+  emits the per-person evidence JSON-lines `relationship-scoring.md`'s judgment
+  and `check-judgment.sh`'s `--evidence` gate both consume, plan 30),
+  `scripts/derive-user-model.sh` (sole writer of `user-model.md`'s draft state —
+  computes the trailing-90-day revealed investment mix from the corpus per
+  `specs/user-model-derive.md`, refuses to clobber a confirmed file without
+  `--redraft`, plan 30), `scripts/embed-people.sh` (sole writer of
+  `<store>/index/embeddings.jsonl` — local-only Ollama/EMBED_CMD embedding
+  refresh, content-hash-gated, per `specs/embeddings.md`, plan 30),
+  `scripts/nearest-confirmed.sh` (read-only consumer of `index/embeddings.jsonl`
+  — neighbor priors + axis-similarity, `embeddings: unavailable` fallback, plan
+  30), `scripts/cluster-people.sh` (read-only consumer of `index/embeddings.jsonl`
+  — greedy threshold clustering, a prompt-batching heuristic only, persists
+  nothing, plan 30), `scripts/rescale-scores.sh` (pure function over a judgment
+  batch — `--report`/`--rescale`/`--rank` per `specs/rescale.md`, writes no file,
+  plan 30), `scripts/check-judgment.sh` (read-only judgment-record validator
+  against `relationship-scoring.md`'s shape/gate/caps/expiry/sticky-kind rules,
+  the pre-write/pre-presentation gate `skills/review-tiers/` runs every record
+  through, plan 30)
 - Specs: `specs/stated-preference-filing.md` — how tier utterances, signal opt-outs,
   priorities, and cadence wishes file into `person.md`/`profile.md`, including the
   tier-change confirmation path (amends plan 03's filing-engine brief; plan 03 is
@@ -38,13 +64,29 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   runs (plan 11 unit 13, amended by plan 24 for the 6-month configurable window +
   participation-signal scoring); `specs/import-triage.md` — the five
   deterministic, precision-first junk-hold rule classes and the D3
-  held-by-rule ledger convention (plan 26)
-- Ledger: `data/ingestion/triage-held.log` (sole writer:
+  held-by-rule ledger convention (plan 26); `specs/user-model-derive.md` — the
+  trailing-90-day revealed-mix computation, axis assignment (kind map then
+  heuristic), and draft/confirm write shape `scripts/derive-user-model.sh`
+  implements (plan 30); `specs/review-tiers.md` — the five-step user-invoked
+  review flow (gate/prepare/judge/present/close), the judgment prompt contract,
+  and the deterministic checkability list `skills/review-tiers/` implements
+  (plan 30); `specs/embeddings.md` — content-per-person assembly, local-only
+  Ollama/EMBED_CMD resolution, and the `embeddings: unavailable` degrade path
+  shared by `scripts/embed-people.sh`/`nearest-confirmed.sh`/`cluster-people.sh`
+  (plan 30); `specs/rescale.md` — the re-center/rank math, skew rule, and
+  suggested-tier recompute `scripts/rescale-scores.sh` implements (plan 30)
+- Ledgers/artifacts: `data/ingestion/triage-held.log` (sole writer:
   `scripts/triage-inbox.sh`) — append-only, tab-separated
   `<capture-id>\t<rule-name>\t<held-at ISO 8601 Z>`, one line per held
   event; read by `skills/debrief/` batch mode (excluded alongside
   `debrief-filed.log`) and by humans directly, per `specs/import-triage.md`
-  D3 (plan 26)
+  D3 (plan 26); `data/ingestion/review-skips.log` (sole writer:
+  `skills/review-tiers/`) — append-only, tab-separated `<slug>\t<ISO 8601 Z>`,
+  one line per explicit skip, never resurfaced without `--include-skipped`
+  (plan 30); `data/ingestion/review-judgments/<date>.jsonl` (sole writer:
+  `skills/review-tiers/`) — one judgment-record run's raw output, per
+  invocation date, validated by `scripts/check-judgment.sh` before any write
+  or presentation (plan 30)
 - Conventions: `needs-confirmation` and `needs-follow-up` markers, met-at /
   will-meet-at / same-event-as links
 - Evals: `evals/cases/` — 16 T3 (skill-tier) cases (`eval-case@1`,
@@ -58,18 +100,42 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   filing, commitment extraction, reminder-ask wake-up creation, ambiguous-
   name question handling, and the append-only contradicting-fact case).
   `evals/suite.txt` lists all 16.
+- Tests: `tests/run-scoring-tests.sh` + `tests/fixtures/scoring/` (judgment-record
+  shape, `check-judgment.sh` reject reasons, `rescale-scores.sh` report/rescale/
+  rank math against fixture batches); `tests/run-embeddings-tests.sh` +
+  `tests/fixtures/embeddings/` (`embed-people.sh`/`nearest-confirmed.sh`/
+  `cluster-people.sh` against a fixture store, including the
+  `embeddings: unavailable` degrade path) — both plan 30, unit 12; being written
+  concurrently with this package.md update.
 
 ## Consumes
 
 - `person@^1`, `interaction@^1`, `capture-event@^1`, `wakeup@^1`, `profile@^1`,
   `onboarding-backfill@^1.0`, `import-pipeline@^1` (core; wake-up creation only via core's
   `wakeup-add.sh`; `profile@^1` and `person@^1` tier writes per
-  `specs/stated-preference-filing.md`; `onboarding-backfill@^1.0` read by
-  `skills/onboarding-seed/` and `scripts/derive-participation.sh` for the
-  configured window and `self` identities, per plan 24; `import-pipeline@^1`
-  is the five-stage fetch→normalize→triage→judgment→file contract that
-  `scripts/triage-inbox.sh` and `skills/debrief/`'s triage-held exclusion
-  implement the triage/judgment stages of, per plan 26)
+  `specs/stated-preference-filing.md`; `person@^1` now read/written at 1.1.0 for
+  the plan-30 `kind`/`kind_note`/`kind_source`/`kind_expires`/`kind_updated`
+  fields, sole write path `packages/core/scripts/person-set-kind.sh`;
+  `onboarding-backfill@^1.0` read by `skills/onboarding-seed/` and
+  `scripts/derive-participation.sh` for the configured window and `self`
+  identities, per plan 24; `import-pipeline@^1` is the five-stage
+  fetch→normalize→triage→judgment→file contract that `scripts/triage-inbox.sh`
+  and `skills/debrief/`'s triage-held exclusion implement the triage/judgment
+  stages of, per plan 26)
+- `user-model@^1` (core; `contracts/user-model.md` — `scripts/derive-user-model.sh`
+  is the sole writer of both the draft and, via `skills/review-tiers/`'s confirm
+  dialogue, the confirmed state), `relationship-scoring@^1` (core;
+  `contracts/relationship-scoring.md` — the judgment record shape, kind
+  vocabulary, rules, and breakdown string `skills/review-tiers/` and
+  `scripts/check-judgment.sh`/`scripts/rescale-scores.sh` all implement against),
+  `embeddings-index@^1` (core; `contracts/embeddings-index.md` —
+  `scripts/embed-people.sh` is the sole writer, `scripts/nearest-confirmed.sh`/
+  `scripts/cluster-people.sh` read-only consumers), `ranking-weights@^1.1`
+  (core; `contracts/ranking-weights.md` 1.1.0's `kinds`/`evidence` prior
+  dimensions — read-only here, seeded and owned by `packages/attention`'s
+  `scripts/calibrate.sh`; ingestion invokes `calibrate.sh --seed-from-user-model`
+  but never writes `ranking-weights.json` itself, single-writer rule) — all
+  plan 30
 - Typed capture events from `connectors/gmail-in`, event artifacts from
   `connectors/calendar-in`
 - Tier-change proposal wake-ups from `packages/attention` (read-only — the
@@ -78,8 +144,8 @@ provenance labeling. Ingestion is the sole writer of the people-store.
 
 ## Owned paths
 
-`packages/ingestion/**`; at runtime: `people/`, `interactions/`, `index.json` in the
-private data dir.
+`packages/ingestion/**`; at runtime: `people/`, `interactions/`, `index.json`,
+`user-model.md`, `index/embeddings.jsonl` in the private data dir.
 
 ## Built by
 
@@ -90,3 +156,11 @@ Plans 03 (filing engine) and 04 (matching half). `skills/onboarding-seed/`,
 `scripts/triage-inbox.sh`, `specs/import-triage.md`, the
 `data/ingestion/triage-held.log` ledger, and `skills/debrief/`'s
 triage-held batch-mode exclusion by plan 26 (standard import pipeline).
+Plan 30 (kind/tier judgment + user-model + embeddings): `specs/user-model-derive.md`,
+`specs/review-tiers.md`, `specs/embeddings.md`, `specs/rescale.md`,
+`scripts/derive-evidence.sh`, `scripts/derive-user-model.sh`,
+`scripts/embed-people.sh`, `scripts/nearest-confirmed.sh`,
+`scripts/cluster-people.sh`, `scripts/rescale-scores.sh`,
+`scripts/check-judgment.sh`, `skills/review-tiers/`, and the
+`data/ingestion/review-skips.log` / `data/ingestion/review-judgments/<date>.jsonl`
+artifacts.
