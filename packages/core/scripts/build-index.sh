@@ -4,8 +4,11 @@
 # Usage: build-index.sh [store-dir]   (defaults to ".")
 #
 # For each people/<slug>.md, projects the frontmatter fields defined in
-# packages/core/contracts/person.md (tags, org, role, location, last-touch)
-# into a flat, deterministically-ordered index.json keyed by slug.
+# packages/core/contracts/person.md (tags, org, role, location, last-touch,
+# and — per the 1.1.0 optional kind fields, plan 30 — kind, kind_source,
+# kind_expires) into a flat, deterministically-ordered index.json keyed by
+# slug. Stores without kind fields simply get null kind/kind_source/
+# kind_expires columns.
 #
 # Portable to bash 3.2 (macOS default): no associative arrays, no mapfile.
 
@@ -58,6 +61,9 @@ for f in $(ls "$PEOPLE_DIR"/*.md 2>/dev/null | sort); do
   role="$(extract_field "$fm" role)"
   location="$(extract_field "$fm" location)"
   last_touch="$(extract_field "$fm" last-touch)"
+  kind="$(extract_field "$fm" kind)"
+  kind_source="$(extract_field "$fm" kind_source)"
+  kind_expires="$(extract_field "$fm" kind_expires)"
   tags_raw="$(extract_field "$fm" tags)"
 
   # tags_raw looks like "[fintech, college-friend]" or "[]" or empty (absent).
@@ -80,13 +86,19 @@ for f in $(ls "$PEOPLE_DIR"/*.md 2>/dev/null | sort); do
     --arg role "$role" \
     --arg location "$location" \
     --arg last_touch "$last_touch" \
+    --arg kind "$kind" \
+    --arg kind_source "$kind_source" \
+    --arg kind_expires "$kind_expires" \
     --argjson tags "$tags_json" \
     '{($slug): {
         tags: $tags,
         org: (if $org == "" then null else $org end),
         role: (if $role == "" then null else $role end),
         location: (if $location == "" then null else $location end),
-        "last-touch": (if $last_touch == "" then null else $last_touch end)
+        "last-touch": (if $last_touch == "" then null else $last_touch end),
+        kind: (if $kind == "" then null else $kind end),
+        kind_source: (if $kind_source == "" then null else $kind_source end),
+        kind_expires: (if $kind_expires == "" then null else $kind_expires end)
       }}' >> "$TMP_JSONL"
 
   count=$((count + 1))

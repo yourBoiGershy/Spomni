@@ -42,10 +42,16 @@ nothing.
   optional embeddings, per plan 30)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
   `templates/profile.md`, `templates/sync-lanes.tsv`, `templates/user-model.md`
-- Store scripts: `scripts/build-index.sh` (people/ → index.json),
+- Store scripts: `scripts/build-index.sh` (people/ → index.json; projects the
+  1.1.0 `kind`/`kind_source`/`kind_expires` columns when present, per plan 30),
   `scripts/build-stats.sh` (people/ + interactions/ → stats.json, per
-  `contracts/derived-index.md`), `scripts/validate-store.sh`, `scripts/wakeup-add.sh`
+  `contracts/derived-index.md`), `scripts/validate-store.sh` (also validates
+  person.md 1.1.0 kind fields, the optional `user-model.md` singleton, and the
+  optional `index/embeddings.jsonl`, per plan 30), `scripts/wakeup-add.sh`
   (the one sanctioned way any package appends a wake-up entry),
+  `scripts/person-set-kind.sh` (the one sanctioned way ingestion writes the
+  five `kind*` person.md frontmatter fields — derived writes never overwrite
+  a stated kind, per plan 30),
   `scripts/gen-scale-store.sh` (generates an uncommitted synthetic large store for
   perf runs), `scripts/eval-run.sh` (T2 agent-tier eval runner, forward-declared —
   written by plan 12), `scripts/eval-run-skill.sh` (T3 skill-tier eval runner,
