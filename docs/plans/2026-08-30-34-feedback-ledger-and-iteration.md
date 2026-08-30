@@ -1,5 +1,11 @@
 # Plan 34 — Feedback ledger & active iteration
 
+> **Consolidation 2026-08-30 (ROADMAP Goal 2 step 3).** Phase 2 = **U25–U33** only.
+> U34/U35 (weekly report card) cut; U36/U37 shrink to a docs line + checker. Gate =
+> ledger day 0 + 14, where day 0 is the plan-30 live proof session (first ≥ 5
+> corrections). `learn-sweep.sh` (plan 36 D) consumes this ledger and never writes
+> `user-model.md`; U31/U32 remain the only user-model writers.
+
 Status: Ready
 Package: core (contract) + ingestion (ledger writer, reply parse, prompt block, evals) + attention (lifecycle hooks, calibration, proposals, report card) + connectors/scripts (sync lane row)
 Depends-on: 33 (delivery + reply-grammar footer + `delivered.log`), 31 (`person-set-tier.sh`, `tier_source`, provisional user-model)
