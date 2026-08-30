@@ -1,6 +1,6 @@
 # Plan 30: Semantic scoring — user model × relationship kind × evidence
 
-Status: Ready
+Status: Built — phases 1–6 committed (U17 6ec2bea, U18 c877420); U19 step 1 + 6 done, steps 2–5 (live user session) pending
 
 **Mission test.** Cuts *deciding-who* and *timing* — the queue is only as good as its ranking. Nearest ingredient: **intent** — tiers and kinds are derived-and-confirmed, never silently inferred; the user decides who matters. (Decision `mission-ingredients-vs-running-cost`.)
 
