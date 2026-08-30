@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # triage-inbox.sh — deterministic pre-judgment triage pass over inbox/,
-# implementing packages/ingestion/specs/import-triage.md's five rule
+# implementing packages/ingestion/specs/import-triage.md's six rule
 # classes (first-match-wins, precision-first: any doubt falls through to
 # normal debrief judgment, never held).
 #
@@ -32,6 +32,8 @@
 # arrays, no mapfile, no ${var,,}.
 
 set -eu
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 usage() {
   echo "usage: triage-inbox.sh <store-dir> [--data-dir <dir>] [--dry-run]" >&2
@@ -115,6 +117,53 @@ if [ -d "$PEOPLE_DIR" ]; then
   find "$PEOPLE_DIR" -type f -exec cat {} + >> "$SENDER_HAYSTACK" 2>/dev/null || true
   find "$PEOPLE_DIR" -type f -exec cat {} + >> "$SENDER_HAYSTACK_PEOPLE" 2>/dev/null || true
 fi
+
+# ---------------------------------------------------------------------------
+# Rule 6 (noise-sender) pattern table: the shipped
+# packages/ingestion/config/noise-senders.tsv rows, then
+# <data-dir>/noise-senders.local.tsv rows (optional). A local row sharing
+# a shipped row's `name` overrides that shipped row entirely — the
+# override is resolved once here, up front, not per event.
+# ---------------------------------------------------------------------------
+
+NOISE_TSV="${SCRIPT_DIR}/../config/noise-senders.tsv"
+NOISE_LOCAL_TSV="${DATA_DIR}/noise-senders.local.tsv"
+NOISE_RULES="${WORKTMP}/noise-rules"
+: > "$NOISE_RULES"
+
+# clean_tsv_rows <file> — strips comments/blank lines, keeps well-formed
+# 3-field tab-separated rows only.
+clean_tsv_rows() {
+  awk -F'\t' '
+    /^#/ { next }
+    /^[[:space:]]*$/ { next }
+    NF >= 3 { print $1 "\t" $2 "\t" $3 }
+  ' "$1" 2>/dev/null
+}
+
+NOISE_SHIPPED="${WORKTMP}/noise-shipped"
+: > "$NOISE_SHIPPED"
+if [ -f "$NOISE_TSV" ]; then
+  clean_tsv_rows "$NOISE_TSV" > "$NOISE_SHIPPED"
+fi
+
+NOISE_LOCAL="${WORKTMP}/noise-local"
+: > "$NOISE_LOCAL"
+if [ -f "$NOISE_LOCAL_TSV" ]; then
+  clean_tsv_rows "$NOISE_LOCAL_TSV" > "$NOISE_LOCAL"
+fi
+
+NOISE_LOCAL_NAMES="${WORKTMP}/noise-local-names"
+cut -f1 "$NOISE_LOCAL" > "$NOISE_LOCAL_NAMES" 2>/dev/null || : > "$NOISE_LOCAL_NAMES"
+
+if [ -s "$NOISE_LOCAL_NAMES" ]; then
+  awk -F'\t' 'NR==FNR { skip[$1] = 1; next } !($1 in skip)' \
+    "$NOISE_LOCAL_NAMES" "$NOISE_SHIPPED" > "$NOISE_RULES" 2>/dev/null \
+    || cat "$NOISE_SHIPPED" > "$NOISE_RULES"
+else
+  cat "$NOISE_SHIPPED" > "$NOISE_RULES"
+fi
+cat "$NOISE_LOCAL" >> "$NOISE_RULES"
 
 # ---------------------------------------------------------------------------
 # Frontmatter / body helpers (same shape as build-index.sh / derive-
@@ -257,7 +306,10 @@ cold_pitch_match() {
 # verbatim (shell-safe form) from packages/ingestion/specs/import-triage.md
 # "The five rule classes" (and its "Pattern source of truth" note). That
 # spec section is authoritative — any pattern content change MUST land in
-# the spec and here in the same commit.
+# the spec and here in the same commit. Rule 6 (noise-sender) is
+# table-driven instead — its pattern source of truth is
+# packages/ingestion/config/noise-senders.tsv (plus an optional local
+# override table), not a regex embedded in this script.
 # ---------------------------------------------------------------------------
 
 held=0
@@ -266,6 +318,7 @@ rule_selfcal=0
 rule_otp=0
 rule_li=0
 rule_cold=0
+rule_noise=0
 
 # --- one-pass ledger partition (D4a): candidate ids are listed once, the
 # already-filed/already-held skip sets are built once from the ledgers, and
@@ -392,6 +445,32 @@ while IFS= read -r id; do
     fi
   fi
 
+  # 6. noise-sender (type: email only) — table-driven from/subject match
+  # against $NOISE_RULES (see setup above). First matching row wins.
+  if [ -z "$rule" ] && [ "$type" = "email" ]; then
+    subject="$(extract_subject "$body")"
+    from_header="$(printf '%s\n' "$body" | grep -m1 -Ei '^From:' || true)"
+    while IFS="$(printf '\t')" read -r ns_name ns_regex ns_scope; do
+      [ -z "$ns_name" ] && continue
+      ns_matched=0
+      if [ "$ns_scope" = "from" ]; then
+        if printf '%s\n' "$hints" | grep -Eqi -- "$ns_regex"; then
+          ns_matched=1
+        elif [ -n "$from_header" ] && printf '%s' "$from_header" | grep -Eqi -- "$ns_regex"; then
+          ns_matched=1
+        fi
+      elif [ "$ns_scope" = "subject" ]; then
+        if printf '%s' "$subject" | grep -Eqi -- "$ns_regex"; then
+          ns_matched=1
+        fi
+      fi
+      if [ "$ns_matched" -eq 1 ]; then
+        rule="noise-sender:${ns_name}"
+        break
+      fi
+    done < "$NOISE_RULES"
+  fi
+
   if [ -n "$rule" ]; then
     held=$((held + 1))
     case "$rule" in
@@ -400,6 +479,7 @@ while IFS= read -r id; do
       otp-security) rule_otp=$((rule_otp + 1)) ;;
       linkedin-invitation) rule_li=$((rule_li + 1)) ;;
       cold-pitch) rule_cold=$((rule_cold + 1)) ;;
+      noise-sender:*) rule_noise=$((rule_noise + 1)) ;;
     esac
 
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -414,8 +494,8 @@ while IFS= read -r id; do
   fi
 done < "$ELIGIBLE_IDS"
 
-printf 'triage: scanned=%d held=%d already-filed=%d already-held=%d per-rule=noreply-marketing:%d,self-only-calendar:%d,otp-security:%d,linkedin-invitation:%d,cold-pitch:%d\n' \
+printf 'triage: scanned=%d held=%d already-filed=%d already-held=%d per-rule=noreply-marketing:%d,self-only-calendar:%d,otp-security:%d,linkedin-invitation:%d,cold-pitch:%d,noise-sender:%d\n' \
   "$scanned" "$held" "$already_filed" "$already_held" \
-  "$rule_noreply" "$rule_selfcal" "$rule_otp" "$rule_li" "$rule_cold"
+  "$rule_noreply" "$rule_selfcal" "$rule_otp" "$rule_li" "$rule_cold" "$rule_noise"
 
 exit 0

@@ -89,6 +89,9 @@ jordan-abernathy.md:malformed frontmatter (missing closing ---)
 leo-fenwick.md:duplicate person slug (leo-fenwick)
 leo-fenwick-duplicate.md:duplicate person slug (leo-fenwick)
 2026-09-05-priya-nandakumar.md:invalid wakeup status
+wendell-arkwright.md:person.md 1.4.0 told-by-user fact marked [stale]
+imogen-castellane.md:person.md 1.4.0 malformed as-of suffix on an Open threads bullet
+percival-nakashima.md:person.md 1.4.0 Resolved bullet missing (resolved YYYY-MM-DD) suffix
 "
 
 if [ -n "${corrupted_output:-}" ]; then
@@ -914,6 +917,106 @@ name: Test Person
 EOF
 plan30_assert_finding "$C_FACTS_UNTAGGED" 1 "Facts bullet missing provenance tag" \
   "validate-store.sh still flags a Facts bullet with no provenance tag"
+
+# ---------------------------------------------------------------------------
+# assertion 11: plan-36 person.md 1.4.0 — Open threads (as-of) / (as-of ...,
+# unverified since ...) suffixes, the optional ## Resolved section, and the
+# Facts [stale] marker (inferred-only). See contracts/person.md@1.4.0.
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "--- plan 36: validate-store.sh person.md 1.4.0 currency model ---"
+
+C_1_4_0_VALID="$PLAN30_TMP_ROOT/case-1-4-0-valid"
+plan30_min_store "$C_1_4_0_VALID"
+cat > "$C_1_4_0_VALID/people/test-person.md" <<'EOF'
+---
+schema_version: 1.4.0
+name: Test Person
+---
+
+## Facts
+
+- **[told-by-user]** placeholder fact (2026-08-01)
+- **[inferred-public-web]** [stale] a possibly-stale public fact (2026-06-01)
+
+## Open threads
+
+- Thread with a plain as-of suffix (as-of 2026-08-01)
+- Thread with an unverified-since suffix (as-of 2026-06-01, unverified since 2026-08-01)
+- Pre-1.4.0 bare bullet with no as-of suffix at all
+
+## Resolved
+
+- Closed out this thread last time we talked (resolved 2026-08-01)
+
+## Personal details
+
+Nothing notable yet.
+EOF
+plan30_assert_finding "$C_1_4_0_VALID" 0 "store clean" \
+  "validate-store.sh accepts a well-formed person.md 1.4.0 (as-of/unverified-since/Resolved/[stale])"
+
+C_1_4_0_TOLD_STALE="$PLAN30_TMP_ROOT/case-1-4-0-told-by-user-stale"
+plan30_min_store "$C_1_4_0_TOLD_STALE"
+cat > "$C_1_4_0_TOLD_STALE/people/test-person.md" <<'EOF'
+---
+schema_version: 1.4.0
+name: Test Person
+---
+
+## Facts
+
+- **[told-by-user]** [stale] a fact that should never be second-guessed (2026-08-01)
+EOF
+plan30_assert_finding "$C_1_4_0_TOLD_STALE" 1 "told-by-user fact marked \[stale\]" \
+  "validate-store.sh flags a told-by-user Facts bullet marked [stale]"
+
+C_1_4_0_BAD_ASOF="$PLAN30_TMP_ROOT/case-1-4-0-malformed-as-of"
+plan30_min_store "$C_1_4_0_BAD_ASOF"
+cat > "$C_1_4_0_BAD_ASOF/people/test-person.md" <<'EOF'
+---
+schema_version: 1.4.0
+name: Test Person
+---
+
+## Facts
+
+- **[told-by-user]** placeholder fact (2026-08-01)
+
+## Open threads
+
+- Thread with a malformed as-of suffix (as-of 2026-8-1)
+EOF
+plan30_assert_finding "$C_1_4_0_BAD_ASOF" 1 "Open threads bullet has malformed as-of suffix" \
+  "validate-store.sh flags an Open threads bullet with a malformed as-of suffix"
+
+C_1_4_0_RESOLVED_NO_SUFFIX="$PLAN30_TMP_ROOT/case-1-4-0-resolved-missing-suffix"
+plan30_min_store "$C_1_4_0_RESOLVED_NO_SUFFIX"
+cat > "$C_1_4_0_RESOLVED_NO_SUFFIX/people/test-person.md" <<'EOF'
+---
+schema_version: 1.4.0
+name: Test Person
+---
+
+## Facts
+
+- **[told-by-user]** placeholder fact (2026-08-01)
+
+## Open threads
+
+- Still-open thread with no suffix at all
+
+## Resolved
+
+- A closed thread missing its resolved-date suffix
+
+## Personal details
+
+Nothing notable yet.
+EOF
+plan30_assert_finding "$C_1_4_0_RESOLVED_NO_SUFFIX" 1 "Resolved bullet has malformed resolved-date suffix" \
+  "validate-store.sh flags a Resolved bullet missing its (resolved YYYY-MM-DD) suffix"
 
 rm -rf "$PLAN30_TMP_ROOT"
 trap - EXIT

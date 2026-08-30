@@ -12,7 +12,10 @@ nothing.
 ## Provides
 
 - Contracts (semver'd, each with a `schema_version`): `contracts/capture-event.md`,
-  `contracts/person.md` (1.3.0 — third Facts provenance label
+  `contracts/person.md` (1.4.0 — currency model: Open threads `(as-of
+  YYYY-MM-DD)` / `unverified since` suffixes, optional `## Resolved`
+  section, and a Facts `[stale]` marker restricted to inferred provenance,
+  per plan 36; 1.3.0 — third Facts provenance label
   `inferred-from-thread`, for facts the model infers from a chat/email
   thread the user is party to (neither told-by-user nor inferred-from-
   public-web), per plan 32; 1.2.0 — `tier_source` provenance field alongside
@@ -50,7 +53,8 @@ nothing.
   optional embeddings, per plan 30),
   `contracts/feedback-event.md` (`<store>/signals/feedback.jsonl`, the
   append-only source-of-truth log of user feedback — dismissals, snoozes,
-  tier/kind corrections, replies, model confirmations — per plan 34),
+  tier/kind corrections, replies, model confirmations — per plan 34; 1.2.0 —
+  additive `merge`/`noise-sender`/`stale-marked` event types, per plan 36),
   `contracts/week-plan.md` (`signals/week-plan.json`, the capacity-model
   weekly nudge budget artifact, per plan 12 — this is the RENUMBERED cadence
   plan, docs/plans/2026-08-29-12-cadence-capacity.md, not the earlier plan 12
@@ -66,10 +70,11 @@ nothing.
   1.1.0 `kind`/`kind_source`/`kind_expires` columns when present, per plan 30),
   `scripts/build-stats.sh` (people/ + interactions/ → stats.json, per
   `contracts/derived-index.md`), `scripts/validate-store.sh` (also validates
-  person.md 1.1.0 kind fields, 1.2.0 `tier_source`, and 1.3.0
-  `inferred-from-thread` Facts provenance, the optional
+  person.md 1.1.0 kind fields, 1.2.0 `tier_source`, 1.3.0
+  `inferred-from-thread` Facts provenance, and 1.4.0 Open threads as-of/
+  `## Resolved`/Facts `[stale]`, the optional
   `user-model.md` singleton incl. `status: provisional`, and the optional
-  `index/embeddings.jsonl` incl. unit-norm vectors, per plans 30, 31, and 32),
+  `index/embeddings.jsonl` incl. unit-norm vectors, per plans 30, 31, 32, and 36),
   `scripts/init-store.sh` (idempotent store layout creation +
   README.md + index/stats + validate, refuses the code checkout itself),
   `scripts/check-store-location.sh` (flags a store-dir inside the code
@@ -84,7 +89,12 @@ nothing.
   `scripts/person-set-tier.sh` (the one sanctioned way ingestion writes
   `tier`/`tier_source` — derived writes never overwrite a stated tier;
   `--clear` only from `stated-by-user`, per plan 31),
-  `scripts/demo-store.sh` (materializes `fixtures/store/`'s 30 synthetic people
+  `scripts/person-merge.sh` (deterministic, no-model dedup merge of two
+  person.md files — frontmatter union, Facts/Open-threads/Resolved/Personal-
+  details merge, `[[slug]]` link rewrite across interactions/ and wakeups/,
+  identities.tsv append, `people/.merged/<drop>.md` tombstone, merges.log,
+  best-effort `feedback-file.sh --type merge` call, per plan 36 B1),
+  `scripts/demo-store.sh` (materializes `fixtures/store/`'s 31 synthetic people
   into a runnable demo store — index/stats built, validated, self-describing
   `DEMO-STORE.md`; lets a stranger try the assistant without any real account),
   `scripts/gen-scale-store.sh` (generates an uncommitted synthetic large store for
@@ -150,3 +160,7 @@ The `person.md` 1.2.0 `tier_source` field, `scripts/person-set-tier.sh`, the
 
 The `person.md` 1.3.0 `inferred-from-thread` Facts provenance label is by
 plan 32.
+The `person.md` 1.4.0 currency model (Open threads as-of/unverified-since,
+`## Resolved`, Facts `[stale]`) and the `feedback-event.md` 1.2.0
+`merge`/`noise-sender`/`stale-marked` event types are by plan 36
+(docs/plans/2026-08-30-36-store-currency-dedup-remainder-speed-preference-loop.md).

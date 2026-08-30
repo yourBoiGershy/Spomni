@@ -73,12 +73,12 @@ else
   summary_and_exit
 fi
 
-# --- people count = 30 ---
+# --- people count = 31 ---
 people_count="$(ls "$DEST"/people/*.md 2>/dev/null | wc -l | tr -d ' ')"
-if [ "$people_count" = "30" ]; then
-  pass "demo store has 30 people files"
+if [ "$people_count" = "31" ]; then
+  pass "demo store has 31 people files"
 else
-  fail "demo store has $people_count people files (expected 30)"
+  fail "demo store has $people_count people files (expected 31)"
 fi
 
 # --- index.json + stats.json present ---
@@ -119,8 +119,8 @@ else
 fi
 
 # --- output message mentions people/interaction counts ---
-if printf '%s' "$output" | grep -qF "30 synthetic people, 47 interactions"; then
-  pass "output reports 30 synthetic people, 47 interactions"
+if printf '%s' "$output" | grep -qF "31 synthetic people, 47 interactions"; then
+  pass "output reports 31 synthetic people, 47 interactions"
 else
   fail "output does not report the expected people/interaction counts"
   echo "$output"

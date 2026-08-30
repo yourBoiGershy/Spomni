@@ -8,7 +8,7 @@
 # golden-tests-before-prompts rule.
 #
 # Goldens (hand-counted, cited by source file):
-#   - people/ has exactly 30 person files (`ls people/*.md | wc -l`).
+#   - people/ has exactly 31 person files (`ls people/*.md | wc -l`).
 #   - grace-lindqvist: 11 interactions/*.md files list [[grace-lindqvist]]
 #     (2025-10-03, 2025-11-14, 2025-12-19, 2026-01-16, 2026-02-13,
 #     2026-03-20, 2026-04-17, 2026-05-15, 2026-06-12, 2026-07-24,
@@ -141,7 +141,7 @@ else
   fail "generated_at is missing or empty"
 fi
 
-people_count_expected=30
+people_count_expected=31
 people_count_fixture="$(ls "$FIXTURE_STORE"/people/*.md 2>/dev/null | wc -l | tr -d ' ')"
 if [ "$people_count_fixture" -ne "$people_count_expected" ]; then
   fail "fixture drift: people/ now has $people_count_fixture files, golden assumed $people_count_expected — update this test's goldens"

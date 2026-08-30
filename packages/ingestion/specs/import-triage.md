@@ -14,7 +14,7 @@ Backfill and steady-state sweeps land junk in `inbox/` alongside real person
 events — marketing email, self-only calendar holds, OTP/security mail,
 LinkedIn "wants to connect" pings, cold sales pitches. Every one of these
 currently costs a full model judgment call during debrief. This spec adds a
-cheap, deterministic, pre-judgment triage pass: five conservative rule
+cheap, deterministic, pre-judgment triage pass: six conservative rule
 classes that can hold an event out of the debrief batch *without* a model in
 the loop, for the classes of junk narrow enough to detect with certainty
 from the event file alone.
@@ -80,7 +80,7 @@ only — no judgment calls, no free-text interpretation beyond fixed pattern
 matching. Rules apply **in the order listed below; first match wins** (an
 event matching more than one rule's pattern is held under whichever rule
 appears first in this list, and only one ledger line is written). An event
-matching none of the five rules is **not** held — it falls through to
+matching none of the six rules is **not** held — it falls through to
 normal debrief judgment, per the precision-first doctrine.
 
 Fields referenced below are from capture-event 1.2.0
@@ -91,14 +91,17 @@ Fields referenced below are from capture-event 1.2.0
 
 ## Pattern source of truth
 
-This spec is authoritative for the five rule regexes below. The checker
-script (`packages/ingestion/scripts/triage-inbox.sh`) duplicates them
+This spec is authoritative for the five rule regexes below (rules 1-5). The
+checker script (`packages/ingestion/scripts/triage-inbox.sh`) duplicates them
 verbatim (BSD/POSIX-shell-safe form) rather than sourcing this file — there
 is no sync mechanism between the two copies. Any change to a pattern's
 content MUST land in this spec section and the script's rules section in the
-same commit; a change to only one side is a spec/script drift bug.
+same commit; a change to only one side is a spec/script drift bug. Rule 6
+(`noise-sender`) is table-driven instead — see its own section below, where
+`packages/ingestion/config/noise-senders.tsv` is the single, non-duplicated
+source of truth.
 
-## The five rule classes
+## The six rule classes
 
 ### 1. `noreply-marketing`
 
@@ -208,6 +211,48 @@ condition are required together; either alone is not sufficient to hold —
 a known sender using pitch-like phrasing (e.g. a colleague joking "quick
 question") is common and must not be held, and an unknown sender with a
 plain, non-pitch subject must not be held either.
+
+### 6. `noise-sender`
+
+Added by plan 36 unit C1, after live-corpus calibration surfaced a large
+remainder-time class the first five rules miss entirely: CI notices,
+security notices, newsletters, and GitHub/Vercel/Slack/Google-Workspace
+system notifications — none of them `noreply@`-shaped, so rule 1 never
+catches them. Applies only to `type: email`, checked last (after rule 5).
+
+Unlike rules 1–5, this rule is **table-driven**, not an embedded regex:
+its pattern source of truth is `packages/ingestion/config/noise-senders.tsv`,
+a tab-separated `name<TAB>regex<TAB>scope` table (`#`-prefixed and blank
+lines ignored; `regex` is `grep -E -i`; `scope` is `from` — matched against
+`participant-hints` plus a connector-written `From:` body header, same
+extraction as rule 1 — or `subject` — matched against the `Subject:`
+line only). Rows are checked in file order; the first matching row wins.
+
+An optional **local override table** lives at
+`<data-dir>/noise-senders.local.tsv` (same columns), read after the
+shipped table. A local row whose `name` matches a shipped row's `name`
+**replaces** that shipped row entirely (the shipped pattern is dropped,
+not additionally applied) — this is the escape hatch for a user's private
+corpus turning up a false-positive or a new noise class the shipped table
+doesn't cover, without editing `packages/` at all.
+
+Held reason is written to the D3 ledger as `noise-sender:<name>`
+(e.g. `noise-sender:ci-sender`), not a bare rule name — the ledger's
+`per-rule=` summary counter aggregates all names under one
+`noise-sender:<n>` total.
+
+Precision-first (D4) applies here as strictly as the other five rules:
+every shipped pattern is scoped to a specific system/notification
+local-part or domain, never a bare personal domain, and a pattern that
+would otherwise collide with an already-covered class (e.g. a bare
+`notifications@`/`noreply@` local part, already owned by rule 1's
+domain-agnostic match) is deliberately narrowed or dropped rather than
+duplicated as dead code. Two shipped subject-scope rows
+(`verification-code-subject`, `security-alert-subject`) are present in
+the table for documentation/future-proofing even though, for `type: email`,
+rule 3 (`otp-security`) always matches the identical subject phrasing
+first — first-match-wins means they are currently unreachable in practice
+for `type: email`, which is expected and not a bug.
 
 ## Group-noise deferral (future work)
 
