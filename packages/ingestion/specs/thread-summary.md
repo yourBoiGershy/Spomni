@@ -64,6 +64,12 @@ the model:
   an escape hatch for "I don't know this person").
 - `gist` is 2-4 sentences describing what the thread is about and where it
   currently stands — never a message-by-message narration.
+- For `chat_type: group`, list **every** non-self participant who sent 2 or
+  more messages (name + `sender_ids`), each with their own `role_guess` —
+  a participant with only a single message may be omitted. For a `single`
+  chat, list the one counterpart. (Group threads were previously
+  under-listing to one or two people, starving the filing writer of
+  participants — this rule is the fix.)
 - The model must return **only** the JSON object described below — no
   prose before or after it. The script strips a defensive ```json fence if
   the model wraps the object in one anyway.
@@ -82,7 +88,8 @@ the model:
       "display_name": "string",
       "sender_ids": ["string"],
       "is_self": false,
-      "role_guess": "friend|family|colleague|client|collaborator|acquaintance|unsolicited|unknown"
+      "role_guess": "friend|family|colleague|client|collaborator|acquaintance|unsolicited|unknown",
+      "message_count": 0
     }
   ],
   "relationship_kind_guess": "friend|family|colleague|client|collaborator|acquaintance|unsolicited|unknown|group",
@@ -123,8 +130,10 @@ nothing to summarize, and no person to name.
 The script validates this shape with `python3` before printing it (or
 writing it to `--out`): required top-level keys present, `skip` is either
 `null` or an object with a `reason` in the fixed set above, every `people[]`
-entry has the five required keys with `role_guess` in the fixed enum, every
-`facts[]` entry's `provenance` in `{told-by-user, inferred-from-thread}`.
+entry has the four required keys (`display_name`, `sender_ids`, `is_self`,
+`role_guess`) with `role_guess` in the fixed enum, plus an optional
+`message_count` (non-negative integer, when present), every `facts[]`
+entry's `provenance` in `{told-by-user, inferred-from-thread}`.
 Any violation prints the specific reason to stderr and exits `4` — nothing
 partial is printed to stdout in that case.
 
