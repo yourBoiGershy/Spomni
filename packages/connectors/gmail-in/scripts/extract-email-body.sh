@@ -38,8 +38,11 @@ fi
 
 # The saved tool-result file may be a single message object (get_message)
 # or a thread object with a messages[] array (get_thread) — try the thread
-# shape first, fall back to treating the file itself as the message.
-JQ_MSG_SELECT='if (.messages? != null) then (.messages[] | select(.id == $mid)) else select(.id == $mid) end'
+# shape first, fall back to treating the file itself as the message. Wrapped
+# in first(...) so a duplicated message id (malformed/duplicated fixture or
+# upstream payload) yields exactly one match instead of concatenating every
+# match's Subject+body blocks.
+JQ_MSG_SELECT='first(if (.messages? != null) then (.messages[] | select(.id == $mid)) else select(.id == $mid) end)'
 
 # Existence check first (kept separate from the print below so a miss
 # never emits partial "Subject: ..." output on stdout).

@@ -70,8 +70,21 @@ Tell the user:
 ## Step 1 — run the three lanes' backfill modes
 
 One-shot, explicit invocation of each lane's backfill mode — never the
-incremental/scheduled path:
+incremental/scheduled path. Beeper runs concurrently with the
+session-driven gmail/calendar backfills (D5): launch it as a background
+process first, then run gmail and calendar in the same user session —
+those two stay **serial with each other**, since both are first-party-MCP
+session-driven skills sharing the one session (unchanged constraint from
+plan 26).
 
+- **Beeper (background):**
+  ```sh
+  bash packages/connectors/beeper-in/scripts/beeper-sweep.sh --backfill \
+    > <log-file> 2>&1 &
+  ```
+  (optionally `--data-dir <dir>` if not running from the default
+  location). Launch this first, note the PID and `<log-file>` path, then
+  proceed immediately to gmail below — do not wait on it here.
 - **Gmail:** run `packages/connectors/gmail-in/skills/gmail-sweep/SKILL.md`
   in backfill mode ("run gmail-sweep in backfill mode") — see that
   document's own "Backfill mode" section for window resolution, dedup
@@ -79,19 +92,40 @@ incremental/scheduled path:
 - **Calendar:** run
   `packages/connectors/calendar-in/skills/calendar-sweep/SKILL.md` in
   backfill mode ("run calendar-sweep in backfill mode") — same isolation
-  and window-resolution rules as gmail's, in that document.
-- **Beeper:**
-  ```sh
-  bash packages/connectors/beeper-in/scripts/beeper-sweep.sh --backfill
-  ```
-  (optionally `--data-dir <dir>` if not running from the default location).
+  and window-resolution rules as gmail's, in that document. Run this after
+  gmail finishes (serial), not concurrently with it.
 
 All three resolve the same window via `resolve-backfill-window.sh` and
 write into their own isolated backfill checkpoint/ledger state, never
-touching their incremental-lane counterparts. Let each complete (or report
-its own per-lane failures/warnings) before moving to Step 2 — a partial or
-failed lane is not fatal to the others; note what backfilled and what
-didn't in the eventual summary.
+touching their incremental-lane counterparts.
+
+**Shared-file hazard check (verified non-hazards for running beeper
+concurrently with gmail/calendar).** The three lanes' backfill state lives
+in disjoint per-lane directories with no overlapping filenames: beeper
+writes only `data/connectors/beeper-in/backfill-cursors.tsv` and
+`data/connectors/beeper-in/backfill-last-sweep`; gmail writes only
+`data/connectors/gmail/backfill-checkpoint` and
+`data/connectors/gmail/backfill-processed.log`; calendar writes only
+`data/connectors/calendar/backfill-processed.log` (and, incremental-only,
+`skipped-calendars.log` in that same lane directory — never touched by
+another lane). None of the three ever read or write another lane's
+directory. The one shared surface is `inbox/`, and it is safe for
+concurrent writers: it is append-only (`packages/core/contracts/
+capture-event.md`), and each lane produces its own `id` embedding the
+source (`<captured_at-compact>-<source>-<short-rand>`, e.g.
+`...-beeper-in-...` vs `...-gmail-in-...`), so concurrent writers can never
+collide on a filename; `archive/raw/` likewise holds exactly one file per
+capture id, so no two lanes ever contend for the same raw-archive path.
+
+**Beeper completion check before Step 2.** Before moving on, confirm the
+backgrounded beeper process has actually finished — tail `<log-file>` for
+its outcome line and check the process's exit status (e.g. `wait <PID>` if
+still in the same shell, or re-check the PID/log if not) — this is the
+deadman check for the background lane; do not proceed to Step 2 on the
+assumption it finished just because gmail/calendar did. Let each lane
+complete (or report its own per-lane failures/warnings) before moving to
+Step 2 — a partial or failed lane is not fatal to the others; note what
+backfilled and what didn't in the eventual summary.
 
 ## Step 2 — file the backfilled history
 

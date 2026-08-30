@@ -87,6 +87,28 @@ INDEX_JSON="${STORE_DIR}/index.json"
 PEOPLE_DIR="${STORE_DIR}/people"
 
 # ---------------------------------------------------------------------------
+# Perf refactor (plan 27 U1, D4): a scratch workspace holds (a) the sender
+# haystack — one snapshot of index.json + people/*.md, greped once per hint
+# instead of re-grepping both sources per hint — and (b) the ledger
+# partition files built once at startup instead of per-event grep/awk.
+# ---------------------------------------------------------------------------
+
+WORKTMP="$(mktemp -d "${TMPDIR:-/tmp}/triage-inbox.XXXXXX")"
+cleanup_worktmp() {
+  rm -rf "$WORKTMP"
+}
+trap cleanup_worktmp EXIT
+
+SENDER_HAYSTACK="${WORKTMP}/sender-haystack"
+: > "$SENDER_HAYSTACK"
+if [ -f "$INDEX_JSON" ]; then
+  cat "$INDEX_JSON" >> "$SENDER_HAYSTACK" 2>/dev/null || true
+fi
+if [ -d "$PEOPLE_DIR" ]; then
+  find "$PEOPLE_DIR" -type f -exec cat {} + >> "$SENDER_HAYSTACK" 2>/dev/null || true
+fi
+
+# ---------------------------------------------------------------------------
 # Frontmatter / body helpers (same shape as build-index.sh / derive-
 # participation.sh's awk passes over the same capture-event/person files).
 # ---------------------------------------------------------------------------
@@ -146,6 +168,11 @@ extract_subject() {
 # (unknown) otherwise. No hints at all is indeterminate, which per the
 # precision-first doctrine is treated as "known" (safe direction: never
 # fires cold-pitch without positive unknown-sender evidence).
+#
+# Perf: index.json + people/*.md were snapshotted once into
+# $SENDER_HAYSTACK at startup (see above); both the email and name-part
+# checks grep only that single file instead of re-reading INDEX_JSON/
+# PEOPLE_DIR per hint.
 sender_known() {
   hints="$1"
   [ -z "$hints" ] && return 0
@@ -156,10 +183,7 @@ sender_known() {
 
     email="$(printf '%s' "$hint" | grep -Eio '[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}' | head -1)"
     if [ -n "$email" ]; then
-      if [ -f "$INDEX_JSON" ] && grep -qiF -- "$email" "$INDEX_JSON" 2>/dev/null; then
-        found=1
-      fi
-      if [ "$found" -eq 0 ] && [ -d "$PEOPLE_DIR" ] && grep -RqiF -- "$email" "$PEOPLE_DIR" 2>/dev/null; then
+      if [ -s "$SENDER_HAYSTACK" ] && grep -qiF -- "$email" "$SENDER_HAYSTACK" 2>/dev/null; then
         found=1
       fi
     fi
@@ -167,7 +191,7 @@ sender_known() {
     if [ "$found" -eq 0 ]; then
       name_part="$(printf '%s' "$hint" | sed -n 's/^\([^<]*\)<.*/\1/p' | sed 's/[ \t]*$//')"
       [ -z "$name_part" ] && name_part="$hint"
-      if [ -n "$name_part" ] && [ -d "$PEOPLE_DIR" ] && grep -RqiF -- "$name_part" "$PEOPLE_DIR" 2>/dev/null; then
+      if [ -n "$name_part" ] && [ -s "$SENDER_HAYSTACK" ] && grep -qiF -- "$name_part" "$SENDER_HAYSTACK" 2>/dev/null; then
         found=1
       fi
     fi
@@ -221,32 +245,74 @@ cold_pitch_match() {
 # the spec and here in the same commit.
 # ---------------------------------------------------------------------------
 
-scanned=0
 held=0
-already_filed=0
-already_held=0
 rule_noreply=0
 rule_selfcal=0
 rule_otp=0
 rule_li=0
 rule_cold=0
 
+# --- one-pass ledger partition (D4a): candidate ids are listed once, the
+# already-filed/already-held skip sets are built once from the ledgers, and
+# the eligible-for-rule-evaluation set is computed with a single
+# grep -vxF -f pass instead of a per-event grep/awk. ---------------------
+
+ID_LIST="${WORKTMP}/ids"
+: > "$ID_LIST"
 for f in $(ls "$INBOX_DIR"/*.md 2>/dev/null | sort); do
   [ -e "$f" ] || continue
-
   base="$(basename "$f")"
-  id="${base%.md}"
-  scanned=$((scanned + 1))
+  printf '%s\n' "${base%.md}" >> "$ID_LIST"
+done
+scanned="$(wc -l < "$ID_LIST" | tr -d ' ')"
 
-  if [ -f "$FILED_LOG" ] && grep -qxF "$id" "$FILED_LOG" 2>/dev/null; then
-    already_filed=$((already_filed + 1))
-    continue
-  fi
+FILED_SKIP="${WORKTMP}/filed-skip"
+: > "$FILED_SKIP"
+if [ -f "$FILED_LOG" ]; then
+  sort -u "$FILED_LOG" > "$FILED_SKIP" 2>/dev/null || : > "$FILED_SKIP"
+fi
 
-  if [ -f "$HELD_LOG" ] && awk -F'\t' -v id="$id" '$1 == id { f = 1 } END { exit !f }' "$HELD_LOG"; then
-    already_held=$((already_held + 1))
-    continue
+HELD_SKIP="${WORKTMP}/held-skip"
+: > "$HELD_SKIP"
+if [ -f "$HELD_LOG" ]; then
+  cut -f1 "$HELD_LOG" 2>/dev/null | sort -u > "$HELD_SKIP" || : > "$HELD_SKIP"
+fi
+
+COMBINED_SKIP="${WORKTMP}/combined-skip"
+cat "$FILED_SKIP" "$HELD_SKIP" 2>/dev/null | sort -u > "$COMBINED_SKIP" || : > "$COMBINED_SKIP"
+
+# skip_matches <ids-file> <skip-file> — ids from ids-file present in
+# skip-file (fixed-string, whole-line match). Empty skip-file -> no output.
+skip_matches() {
+  if [ -s "$2" ]; then
+    grep -xF -f "$2" "$1" 2>/dev/null || true
   fi
+}
+
+# skip_filter <ids-file> <skip-file> — ids from ids-file NOT present in
+# skip-file. Empty skip-file -> ids-file unchanged.
+skip_filter() {
+  if [ -s "$2" ]; then
+    grep -vxF -f "$2" "$1" 2>/dev/null || true
+  else
+    cat "$1"
+  fi
+}
+
+already_filed="$(skip_matches "$ID_LIST" "$FILED_SKIP" | wc -l | tr -d ' ')"
+
+AFTER_FILED="${WORKTMP}/after-filed"
+skip_filter "$ID_LIST" "$FILED_SKIP" > "$AFTER_FILED"
+
+already_held="$(skip_matches "$AFTER_FILED" "$HELD_SKIP" | wc -l | tr -d ' ')"
+
+ELIGIBLE_IDS="${WORKTMP}/eligible"
+skip_filter "$ID_LIST" "$COMBINED_SKIP" > "$ELIGIBLE_IDS"
+
+while IFS= read -r id; do
+  [ -z "$id" ] && continue
+  f="${INBOX_DIR}/${id}.md"
+  [ -e "$f" ] || continue
 
   fm="$(extract_frontmatter "$f")"
   type="$(get_field "$fm" type)"
@@ -331,7 +397,7 @@ for f in $(ls "$INBOX_DIR"/*.md 2>/dev/null | sort); do
       printf '%s\n' "$line" >> "$HELD_LOG"
     fi
   fi
-done
+done < "$ELIGIBLE_IDS"
 
 printf 'triage: scanned=%d held=%d already-filed=%d already-held=%d per-rule=noreply-marketing:%d,self-only-calendar:%d,otp-security:%d,linkedin-invitation:%d,cold-pitch:%d\n' \
   "$scanned" "$held" "$already_filed" "$already_held" \
