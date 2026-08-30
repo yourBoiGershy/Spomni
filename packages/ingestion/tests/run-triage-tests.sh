@@ -292,6 +292,56 @@ capscase_held="$capscase_data/triage-held.log"
 assert_ledger_line "$capscase_held" "hold-otp-caps-subject" "otp-security"
 
 # =============================================================================
+# Fix-round test (plan 27, T-F4) — sender_known's name-part check must
+# consult people/*.md only, never index.json's raw structure. Dedicated
+# store: packages/ingestion/tests/fixtures/triage/store-tf4/, synthetic
+# PII only.
+#
+#   index.json      — a "mei-liu" entry (the slug/field token, literal JSON
+#                      key text) that never appears verbatim in
+#                      people/mei-liu.md's own text (that file spells the
+#                      name "Mei Liu" with a space, never the hyphenated
+#                      slug form).
+#   people/mei-liu.md — name: Mei Liu.
+#   inbox/cold-pitch-slug-name.md  — cold-pitch-shaped email, sender hint
+#                      "mei-liu <spam@junkmail.example.net>" (display name
+#                      equals the index.json-only slug token) — must still
+#                      be held as cold-pitch (sender genuinely unknown; the
+#                      old bug let the index.json substring match make it
+#                      look known).
+#   inbox/cold-pitch-known-name.md — same cold-pitch phrasing, sender hint
+#                      "Mei Liu <friend@example.net>" (display name matches
+#                      a real people/*.md name) — positive control, must
+#                      NOT be held.
+# =============================================================================
+
+tf4_store="$REPO_ROOT/packages/ingestion/tests/fixtures/triage/store-tf4"
+
+if [ ! -d "$tf4_store" ]; then
+  fail "fix-round (T-F4) fixture missing at $tf4_store"
+else
+  tf4_data="$WORK_DIR/tf4-data"
+  tf4_out="$WORK_DIR/tf4-out.txt"
+  "$TRIAGE" "$tf4_store" --data-dir "$tf4_data" > "$tf4_out" 2>/dev/null
+  tf4_status=$?
+
+  if [ "$tf4_status" -eq 0 ]; then
+    pass "T-F4: triage-inbox.sh exits 0 against the fix-round fixture store"
+  else
+    fail "T-F4: exited $tf4_status against the fix-round fixture store"
+  fi
+
+  tf4_held="$tf4_data/triage-held.log"
+  assert_ledger_line "$tf4_held" "cold-pitch-slug-name" "cold-pitch"
+
+  if grep -q '^cold-pitch-known-name	' "$tf4_held" 2>/dev/null; then
+    fail "T-F4 (positive control): cold-pitch-known-name.md (display name matches a real people/*.md name) was incorrectly held"
+  else
+    pass "T-F4 (positive control): cold-pitch-known-name.md (display name matches a real people/*.md name) correctly not held"
+  fi
+fi
+
+# =============================================================================
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 

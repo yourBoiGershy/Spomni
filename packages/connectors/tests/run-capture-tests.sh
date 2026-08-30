@@ -1020,6 +1020,35 @@ else
   fail "toRecipients-absent fixture missing: $no_recipients_fixture"
 fi
 
+# --- duplicate message id (plan 27 R2): the target id appears twice in
+# messages[]; the first(...) guard must yield exactly the first match's
+# Subject+body, byte-exact, not a concatenation of both matches. ---
+dup_id_fixture="$GMAIL_FIXTURES_DIR/get-thread-result-dup-id.json"
+if [ -f "$dup_id_fixture" ]; then
+  expected_dup_out="$(mktemp)"
+  printf 'Subject: Re: proposal draft\n\nConfirmed for Tuesday.  \n\nTalk soon.\n' > "$expected_dup_out"
+
+  actual_dup_out="$(mktemp)"
+  "$EXTRACT_BODY_SCRIPT" "$dup_id_fixture" "18f2a3b9c0d1e402" > "$actual_dup_out" 2>/dev/null
+  dup_status=$?
+
+  if [ "$dup_status" -eq 0 ]; then
+    pass "extract-email-body.sh: duplicated message id exits 0"
+  else
+    fail "extract-email-body.sh: duplicated message id exited $dup_status (expected 0)"
+  fi
+
+  if cmp -s "$expected_dup_out" "$actual_dup_out"; then
+    pass "extract-email-body.sh: duplicated message id yields the first match only, byte-exact (cmp)"
+  else
+    fail "extract-email-body.sh: duplicated message id output is not the first match's body alone (od -c to diagnose): $(od -c "$actual_dup_out" | head -n 5)"
+  fi
+
+  rm -f "$expected_dup_out" "$actual_dup_out"
+else
+  fail "duplicate-message-id fixture missing: $dup_id_fixture"
+fi
+
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 
