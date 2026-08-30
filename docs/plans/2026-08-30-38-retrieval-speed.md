@@ -163,9 +163,15 @@ mtimes preserved, measured 2026-08-30 after waves 1–2 (same method as §1):
 | MCP tools warm | any | ≤ 2 ms | ≤ 1 ms | p95 ≤ 200 ms | ✓ |
 | `/who-next` MCP path | per question | ≤ 22 round-trips | **1** (`who_next_pool`) + optional `upcoming_meetings` | ≤ 2 | ✓ (skill amended; live session run still owed) |
 
-Scale (synthetic `gen-scale-store.sh 1000`, from worker reports): `build-index` 0.7 s
-(≤ 2 s ✓), `validate-store` 3.5 s at 1000/2800 (≤ 8 s ✓), `who-next-direct` 0.25 s
-(≤ 2 s ✓). **Unit E (incremental index) skipped** — full rebuild is under target;
+Scale (`run-perf.sh`, synthetic `gen-scale-store.sh` 1000 people / 10 000
+interactions, median of 3): `build-index` 0.46 s (≤ 2 s ✓), `who-next-direct` 0.18 s
+(≤ 2 s ✓), stale server startup 0.20 s (≤ 1 s ✓), `who_next_pool` p95 35 ms ✓,
+**`validate-store` 8.75 s (≤ 8 s ✗ — the one open miss)**. It is 3.5 s on a 1000/2800
+store (the private store's 2.8 interactions-per-person ratio), and the remaining cost is
+bash interpreter time (per-line `read`, `[[ =~ ]]` link extraction), not process
+spawns; two fix rounds spent. Open decision for the user: accept 8.75 s at 10k
+interactions (re-baseline the `run-perf.sh` target to ≤ 10 s) or schedule a third
+pass (single-pass frontmatter map per file, awk-side link extraction). **Unit E (incremental index) skipped** — full rebuild is under target;
 recorded as decision `full-rebuild-is-cheap-enough`.
 
 ## 6. Out of scope
