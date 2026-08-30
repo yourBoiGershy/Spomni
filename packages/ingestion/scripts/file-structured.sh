@@ -379,7 +379,7 @@ calendar_body_info() {
 # ---------------------------------------------------------------------------
 # Self + ignore identities — <data-dir>/config/onboarding-backfill.tsv rows
 # "self<TAB><identity>" and "ignore<TAB><identity>" (same shape; coordinator
-# follow-up point 3 — bot/noreply senders like ask@bramble.solutions that
+# follow-up point 3 — bot/noreply senders like noreply@example.test that
 # should be dropped from hints exactly like the self user, but are not the
 # user). Both feed the same EXCLUDE_LIST (normalized): a hint matching
 # either is dropped before resolution. Absent file -> empty list -> no
