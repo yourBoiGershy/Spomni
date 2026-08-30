@@ -56,6 +56,15 @@
 # file isn't group- or world-readable; if it is, warns to stderr (with a
 # chmod 600 remedy) and continues — never fatal.
 #
+# store_dir: config.json's `store_dir` is optional. Precedence: an explicit
+# config value (absolute or repo-relative) wins; else $SPOMNI_STORE_DIR (set
+# per-tick by the sync scheduler) wins; else default to
+# <private-data-root>/store (--data-dir's `../../store`, symlinks resolved)
+# so the sweep follows the checkout's data/store symlink instead of a baked
+# absolute path. If neither a config value nor SPOMNI_STORE_DIR is set and
+# the default store dir doesn't exist, the run logs `config-error` and exits
+# 1.
+#
 # Portable to bash 3.2 (macOS default): no associative arrays, no mapfile.
 
 set -u
@@ -186,8 +195,27 @@ warn_if_token_readable "$TOKEN_FILE"
 
 RUN_START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+# store_dir resolution (config.json's `store_dir` is optional): an explicit
+# absolute config value wins; else a relative config value is repo-rooted
+# (legacy behavior); else the scheduler's per-tick $SPOMNI_STORE_DIR env wins;
+# else default to <private-data-root>/store (DATA_DIR/../../store, symlinks
+# resolved) so the sweep follows the checkout's data/store symlink instead of
+# a baked absolute path.
 case "$STORE_DIR" in
   /*) STORE_DIR_ABS="$STORE_DIR" ;;
+  "")
+    if [ -n "${SPOMNI_STORE_DIR:-}" ]; then
+      STORE_DIR_ABS="$SPOMNI_STORE_DIR"
+    else
+      STORE_DIR_ABS="$(cd "${DATA_DIR}/../../store" 2>/dev/null && pwd -P)"
+      if [ -z "$STORE_DIR_ABS" ]; then
+        MSG="store_dir unset and ${DATA_DIR}/../../store does not exist"
+        run_log "config-error" 0 0 0 "$MSG"
+        echo "beeper-sweep.sh: ${MSG}" >&2
+        exit 1
+      fi
+    fi
+    ;;
   *) STORE_DIR_ABS="${REPO_ROOT}/${STORE_DIR}" ;;
 esac
 

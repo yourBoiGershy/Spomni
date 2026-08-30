@@ -554,6 +554,135 @@ EOF
 
 fi
 
+# =============================================================================
+# 10. Plan-40 dynamic sync routing: sync_resolve_command placeholder
+#     expansion, sync_run_lane's exported env, CLI init/resolve, and
+#     install --dry-run's legacy-retire line (sandboxed HOME so no real
+#     ~/Library/LaunchAgents is touched or created).
+# =============================================================================
+
+# --- sync_resolve_command: all placeholders + one unknown token left alone ---
+d40_root="$SANDBOX/d40"
+d40_realstore="$d40_root/realstore"
+d40_data="$d40_root/data"
+mkdir -p "$d40_realstore" "$d40_data"
+ln -s "$d40_realstore" "$d40_data/store"
+
+d40_expected_store="$(cd "$d40_realstore" && pwd -P)"
+
+d40_resolved="$(
+  SYNC_REPO_ROOT=/r/root SPOMNI_CLAUDE_BIN=/c/claude \
+  sync_resolve_command "$d40_data" 'X {{REPO_ROOT}} {{DATA_DIR}} {{PRIVATE_DATA_ROOT}} {{STORE_DIR}} {{CLAUDE_BIN}} {{NOPE}}'
+)"
+d40_expected="X /r/root $d40_data $d40_root $d40_expected_store /c/claude {{NOPE}}"
+assert_eq "sync_resolve_command: expands all known placeholders, leaves {{NOPE}} untouched" "$d40_resolved" "$d40_expected"
+
+# --- sync_run_lane: exports SPOMNI_STORE_DIR / {{DATA_DIR}} into the command env ---
+d40_run_data_root="$SANDBOX/d40-run"
+d40_run_realstore="$d40_run_data_root/realstore"
+d40_run_data="$d40_run_data_root/data"
+mkdir -p "$d40_run_realstore" "$d40_run_data"
+ln -s "$d40_run_realstore" "$d40_run_data/store"
+d40_run_expected_store="$(cd "$d40_run_realstore" && pwd -P)"
+
+d40_run_cfg="$SANDBOX/d40-run-config.tsv"
+d40_run_lane="${LANE_NS}-d40-env"
+cat > "$d40_run_cfg" <<EOF
+${d40_run_lane}	60	true	/bin/sh -c 'printf "%s|%s" "\$SPOMNI_STORE_DIR" "{{DATA_DIR}}"'
+EOF
+
+sync_run_lane "$d40_run_cfg" "$d40_run_data" "$d40_run_lane"
+d40_run_log_content="$(cat "$(sync_log_file "$d40_run_data" "$d40_run_lane")" 2>/dev/null)"
+assert_contains "sync_run_lane: lane command sees resolved SPOMNI_STORE_DIR + {{DATA_DIR}}" "$d40_run_log_content" "${d40_run_expected_store}|${d40_run_data}"
+
+# --- CLI init: fresh write, byte-identical to the template, refuses to
+#     overwrite without --force, --force overwrites ---
+d40_init_data="$SANDBOX/d40-init-data"
+mkdir -p "$d40_init_data"
+d40_init_cfg="$(sync_config_path "$d40_init_data")"
+d40_template="$REPO_ROOT/packages/core/templates/sync-lanes.tsv"
+
+d40_init_out1="$("$CLI" init --data-dir "$d40_init_data" 2>&1)"
+d40_init_rc1=$?
+assert_eq "init: fresh write exits 0" "$d40_init_rc1" "0"
+if [ -f "$d40_init_cfg" ]; then
+  pass "init: fresh write creates the config file"
+else
+  fail "init: expected $d40_init_cfg to exist"
+fi
+if cmp -s "$d40_init_cfg" "$d40_template"; then
+  pass "init: written config is byte-identical to the template"
+else
+  fail "init: written config differs from the template"
+fi
+assert_contains "init: fresh write prints Wrote" "$d40_init_out1" "Wrote"
+
+d40_init_out2="$("$CLI" init --data-dir "$d40_init_data" 2>&1)"
+d40_init_rc2=$?
+assert_eq "init: second run (no --force) exits 0" "$d40_init_rc2" "0"
+assert_contains "init: second run (no --force) prints not overwriting" "$d40_init_out2" "not overwriting"
+
+printf '# marker-should-be-gone\n' >> "$d40_init_cfg"
+d40_init_out3="$("$CLI" init --force --data-dir "$d40_init_data" 2>&1)"
+d40_init_rc3=$?
+assert_eq "init --force: overwrites, exits 0" "$d40_init_rc3" "0"
+if grep -q 'marker-should-be-gone' "$d40_init_cfg" 2>/dev/null; then
+  fail "init --force: expected the pre-existing marker line to be gone after overwrite"
+else
+  pass "init --force: pre-existing marker line is gone after overwrite"
+fi
+if cmp -s "$d40_init_cfg" "$d40_template"; then
+  pass "init --force: overwritten config is byte-identical to the template again"
+else
+  fail "init --force: overwritten config differs from the template"
+fi
+
+# --- CLI resolve: prints expanded command; unknown lane -> exit 2 ---
+d40_resolve_data="$SANDBOX/d40-resolve-data"
+mkdir -p "$d40_resolve_data"
+d40_resolve_cfg="$(sync_config_path "$d40_resolve_data")"
+mkdir -p "$(dirname "$d40_resolve_cfg")"
+d40_resolve_lane="${LANE_NS}-d40-resolve"
+cat > "$d40_resolve_cfg" <<EOF
+${d40_resolve_lane}	60	true	echo {{DATA_DIR}}
+EOF
+
+d40_resolve_out="$("$CLI" resolve "$d40_resolve_lane" --data-dir "$d40_resolve_data" 2>&1)"
+d40_resolve_rc=$?
+d40_resolve_data_abs="$(cd "$d40_resolve_data" && pwd)"
+assert_eq "resolve: exits 0" "$d40_resolve_rc" "0"
+assert_eq "resolve: prints the command with {{DATA_DIR}} expanded" "$d40_resolve_out" "echo $d40_resolve_data_abs"
+
+"$CLI" resolve "${LANE_NS}-d40-resolve-unknown" --data-dir "$d40_resolve_data" >/dev/null 2>&1
+d40_resolve_unknown_rc=$?
+assert_eq "resolve: unknown lane exits 2" "$d40_resolve_unknown_rc" "2"
+
+# --- CLI install --dry-run legacy retire: sandboxed HOME, fake legacy plist,
+#     never touches the real ~/Library/LaunchAgents ---
+d40_legacy_home="$SANDBOX/d40-home"
+d40_legacy_agents_dir="$d40_legacy_home/Library/LaunchAgents"
+mkdir -p "$d40_legacy_agents_dir"
+d40_legacy_label="com.relationship-agent.sync.${LANE_NS}-legacy"
+d40_legacy_plist="$d40_legacy_agents_dir/${d40_legacy_label}.plist"
+printf '<?xml version="1.0"?>\n<plist></plist>\n' > "$d40_legacy_plist"
+
+d40_legacy_data="$SANDBOX/d40-legacy-data"
+mkdir -p "$d40_legacy_data"
+d40_legacy_cfg="$(sync_config_path "$d40_legacy_data")"
+mkdir -p "$(dirname "$d40_legacy_cfg")"
+printf '%s\t60\ttrue\t/bin/echo hi\n' "${LANE_NS}-d40-legacy-lane" > "$d40_legacy_cfg"
+
+d40_legacy_out="$(HOME="$d40_legacy_home" "$CLI" install --dry-run --data-dir "$d40_legacy_data" 2>&1)"
+d40_legacy_rc=$?
+assert_eq "install --dry-run legacy retire: exits 0" "$d40_legacy_rc" "0"
+assert_contains "install --dry-run legacy retire: names the legacy plist for retirement" "$d40_legacy_out" "Would retire legacy ${d40_legacy_label}"
+
+if [ -f "$d40_legacy_plist" ]; then
+  pass "install --dry-run legacy retire: sandboxed legacy plist untouched (dry-run performs no writes)"
+else
+  fail "install --dry-run legacy retire: sandboxed legacy plist was removed despite --dry-run"
+fi
+
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 

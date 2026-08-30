@@ -1,44 +1,50 @@
 # sync-lanes.tsv — template for <data-dir>/connectors/sync-scheduler/lanes.tsv
 #
-# Contract: packages/core/contracts/sync-lanes.md (schema_version 1.0.0).
-# Copy this file into your private data dir at
-# connectors/sync-scheduler/lanes.tsv and edit — this template is not read
-# directly by the scheduler.
+# Contract: packages/core/contracts/sync-lanes.md (schema_version 1.1.0).
+# No path editing needed: `bash packages/connectors/scripts/sync-scheduler.sh
+# init` copies this file into your private data dir at
+# connectors/sync-scheduler/lanes.tsv as-is — the {{...}} placeholders below
+# resolve per tick, from the checkout whose scheduler is executing, per the
+# contract's "## Placeholders" section. This template is not read directly
+# by the scheduler.
 #
 # Columns (tab-separated; command is the remainder of the line, spaces ok,
 # tabs forbidden):
 #   lane               [a-z0-9-]+, unique within the file
 #   interval_seconds   integer >= 60
 #   enabled             true | false
-#   command             absolute-path invocation, run via /bin/bash -c under
-#                       launchd's minimal environment (PATH is just
+#   command             invocation, run via /bin/bash -c under launchd's
+#                       minimal environment (PATH is just
 #                       /usr/bin:/bin:/usr/sbin:/sbin — no shell profile).
+#                       May contain {{REPO_ROOT}}, {{DATA_DIR}},
+#                       {{PRIVATE_DATA_ROOT}}, {{STORE_DIR}}, {{CLAUDE_BIN}}.
 #
 # Blank lines and lines starting with # are ignored. A malformed row fails
 # the whole file (fail-closed parsing) — see the contract for details.
 
-# Active example — replace <ABS-REPO-ROOT> with the absolute path of the
-# checkout that owns this lane's data dir (the repo whose beeper-in package
-# writes into this data dir's inbox/).
-beeper	900	true	/bin/bash <ABS-REPO-ROOT>/packages/connectors/beeper-in/scripts/beeper-sweep.sh
+# Active example — {{REPO_ROOT}} resolves at each tick to the checkout that
+# owns this lane's data dir (the repo whose beeper-in package writes into
+# this data dir's inbox/).
+beeper	900	true	/bin/bash {{REPO_ROOT}}/packages/connectors/beeper-in/scripts/beeper-sweep.sh
 
 # Delivery lane (plan 33) — renders and sends fired wake-up batches via
 # packages/connectors/scripts/deliver-tick.sh, the channel configured in
 # <store>/profile.md ## Notify (beeper-self, gmail-self, or outbox-only).
-notify	900	true	/bin/bash <ABS-REPO-ROOT>/packages/connectors/scripts/deliver-tick.sh <ABS-STORE-DIR> --private-data-root <ABS-PRIVATE-DATA-ROOT>
+notify	900	true	/bin/bash {{REPO_ROOT}}/packages/connectors/scripts/deliver-tick.sh {{STORE_DIR}} --private-data-root {{PRIVATE_DATA_ROOT}}
 
 # Feedback lane (plan 34) — parses numbered replies to delivered cards out of
 # the note-to-self chat. Deterministic shell, no model session, so it's
 # cheap to run every tick; must run after the beeper lane above so a reply
 # captured this tick is already on disk for it to parse. Ships enabled.
-feedback	900	true	/bin/bash <ABS-REPO-ROOT>/packages/ingestion/scripts/feedback-parse.sh <ABS-STORE-DIR> --data-dir <ABS-PRIVATE-DATA-ROOT>/data/ingestion
+feedback	900	true	/bin/bash {{REPO_ROOT}}/packages/ingestion/scripts/feedback-parse.sh {{STORE_DIR}} --data-dir {{PRIVATE_DATA_ROOT}}/data/ingestion
 
 # MCP lanes (plan 28) — gmail/calendar sync runs as a headless Claude
 # session per tick, via packages/connectors/scripts/mcp-lane-tick.sh. These
 # rows are disabled by default; before enabling:
-#   1. Set --claude-bin below to your machine's absolute claude path.
-#   2. Run: bash <ABS-REPO-ROOT>/packages/connectors/scripts/mcp-lane-tick.sh
-#      preflight --claude-bin <path> --lane gmail|calendar
+#   1. Optional: export SPOMNI_CLAUDE_BIN=<path> to pin a specific claude
+#      binary, or leave {{CLAUDE_BIN}} below to find `claude` on PATH.
+#   2. Run: bash {{REPO_ROOT}}/packages/connectors/scripts/mcp-lane-tick.sh
+#      preflight --claude-bin {{CLAUDE_BIN}} --lane gmail|calendar
 #      and confirm it reports preflight-ok.
 #   3. Flip enabled to true and re-run sync-scheduler.sh install.
 #
@@ -46,5 +52,5 @@ feedback	900	true	/bin/bash <ABS-REPO-ROOT>/packages/ingestion/scripts/feedback-
 # call (unlike beeper's 900s), so intervals here are a cost decision —
 # gmail hourly, calendar every 2 hours. Worst-case ceiling at these
 # defaults: 24 + 12 = 36 model sessions/day.
-gmail-in	3600	false	/bin/bash <ABS-REPO-ROOT>/packages/connectors/scripts/mcp-lane-tick.sh tick --claude-bin <ABS-CLAUDE-BIN> --prompt "/gmail-sweep pages=4" --allowed-tools "mcp__claude_ai_Gmail__*,Bash,Read,Write" --max-turns 50 --timeout-seconds 900
-calendar-in	7200	false	/bin/bash <ABS-REPO-ROOT>/packages/connectors/scripts/mcp-lane-tick.sh tick --claude-bin <ABS-CLAUDE-BIN> --prompt "/calendar-sweep pages=2" --allowed-tools "mcp__claude_ai_Google_Calendar__*,Bash,Read,Write" --max-turns 50 --timeout-seconds 900
+gmail-in	3600	false	/bin/bash {{REPO_ROOT}}/packages/connectors/scripts/mcp-lane-tick.sh tick --claude-bin {{CLAUDE_BIN}} --prompt "/gmail-sweep pages=4" --allowed-tools "mcp__claude_ai_Gmail__*,Bash,Read,Write" --max-turns 50 --timeout-seconds 900
+calendar-in	7200	false	/bin/bash {{REPO_ROOT}}/packages/connectors/scripts/mcp-lane-tick.sh tick --claude-bin {{CLAUDE_BIN}} --prompt "/calendar-sweep pages=2" --allowed-tools "mcp__claude_ai_Google_Calendar__*,Bash,Read,Write" --max-turns 50 --timeout-seconds 900

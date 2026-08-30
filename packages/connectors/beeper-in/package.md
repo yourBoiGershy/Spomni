@@ -15,6 +15,14 @@ sole self-only send lives in `packages/connectors/beeper-out/`
 filing is out of scope here (`ingestion`'s job) — this package only guarantees
 access + lossless raw capture, per "dumb edges, smart middle."
 
+## Store directory resolution
+
+`config.json`'s `store_dir` is optional. When absent/empty, `scripts/
+beeper-sweep.sh` falls back to `$SPOMNI_STORE_DIR` (set per-tick by the sync
+scheduler) and, failing that, to `<private-data-root>/store`
+(`<data-dir>/../../store`, symlinks resolved) — so the sweep follows the
+checkout's `data/store` symlink instead of a baked absolute path.
+
 ## API call convention
 
 Sweeps call the Beeper Client API directly over HTTP (`base_url`, default

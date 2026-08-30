@@ -130,7 +130,9 @@ data dir only.
   - Create `data/connectors/beeper-in/config.json` from
     `packages/connectors/beeper-in/config.example.json` — list the accountIDs
     to capture; save the API token beside it and `chmod 600` it (the sweep
-    warns on every run if the token file is readable by others).
+    warns on every run if the token file is readable by others). `store_dir`
+    is optional — omit it; the sweep defaults to the checkout's `data/store`
+    (symlink followed), so the config never needs an absolute path.
   - **Turn OFF** Settings → Integrations → *remote access* in Beeper Desktop —
     it binds the API to 0.0.0.0 (LAN-visible); the capture lane only needs
     127.0.0.1.
@@ -150,10 +152,23 @@ One scheduler runs every capture lane on an interval (contract:
 `packages/core/contracts/sync-lanes.md`).
 
 ```sh
-bash scripts/setup.sh --lanes            # writes data/connectors/sync-scheduler/lanes.tsv with this checkout's paths
+bash scripts/setup.sh --lanes            # or: bash packages/connectors/scripts/sync-scheduler.sh init
 bash packages/connectors/scripts/sync-scheduler.sh install
 bash packages/connectors/scripts/sync-scheduler.sh status
 ```
+
+`setup.sh --lanes` and `sync-scheduler.sh init` do the same thing: copy
+`packages/core/templates/sync-lanes.tsv` into
+`data/connectors/sync-scheduler/lanes.tsv` verbatim. There is no path to
+edit — lane commands carry `{{REPO_ROOT}}`, `{{DATA_DIR}}`,
+`{{PRIVATE_DATA_ROOT}}`, `{{STORE_DIR}}`, and `{{CLAUDE_BIN}}` placeholders
+that `sync-scheduler.sh` resolves fresh at every tick, from the checkout
+whose scheduler is executing. That means moving or renaming the checkout,
+or re-pointing `data/store`, needs only re-running `install` from the
+checkout you're using now — it also retires any legacy
+`com.relationship-agent.sync.*` agent automatically. To see exactly what a
+lane will run without waiting for a tick:
+`bash packages/connectors/scripts/sync-scheduler.sh resolve <lane>`.
 
 - Every enabled lane becomes a per-user launchd agent
   (`com.spomni.sync.<lane>`) — survives reboots natively; a sleep gap
@@ -180,10 +195,15 @@ CLAUDE_BIN="$(command -v claude)"   # absolute path; launchd has no PATH
 bash packages/connectors/scripts/mcp-lane-tick.sh preflight --claude-bin "$CLAUDE_BIN" --lane gmail
 bash packages/connectors/scripts/mcp-lane-tick.sh preflight --claude-bin "$CLAUDE_BIN" --lane calendar
 # both must print preflight-ok; preflight-fail names the missing connector tool
-$EDITOR data/connectors/sync-scheduler/lanes.tsv   # set --claude-bin, flip enabled → true
+$EDITOR data/connectors/sync-scheduler/lanes.tsv   # flip enabled → true
 bash packages/connectors/scripts/sync-scheduler.sh install
 bash packages/connectors/scripts/sync-scheduler.sh status
 ```
+
+The `{{CLAUDE_BIN}}` placeholder in each row finds `claude` on `PATH` (or
+`~/.claude/local/claude`) automatically — no editing needed. Only override
+it if the resolved binary is wrong: set `SPOMNI_CLAUDE_BIN=<path>` in the
+launchd plist's environment.
 
 - Each tick is a model session, so intervals are a cost decision: template
   defaults are gmail 3600s, calendar 7200s (≤36 sessions/day). Every tick is
@@ -286,6 +306,7 @@ leaves the machine). Override the endpoint/model with `OLLAMA_URL` /
 | `WARN: token file … readable by others` | `chmod 600 data/connectors/beeper-in/<token-file>` |
 | Scheduler installed but lane never fires | `RunAtLoad` is false by design — first fire comes after one interval; kickstart to test now |
 | `check-store-location.sh` FAILs | Your store is somewhere it could leak (inside this repo, a sync folder, or pointed at the public remote) — move it |
+| Lane fires but writes to the wrong store | `sync-scheduler.sh resolve <lane>` to see the resolved command; check `data/store` (symlink target); re-run `install` from the checkout you actually use |
 
 ## Uninstall
 
