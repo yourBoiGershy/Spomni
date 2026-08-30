@@ -6,27 +6,57 @@ on:
   pull_request:
 
 jobs:
-  test:
+  suites:
     # macOS: the pipeline targets bash 3.2 and BSD userland (the scheduler
     # tests exercise launchd plist rendering, dry-run only). ubuntu: GNU
     # portability — plans 27/06 both hit BSD/GNU sed/date bugs, so both
     # userlands run every suite.
+    #
+    # The suites are fanned out into wall-clock-balanced groups (defined in
+    # scripts/test-all.sh, `--group list`) so the slow store + embeddings
+    # suites no longer serialize behind everything else. Only the `query`
+    # group needs node.
+    name: suites (${{ matrix.os }}, ${{ matrix.group }})
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest]
+        group: [store, ingestion, connectors-attention, query]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
+        if: matrix.group == 'query'
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: packages/query/server/package-lock.json
       - name: Install query server deps
+        if: matrix.group == 'query'
         run: cd packages/query/server && npm ci
-      - name: Run every suite + oss-guard
-        run: bash scripts/test-all.sh
+      - name: Run suite group
+        run: bash scripts/test-all.sh --group ${{ matrix.group }}
+
+  test:
+    # Per-OS gate over the fan-out. Named `test (<os>)` because those are the
+    # required status checks on main's branch protection — keep the name
+    # stable or the protection silently stops matching.
+    needs: suites
+    if: always()
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check every ${{ matrix.os }} suite group passed
+        env:
+          OS: ${{ matrix.os }}
+          RESULT: ${{ needs.suites.result }}
+        run: |
+          # `needs.suites.result` is the whole matrix's rollup, so each gate
+          # only goes green when every group on every OS passed.
+          echo "suites rollup for gate ($OS): $RESULT"
+          [ "$RESULT" = "success" ]
 
   oss-guard-linux:
     # The guard itself must stay portable so it can run anywhere.

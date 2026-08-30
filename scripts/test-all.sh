@@ -1,7 +1,11 @@
 #!/bin/bash
 # test-all.sh — run every suite in the repo plus the open-source guard.
 #
-# Usage: bash scripts/test-all.sh [--skip-node]
+# Usage: bash scripts/test-all.sh [--skip-node] [--group <name>]
+#
+# --group runs one slice of the suites so CI can fan them out across parallel
+# jobs (.github/workflows/ci.yml). Groups are balanced by wall-clock, not by
+# package; `--group list` prints them. No --group = everything, as before.
 #
 # Plain bash 3.2; every suite runs against committed synthetic fixtures — no
 # live data, no network. The query suite and run-reachouts-readonly.sh need
@@ -15,40 +19,70 @@ set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-SKIP_NODE=0
-[ "${1:-}" = "--skip-node" ] && SKIP_NODE=1
+SKIP_NODE=0; GROUP=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --skip-node) SKIP_NODE=1 ;;
+    --group) GROUP="${2:-}"; shift ;;
+    *) echo "unknown arg: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
 
-SUITES="
+# Suite groups, balanced by measured wall-clock (local: store ~56s,
+# embeddings ~31s, oss-guard ~13s, everything else <= 10s). store and
+# embeddings each anchor a group; the rest fill in around them. Only
+# GROUP_QUERY needs node. The private feedback eval suite rides with
+# GROUP_INGESTION. New suites: add to the lightest group.
+GROUP_STORE="
 packages/core/tests/run-store-tests.sh
 packages/core/tests/run-render-tests.sh
 packages/core/tests/run-merge-tests.sh
+"
+GROUP_INGESTION="
+packages/ingestion/tests/run-embeddings-tests.sh
+packages/ingestion/tests/run-scoring-tests.sh
+packages/ingestion/tests/run-shard-tests.sh
+packages/ingestion/tests/run-feedback-tests.sh
+packages/ingestion/tests/run-structured-tests.sh
+packages/ingestion/tests/run-seed-tests.sh
+packages/ingestion/tests/run-triage-tests.sh
+packages/ingestion/tests/run-thread-tests.sh
+packages/ingestion/tests/run-refresh-tests.sh
+packages/ingestion/tests/run-merge-candidates-tests.sh
+"
+GROUP_CONNECTORS_ATTENTION="
 packages/connectors/tests/run-capture-tests.sh
 packages/connectors/tests/run-beeper-capture-tests.sh
 packages/connectors/tests/run-beeper-out-tests.sh
 packages/connectors/tests/run-deliver-tests.sh
 packages/connectors/tests/run-scheduler-tests.sh
-packages/ingestion/tests/run-seed-tests.sh
-packages/ingestion/tests/run-triage-tests.sh
-packages/ingestion/tests/run-shard-tests.sh
-packages/ingestion/tests/run-structured-tests.sh
-packages/ingestion/tests/run-scoring-tests.sh
-packages/ingestion/tests/run-feedback-tests.sh
-packages/ingestion/tests/run-thread-tests.sh
-packages/ingestion/tests/run-refresh-tests.sh
-packages/ingestion/tests/run-merge-candidates-tests.sh
-packages/ingestion/tests/run-embeddings-tests.sh
 packages/attention/tests/run-attention-tests.sh
 packages/attention/tests/run-capacity-tests.sh
 packages/attention/tests/run-queue-tests.sh
 packages/attention/tests/run-staleness-tests.sh
 packages/attention/tests/run-learn-tests.sh
+"
+GROUP_QUERY="
+.claude/scripts/oss-guard.sh
+.claude/scripts/tests/run-gitignore-tests.sh
+.claude/scripts/tests/run-oss-guard-tests.sh
 packages/query/tests/run-who-next-direct-tests.sh
 packages/query/tests/run-bench-smoke-tests.sh
 packages/query/tests/run-bench-guard.sh
-.claude/scripts/tests/run-oss-guard-tests.sh
-.claude/scripts/tests/run-gitignore-tests.sh
-.claude/scripts/oss-guard.sh
 "
+
+RUN_FEEDBACK=1; RUN_NODE=1
+case "$GROUP" in
+  "") SUITES="$GROUP_STORE $GROUP_INGESTION $GROUP_CONNECTORS_ATTENTION $GROUP_QUERY" ;;
+  list) echo "store ingestion connectors-attention query"; exit 0 ;;
+  store) SUITES="$GROUP_STORE"; RUN_FEEDBACK=0; RUN_NODE=0 ;;
+  ingestion) SUITES="$GROUP_INGESTION"; RUN_NODE=0 ;;
+  connectors-attention) SUITES="$GROUP_CONNECTORS_ATTENTION"; RUN_FEEDBACK=0; RUN_NODE=0 ;;
+  query) SUITES="$GROUP_QUERY"; RUN_FEEDBACK=0 ;;
+  *) echo "unknown --group '$GROUP' (try --group list)" >&2; exit 2 ;;
+esac
+[ -n "$GROUP" ] && echo "### group: $GROUP"
 
 pass=0; fail=0; skip=0; failed=""
 run() {
@@ -73,7 +107,9 @@ for s in $SUITES; do run "$s"; done
 # manifest exists on disk, which it never does in CI, so CI always takes
 # the SKIP branch below.
 FEEDBACK_EVAL_SUITE="${RA_DATA_DIR:-data}/evals/feedback/suite.txt"
-if [ -f "$FEEDBACK_EVAL_SUITE" ]; then
+if [ "$RUN_FEEDBACK" = 0 ]; then
+  : # belongs to another group
+elif [ -f "$FEEDBACK_EVAL_SUITE" ]; then
   FEEDBACK_EVAL_SUITE_ABS="$(cd "$(dirname "$FEEDBACK_EVAL_SUITE")" && pwd)/$(basename "$FEEDBACK_EVAL_SUITE")"
   echo "=== $FEEDBACK_EVAL_SUITE_ABS (private feedback eval suite)"
   if RA_EVAL_PRIVATE_MANIFEST="$FEEDBACK_EVAL_SUITE_ABS" RA_EVAL_DRY_RUN="${RA_EVAL_DRY_RUN:-1}" bash packages/core/scripts/eval-suite.sh "$FEEDBACK_EVAL_SUITE_ABS"; then
@@ -86,7 +122,9 @@ else
   echo "SKIP  private feedback eval suite (no $FEEDBACK_EVAL_SUITE)"; skip=$((skip+1))
 fi
 
-if [ "$SKIP_NODE" = 1 ] || ! command -v node >/dev/null 2>&1; then
+if [ "$RUN_NODE" = 0 ]; then
+  : # belongs to the query group
+elif [ "$SKIP_NODE" = 1 ] || ! command -v node >/dev/null 2>&1; then
   echo "SKIP  packages/query/tests/run-query-tests.sh (node unavailable or --skip-node)"; skip=$((skip+1))
 else
   if [ ! -d packages/query/server/node_modules ]; then
