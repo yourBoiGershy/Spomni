@@ -14,7 +14,9 @@
 #   status  — one-line summary: store=<path> git=<yes|no> branch=<b>
 #             ahead=<n> behind=<n> dirty=<n files>
 #   pull    — fetch + fast-forward merge (falls back to a plain merge; never
-#             rebases; conflicts are left for a human to resolve by hand)
+#             rebases; a real conflict is left for a human to resolve by
+#             hand and reported distinctly from any other merge failure,
+#             whose git stderr is echoed)
 #   commit  — reindex, validate-store.sh (refuses to stage on failure), then
 #             git add -A + commit; no-op if nothing changed; if the only
 #             staged change is index.json/stats.json's generated_at
@@ -22,6 +24,11 @@
 #             one every run), the staged+worktree change is reverted and
 #             treated as nothing-to-commit rather than a noise commit
 #   push    — git push origin HEAD; on rejection, pulls once and retries once
+#
+# Git identity: every git invocation that can create a commit (commit
+# itself, and pull's merges) falls back to -c user.name/-c user.email
+# (${SPOMNI_GIT_NAME:-Spomni} / ${SPOMNI_GIT_EMAIL:-spomni@localhost}) when
+# the store has no configured user.name — never writes global config.
 #
 # Refuses (exit 2, "FAIL:") if the resolved store's git toplevel is the same
 # repository as this code checkout — that's someone about to commit their
@@ -149,6 +156,17 @@ has_origin() {
     git -C "$abs_store_dir" remote get-url origin >/dev/null 2>&1
 }
 
+# git_ident — echoes -c user.name=.../-c user.email=... when the store has
+# no configured user.name (e.g. CI, a bare launchd runtime), else nothing.
+# Used on every git invocation that can create a commit (commit itself, and
+# pull's merges) so a missing identity never surfaces as "empty ident name".
+git_ident() {
+    if [ -z "$(git -C "$abs_store_dir" config user.name || true)" ]; then
+        printf -- '-c user.name=%s -c user.email=%s' \
+            "${SPOMNI_GIT_NAME:-Spomni}" "${SPOMNI_GIT_EMAIL:-spomni@localhost}"
+    fi
+}
+
 do_pull() {
     if ! has_origin; then
         echo "store-sync: no origin remote, pull skipped"
@@ -160,13 +178,25 @@ do_pull() {
         echo "FAIL: ${abs_store_dir} is not on a branch — resolve by hand, never rebase"
         return 1
     fi
-    if git -C "$abs_store_dir" merge --ff-only "origin/${branch}" 2>/dev/null; then
+    # shellcheck disable=SC2046
+    if git -C "$abs_store_dir" $(git_ident) merge --ff-only "origin/${branch}" 2>/dev/null; then
         return 0
     fi
-    if git -C "$abs_store_dir" merge --no-edit "origin/${branch}"; then
+    merge_err_file="$(mktemp)"
+    # shellcheck disable=SC2046
+    if git -C "$abs_store_dir" $(git_ident) merge --no-edit "origin/${branch}" 2>"$merge_err_file"; then
+        rm -f "$merge_err_file"
         return 0
     fi
-    echo "FAIL: merge conflict in ${abs_store_dir} — resolve by hand, never rebase"
+    merge_err="$(cat "$merge_err_file" 2>/dev/null || true)"
+    rm -f "$merge_err_file"
+    conflicted="$(git -C "$abs_store_dir" diff --name-only --diff-filter=U)"
+    if [ -n "$conflicted" ]; then
+        echo "FAIL: merge conflict in ${abs_store_dir} — resolve by hand, never rebase"
+    else
+        echo "$merge_err" >&2
+        echo "FAIL: merge failed in ${abs_store_dir} for a reason other than a conflict (see stderr above) — resolve by hand, never rebase"
+    fi
     return 1
 }
 
@@ -253,13 +283,8 @@ do_commit() {
         commit_msg="store: sync $(date -u +%Y-%m-%dT%H:%M:%SZ) UTC"
     fi
 
-    git_id_args=""
-    if [ -z "$(git -C "$abs_store_dir" config user.name || true)" ]; then
-        git_id_args="-c user.name=${SPOMNI_GIT_NAME:-Spomni} -c user.email=${SPOMNI_GIT_EMAIL:-spomni@localhost}"
-    fi
-
-    # shellcheck disable=SC2086
-    git -C "$abs_store_dir" $git_id_args commit -q -m "$commit_msg"
+    # shellcheck disable=SC2046
+    git -C "$abs_store_dir" $(git_ident) commit -q -m "$commit_msg"
 
     short_sha="$(git -C "$abs_store_dir" rev-parse --short HEAD)"
     echo "store-sync: committed ${short_sha} (${n_files} files)"
