@@ -16,7 +16,12 @@ attention-merge).
 - Skills: `skills/signal-scan/` (the ToS-clean detector set + warmth×rarity ranking,
   ~5-nudge cap, two-signal rule), `skills/sweep/` (the background run: capture-sweep →
   calendar-reconcile → filing → signal-scan → fire due wake-ups → acted-on detection →
-  calibrate → hand batch to an output adapter)
+  calibrate → hand batch to an output adapter), `skills/weekly-planning/` (the Sunday
+  routine: store-sync pull → `scripts/capacity.sh` → commit week-plan; per plan 12
+  cadence-capacity)
+- `scripts/capacity.sh` — deterministic week-plan writer per
+  `packages/core/contracts/week-plan.md`, sole writer of `signals/week-plan.json`,
+  per plan 12 cadence-capacity (docs/plans/2026-08-29-12-cadence-capacity.md)
 - Queue lifecycle: `scripts/wakeup-queue.sh` (list-due, fire, snooze, dismiss —
   creation stays with core's `wakeup-add.sh` so any package may append)
 - Event-proposal confirm/decline lifecycle: `scripts/proposal-confirm.sh`
@@ -54,12 +59,15 @@ attention-merge).
 - Typed `linkedin-notification`/`event-confirmation` events (connectors/gmail-in),
   contact artifacts (connectors/contacts-in), `same-event-as` links and calendar
   artifacts (ingestion), `needs-follow-up` markers (ingestion)
+- Calendar `calendar-event` capture events (connectors/calendar-in) — `scripts/capacity.sh`'s
+  input for computing `signals/week-plan.json` (`week-plan@1` is provided by this
+  package, not consumed)
 
 ## Owned paths
 
 `packages/attention/**`; at runtime: the `wakeups/` lifecycle (fire/snooze/dismiss
-state, including the outcome fields) and `ranking-weights.json` in the private data
-dir.
+state, including the outcome fields), `ranking-weights.json`, and `signals/week-plan.json`
+in the private data dir.
 
 ## Built by
 
