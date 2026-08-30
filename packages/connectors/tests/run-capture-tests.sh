@@ -44,6 +44,7 @@ GMAIL_FIXTURES_DIR="$REPO_ROOT/packages/connectors/gmail-in/fixtures"
 CALENDAR_FIXTURES_DIR="$REPO_ROOT/packages/connectors/calendar-in/fixtures"
 CLASSIFY="$REPO_ROOT/packages/connectors/gmail-in/scripts/classify.sh"
 EXTRACT_HINTS="$REPO_ROOT/packages/connectors/calendar-in/scripts/extract-hints.sh"
+EXTRACT_BODY_SCRIPT="$REPO_ROOT/packages/connectors/gmail-in/scripts/extract-email-body.sh"
 
 # Source values for the generic (lane-agnostic) tests below — any valid
 # <connector>/<lane> string works; gmail-in/gmail is used throughout for
@@ -108,6 +109,13 @@ fi
 
 if [ ! -x "$EXTRACT_HINTS" ]; then
   echo "FAIL: $EXTRACT_HINTS missing or not executable"
+  echo ""
+  echo "SUMMARY: 0 passed, 1 failed"
+  exit 1
+fi
+
+if [ ! -x "$EXTRACT_BODY_SCRIPT" ]; then
+  echo "FAIL: $EXTRACT_BODY_SCRIPT missing or not executable"
   echo ""
   echo "SUMMARY: 0 passed, 1 failed"
   exit 1
@@ -926,6 +934,91 @@ else
 fi
 
 rm -rf "$CAL_STATE_DIR" "$cal_incremental_log_before"
+
+# ---------------------------------------------------------------------------
+# gmail-in/scripts/extract-email-body.sh (plan 26 U8) — pulls one message's
+# body out of a saved get_thread/get_message result file, per the script's
+# own header comment: "Subject: <subject>" + blank line + verbatim
+# plaintextBody, byte-exact, no trailing-newline mangling.
+# ---------------------------------------------------------------------------
+
+# --- byte-exact extraction from a get_thread-shape fixture (messages[]
+# array); the target message's plaintextBody carries trailing spaces, a
+# blank line, and a trailing newline, so trailing-newline mangling would
+# show up as a byte diff. ---
+thread_fixture="$GMAIL_FIXTURES_DIR/get-thread-result.json"
+expected_body_out="$(mktemp)"
+printf 'Subject: Re: proposal draft\n\nConfirmed for Tuesday.  \n\nTalk soon.\n' > "$expected_body_out"
+
+actual_body_out="$(mktemp)"
+"$EXTRACT_BODY_SCRIPT" "$thread_fixture" "18f2a3b9c0d1e402" > "$actual_body_out" 2>/dev/null
+extract_status=$?
+
+if [ "$extract_status" -eq 0 ]; then
+  pass "extract-email-body.sh: exits 0 for a present message id"
+else
+  fail "extract-email-body.sh: exited $extract_status for a present message id (expected 0)"
+fi
+
+if cmp -s "$expected_body_out" "$actual_body_out"; then
+  pass "extract-email-body.sh: subject + blank line + plaintextBody is byte-exact (cmp)"
+else
+  fail "extract-email-body.sh: output is not byte-exact vs expected (od -c to diagnose): $(od -c "$actual_body_out" | head -n 5)"
+fi
+
+rm -f "$expected_body_out" "$actual_body_out"
+
+# --- absent message id: non-zero exit, a stderr reason, no stdout ---
+absent_status=0
+"$EXTRACT_BODY_SCRIPT" "$thread_fixture" "nonexistent-message-id-xyz" >/dev/null 2>/dev/null || absent_status=$?
+absent_stderr="$("$EXTRACT_BODY_SCRIPT" "$thread_fixture" "nonexistent-message-id-xyz" 2>&1 1>/dev/null)"
+absent_stdout="$(mktemp)"
+"$EXTRACT_BODY_SCRIPT" "$thread_fixture" "nonexistent-message-id-xyz" >"$absent_stdout" 2>/dev/null
+
+if [ "$absent_status" -ne 0 ]; then
+  pass "extract-email-body.sh: absent message id exits non-zero"
+else
+  fail "extract-email-body.sh: absent message id exited 0 (expected non-zero)"
+fi
+
+if [ -n "$absent_stderr" ]; then
+  pass "extract-email-body.sh: absent message id prints a stderr reason"
+else
+  fail "extract-email-body.sh: absent message id printed no stderr reason"
+fi
+
+if [ ! -s "$absent_stdout" ]; then
+  pass "extract-email-body.sh: absent message id emits no stdout"
+else
+  fail "extract-email-body.sh: absent message id emitted stdout despite the miss"
+fi
+
+rm -f "$absent_stdout"
+
+# --- toRecipients absent entirely (live-verified absent-not-empty shape):
+# extraction still succeeds, no crash, subject + plaintextBody are correct. ---
+no_recipients_fixture="$GMAIL_FIXTURES_DIR/email-no-recipients.json"
+if [ -f "$no_recipients_fixture" ]; then
+  no_recip_out="$("$EXTRACT_BODY_SCRIPT" "$no_recipients_fixture" "18f2a3b9c0d1e420" 2>&1)"
+  no_recip_status=$?
+
+  if [ "$no_recip_status" -eq 0 ]; then
+    pass "extract-email-body.sh: toRecipients-absent message extracts without crashing (exit 0)"
+  else
+    fail "extract-email-body.sh: toRecipients-absent message failed (status $no_recip_status): $no_recip_out"
+  fi
+
+  expected_no_recip="Subject: Weekly digest
+
+Your weekly digest is ready. Nothing new from your contacts this week."
+  if [ "$no_recip_out" = "$expected_no_recip" ]; then
+    pass "extract-email-body.sh: toRecipients-absent message subject + body correct"
+  else
+    fail "extract-email-body.sh: toRecipients-absent message output mismatch (got: $no_recip_out)"
+  fi
+else
+  fail "toRecipients-absent fixture missing: $no_recipients_fixture"
+fi
 
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"

@@ -957,9 +957,17 @@ else
   pass "backfill isolation: last-sweep (incremental ledger) stays absent"
 fi
 
+# D6: fixtures/messages-page.json is a single hasMore:false page, so both
+# chats' newest-page fetch exhausts bridge history immediately — the
+# correct, expected outcome is a history-clamped WARN per chat (D6 fetch_
+# backfill_messages sets clamped whenever has_more != true, regardless of
+# whether the page is genuinely at the window edge). Isolation intent
+# (backfill-cursors.tsv/backfill-last-sweep created, cursors.tsv/last-sweep
+# absent) is unaffected and asserted separately above; asserting the WARN
+# here documents the D6 clamp semantics rather than weakening this check.
 bf1_runlog_last="$(tail -n1 "$bf1_data/runs.log" 2>/dev/null)"
-if printf '%s' "$bf1_runlog_last" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z backfill-ok chats=2 events=2 quarantined=0$'; then
-  pass "backfill isolation: runs.log carries the backfill- outcome prefix"
+if printf '%s' "$bf1_runlog_last" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z backfill-ok chats=2 events=2 quarantined=0 warn=!sample-single-chat:example\.org=history-clamped@2026-08-29T14:30:00\.000Z,local-whatsapp_ba_test1_group-sample=history-clamped@2026-08-29T14:30:00\.000Z$'; then
+  pass "backfill isolation: runs.log carries the backfill- outcome prefix and the expected history-clamped WARN for both chats (D6: single-page hasMore:false fixture)"
 else
   fail "backfill isolation: unexpected runs.log last line: [$bf1_runlog_last]"
 fi
@@ -1210,14 +1218,572 @@ bf5_rc=$?
 
 assert_eq "backfill default-window pin: sweep exits 0 with no onboarding-backfill.tsv present" "$bf5_rc" "0"
 
+# D6: fixtures/messages-page.json is a single hasMore:false page, so both
+# chats' newest-page fetch exhausts bridge history immediately — the
+# correct, expected outcome under the default 6-month window is a
+# history-clamped WARN per chat (same D6 clamp semantics as 8a). The
+# default-window-pin intent (no skip/error when onboarding-backfill.tsv is
+# absent) is unaffected — the outcome is still backfill-ok, not a
+# skip/error — so this only adjusts the WARN expectation, not that intent.
 bf5_runlog_last="$(tail -n1 "$bf5_data/runs.log" 2>/dev/null)"
-if printf '%s' "$bf5_runlog_last" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z backfill-ok chats=2 events=2 quarantined=0$'; then
-  pass "backfill default-window pin: runs with the default 6-month window (no skip/error) per onboarding-backfill.md's missing-file-is-valid rule"
+if printf '%s' "$bf5_runlog_last" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z backfill-ok chats=2 events=2 quarantined=0 warn=!sample-single-chat:example\.org=history-clamped@2026-08-29T14:30:00\.000Z,local-whatsapp_ba_test1_group-sample=history-clamped@2026-08-29T14:30:00\.000Z$'; then
+  pass "backfill default-window pin: runs with the default 6-month window (no skip/error) per onboarding-backfill.md's missing-file-is-valid rule, and carries the expected history-clamped WARN for both chats (D6: single-page hasMore:false fixture)"
 else
-  fail "backfill default-window pin: expected a backfill-ok run using the default window; got runs.log last line: [$bf5_runlog_last] (see brief: if this is a real skip/error, it is a FINDING, not something this test suite should route around)"
+  fail "backfill default-window pin: expected a backfill-ok run using the default window; got runs.log last line: [$bf5_runlog_last]"
 fi
 
 fi # SWEEP_SCRIPT / NORMALIZE_SCRIPT / RESOLVE_WINDOW_SCRIPT present
+
+# =============================================================================
+# 9. D6 backfill fix regression tests (coverage-floor.tsv write-once guard,
+#    backfill start-bound resolution via the floor / legacy fallback, and the
+#    history-clamped WARN). Same route_stub + fixture harness as sections
+#    7-8, plus a small set of test-local fixtures/stubs unique to these
+#    properties (defined inline below, same convention as 7e/8b's ad hoc
+#    fixtures). Uses a single-chat variant of fixtures/chats-page.json
+#    (chats-single.json, matrix chat only) to keep dup/legacy/clamp
+#    assertions unambiguous (one chat, one event per run).
+# =============================================================================
+
+if [ ! -x "$SWEEP_SCRIPT" ] || [ ! -x "$NORMALIZE_SCRIPT" ] || [ ! -x "$RESOLVE_WINDOW_SCRIPT" ]; then
+  fail "d6: beeper-sweep.sh, normalize-capture.sh, or resolve-backfill-window.sh not found/executable — skipping D6 regression subtests"
+else
+
+D6_ROOT="$SANDBOX/d6-coverage-floor"
+mkdir -p "$D6_ROOT"
+
+d6_chats_single="$D6_ROOT/chats-single.json"
+cat > "$d6_chats_single" <<'EOF'
+{
+  "items": [
+    {
+      "id": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "network": "matrix",
+      "title": "Bea Sample",
+      "type": "single",
+      "participants": {
+        "items": [
+          { "name": "Ada Test", "ids": ["@ada-test:example.org"] },
+          { "name": "Bea Sample", "ids": ["@bea-sample:example.org"] }
+        ]
+      },
+      "lastActivity": "2026-08-29T14:32:10.500Z",
+      "unreadCount": 1
+    }
+  ],
+  "hasMore": false,
+  "oldestCursor": "cursor-chats-oldest-sample",
+  "newestCursor": "cursor-chats-newest-sample"
+}
+EOF
+
+# Genuinely older, non-overlapping history (D6's correct backfill start
+# bound): no oldestCursor -> also exercises the history-clamped path (9d).
+d6_msgs_older="$D6_ROOT/messages-genuinely-older.json"
+cat > "$d6_msgs_older" <<'EOF'
+{
+  "items": [
+    {
+      "id": "msg-d6-older-001",
+      "chatID": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "senderID": "@bea-sample:example.org",
+      "senderName": "Bea Sample",
+      "timestamp": "2026-06-15T10:00:00.000Z",
+      "sortKey": "0000000000",
+      "type": "TEXT",
+      "text": "D6 backfill regression: genuinely older history, no overlap with incremental",
+      "isSender": false,
+      "attachments": [],
+      "linkedMessageID": null,
+      "reactions": []
+    }
+  ],
+  "hasMore": false,
+  "newestCursor": "cursor-d6-older-newest"
+}
+EOF
+
+# Sabotage-only fixture: duplicates the incremental capture's own message
+# ids/timestamps. Only ever served if backfill's start-bound resolution
+# regresses to the incremental cursor (cursor-msgs-newest-sample) instead of
+# the coverage floor (cursor-msgs-oldest-sample) — see 9b's d6b_route_stub.
+d6_msgs_sabotage_overlap="$D6_ROOT/messages-sabotage-overlap.json"
+cat > "$d6_msgs_sabotage_overlap" <<'EOF'
+{
+  "items": [
+    {
+      "id": "msg-sample-001",
+      "chatID": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "senderID": "@bea-sample:example.org",
+      "senderName": "Bea Sample",
+      "timestamp": "2026-08-29T14:30:00.000Z",
+      "sortKey": "0000000001",
+      "type": "TEXT",
+      "text": "Sample message: hey, are we still on for coffee Friday?",
+      "isSender": false,
+      "attachments": [],
+      "linkedMessageID": null,
+      "reactions": []
+    },
+    {
+      "id": "msg-sample-002",
+      "chatID": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "senderID": "@ada-test:example.org",
+      "senderName": "Ada Test",
+      "timestamp": "2026-08-29T14:31:20.250Z",
+      "sortKey": "0000000002",
+      "type": "TEXT",
+      "text": "Sample message: yep, 10am works for me",
+      "isSender": true,
+      "attachments": [],
+      "linkedMessageID": null,
+      "reactions": []
+    },
+    {
+      "id": "msg-sample-003",
+      "chatID": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "senderID": "@bea-sample:example.org",
+      "senderName": "Bea Sample",
+      "timestamp": "2026-08-29T14:32:10.500Z",
+      "sortKey": "0000000003",
+      "type": "IMAGE",
+      "text": "Sample message: here's the cafe location",
+      "isSender": false,
+      "attachments": [
+        { "url": "mxc://example.org/sampleMediaId123", "type": "image" }
+      ],
+      "linkedMessageID": null,
+      "reactions": []
+    }
+  ],
+  "hasMore": false,
+  "newestCursor": "cursor-sabotage-newest"
+}
+EOF
+
+# Legacy no-floor fallback fixture: one genuinely-older message plus a
+# message whose id/timestamp exactly matches an already-captured message
+# (msg-sample-001 from fixtures/messages-page.json) — the latter must be
+# excluded by the legacy_max_ts filter.
+d6_msgs_legacy_mixed="$D6_ROOT/messages-legacy-mixed.json"
+cat > "$d6_msgs_legacy_mixed" <<'EOF'
+{
+  "items": [
+    {
+      "id": "msg-legacy-old-001",
+      "chatID": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "senderID": "@bea-sample:example.org",
+      "senderName": "Bea Sample",
+      "timestamp": "2026-06-01T09:00:00.000Z",
+      "sortKey": "0000000000",
+      "type": "TEXT",
+      "text": "Legacy backfill message: genuinely older than the first incremental capture",
+      "isSender": false,
+      "attachments": [],
+      "linkedMessageID": null,
+      "reactions": []
+    },
+    {
+      "id": "msg-sample-001",
+      "chatID": "!sample-single-chat:example.org",
+      "accountID": "matrix",
+      "senderID": "@bea-sample:example.org",
+      "senderName": "Bea Sample",
+      "timestamp": "2026-08-29T14:30:00.000Z",
+      "sortKey": "0000000001",
+      "type": "TEXT",
+      "text": "Sample message: hey, are we still on for coffee Friday?",
+      "isSender": false,
+      "attachments": [],
+      "linkedMessageID": null,
+      "reactions": []
+    }
+  ],
+  "hasMore": false,
+  "newestCursor": "cursor-legacy-mixed-newest"
+}
+EOF
+
+# assert_no_dup_subset_events <store_dir> <description> — property (i): no
+# inbox capture event's message-id set is a subset of (or equal to) a prior
+# event's message-id set. Compares every ordered pair of inbox .md files'
+# body `messages[].id` sets.
+assert_no_dup_subset_events() {
+  store_dir="$1"
+  desc="$2"
+  ids_dir="$(mktemp -d)"
+  n=0
+  for f in "$store_dir"/inbox/*.md; do
+    [ -f "$f" ] || continue
+    n=$((n + 1))
+    body="$(awk 'BEGIN{c=0} /^---$/{c++; next} c>=2{print}' "$f")"
+    printf '%s' "$body" | jq -r '.messages[].id' 2>/dev/null | sort > "$ids_dir/$n.ids"
+  done
+
+  violation=0
+  a=1
+  while [ "$a" -le "$n" ]; do
+    b=1
+    while [ "$b" -le "$n" ]; do
+      if [ "$a" -ne "$b" ] && [ -s "$ids_dir/$a.ids" ]; then
+        leftover="$(comm -23 "$ids_dir/$a.ids" "$ids_dir/$b.ids" 2>/dev/null)"
+        if [ -z "$leftover" ]; then
+          violation=1
+        fi
+      fi
+      b=$((b + 1))
+    done
+    a=$((a + 1))
+  done
+  rm -rf "$ids_dir"
+
+  if [ "$violation" -eq 0 ]; then
+    pass "$desc"
+  else
+    fail "$desc (found an inbox event whose message-id set is a subset of another's)"
+  fi
+}
+
+# -----------------------------------------------------------------------
+# 9a. coverage-floor.tsv: written once on first incremental capture,
+#     unchanged by a second incremental run, unchanged by a --backfill run.
+# -----------------------------------------------------------------------
+d6a_root="$D6_ROOT/9a-write-once"
+d6a_data_root="$d6a_root/data-root"
+d6a_data="$d6a_data_root/connectors/beeper-in"
+d6a_store="$d6a_root/store"
+mkdir -p "$d6a_store" "$d6a_data"
+make_beeper_config "$d6a_data" "$d6a_store" "matrix"
+
+d6a_log1="$d6a_root/stub-argv-1.log"
+(
+  export STUB_LOG="$d6a_log1"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$d6_chats_single"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$d6a_data"
+) > "$d6a_root/stdout-1.log" 2>"$d6a_root/stderr-1.log"
+d6a_rc1=$?
+assert_eq "d6 write-once: first incremental run exits 0" "$d6a_rc1" "0"
+
+d6a_floor="$d6a_data/coverage-floor.tsv"
+assert_eq "d6 write-once: coverage-floor.tsv has exactly one line after first capture" "$(grep -c . "$d6a_floor" 2>/dev/null)" "1"
+
+d6a_floor_after1="$(cat "$d6a_floor" 2>/dev/null)"
+if printf '%s' "$d6a_floor_after1" | grep -q 'cursor-msgs-oldest-sample$'; then
+  pass "d6 write-once: coverage-floor.tsv records the first page's oldest cursor"
+else
+  fail "d6 write-once: unexpected coverage-floor.tsv content: [$d6a_floor_after1]"
+fi
+
+d6a_log2="$d6a_root/stub-argv-2.log"
+(
+  export STUB_LOG="$d6a_log2"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$d6_chats_single"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$d6a_data"
+) > "$d6a_root/stdout-2.log" 2>"$d6a_root/stderr-2.log"
+d6a_rc2=$?
+assert_eq "d6 write-once: second incremental run exits 0" "$d6a_rc2" "0"
+
+d6a_floor_after2="$(cat "$d6a_floor" 2>/dev/null)"
+assert_eq "d6 write-once: coverage-floor.tsv unchanged after a second incremental run" "$d6a_floor_after2" "$d6a_floor_after1"
+
+d6a_log3="$d6a_root/stub-argv-3.log"
+(
+  export STUB_LOG="$d6a_log3"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$d6_chats_single"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$d6_msgs_older"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$d6a_data" --backfill
+) > "$d6a_root/stdout-3.log" 2>"$d6a_root/stderr-3.log"
+d6a_rc3=$?
+assert_eq "d6 write-once: backfill run exits 0" "$d6a_rc3" "0"
+
+d6a_floor_after3="$(cat "$d6a_floor" 2>/dev/null)"
+assert_eq "d6 write-once: coverage-floor.tsv unchanged after a --backfill run (backfill never writes it)" "$d6a_floor_after3" "$d6a_floor_after1"
+
+# -----------------------------------------------------------------------
+# 9b. No duplicate-subset events: incremental first-capture then --backfill
+#     over the same stub history produces no overlapping message-id sets.
+#     Uses a cursor-value-aware stub (d6b_route_stub) so a start-bound
+#     regression (backfill resuming from the incremental cursor instead of
+#     the coverage floor) is distinguishable: the "before floor" cursor
+#     (cursor-msgs-oldest-sample) serves genuinely older, non-overlapping
+#     history; the "before newest" cursor (cursor-msgs-newest-sample) —
+#     only ever requested if beeper-sweep.sh's D6 fix regresses — serves a
+#     fixture that duplicates the incremental capture's own message ids.
+# -----------------------------------------------------------------------
+d6b_root="$D6_ROOT/9b-no-dup-subset"
+d6b_data_root="$d6b_root/data-root"
+d6b_data="$d6b_data_root/connectors/beeper-in"
+d6b_store="$d6b_root/store"
+mkdir -p "$d6b_store" "$d6b_data"
+make_beeper_config "$d6b_data" "$d6b_store" "matrix"
+
+d6b_route_stub="$d6b_root/route-stub.sh"
+cat > "$d6b_route_stub" <<'EOF'
+#!/bin/sh
+path="$1"
+[ -n "${STUB_LOG:-}" ] && echo "$path" >> "$STUB_LOG"
+case "$path" in
+  /v1/info)
+    cat "$STUB_INFO"
+    ;;
+  /v1/accounts)
+    cat "$STUB_ACCOUNTS"
+    ;;
+  /v1/chats\?*)
+    cat "$STUB_CHATS"
+    ;;
+  */messages\?cursor=cursor-msgs-oldest-sample\&direction=before)
+    cat "$STUB_MSG_BEFORE_FLOOR"
+    ;;
+  */messages\?cursor=cursor-msgs-newest-sample\&direction=before)
+    cat "$STUB_MSG_BEFORE_NEWEST"
+    ;;
+  */messages)
+    cat "$STUB_MSG_FIRST"
+    ;;
+  *)
+    echo "d6b route-stub: unmatched path: $path" >&2
+    exit 1
+    ;;
+esac
+EOF
+chmod +x "$d6b_route_stub"
+
+d6b_log1="$d6b_root/stub-argv-1.log"
+(
+  export STUB_LOG="$d6b_log1"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$d6_chats_single"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  BEEPER_HTTP_STUB="$d6b_route_stub" "$SWEEP_SCRIPT" --data-dir "$d6b_data"
+) > "$d6b_root/stdout-1.log" 2>"$d6b_root/stderr-1.log"
+d6b_rc1=$?
+assert_eq "d6 no-dup-subset: incremental run exits 0" "$d6b_rc1" "0"
+
+d6b_log2="$d6b_root/stub-argv-2.log"
+(
+  export STUB_LOG="$d6b_log2"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$d6_chats_single"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_BEFORE_FLOOR="$d6_msgs_older"
+  export STUB_MSG_BEFORE_NEWEST="$d6_msgs_sabotage_overlap"
+  BEEPER_HTTP_STUB="$d6b_route_stub" "$SWEEP_SCRIPT" --data-dir "$d6b_data" --backfill
+) > "$d6b_root/stdout-2.log" 2>"$d6b_root/stderr-2.log"
+d6b_rc2=$?
+assert_eq "d6 no-dup-subset: backfill run exits 0" "$d6b_rc2" "0"
+
+if grep -q 'cursor=cursor-msgs-oldest-sample&direction=before' "$d6b_log2" 2>/dev/null; then
+  pass "d6 no-dup-subset: backfill started from the coverage-floor cursor (not the incremental cursor)"
+else
+  fail "d6 no-dup-subset: backfill did not request the coverage-floor cursor's before-page: $(cat "$d6b_log2" 2>/dev/null)"
+fi
+
+assert_no_dup_subset_events "$d6b_store" "d6 no-dup-subset: no inbox event's message-id set is a subset of another's"
+
+# -----------------------------------------------------------------------
+# 9c. Legacy fallback: floor absent but a prior capture event exists for
+#     the chat (as it would for a chat whose first incremental capture
+#     predates the D6 fix) — backfill must exclude every timestamp that
+#     event already covered. Uses a sequenced stub: the chat's initial
+#     (no-cursor) messages page differs between the incremental run (call
+#     1) and the backfill run's no-floor no-cursor request (call 2+), since
+#     both hit the exact same path.
+# -----------------------------------------------------------------------
+d6c_root="$D6_ROOT/9c-legacy-fallback"
+d6c_data_root="$d6c_root/data-root"
+d6c_data="$d6c_data_root/connectors/beeper-in"
+d6c_store="$d6c_root/store"
+mkdir -p "$d6c_store" "$d6c_data"
+make_beeper_config "$d6c_data" "$d6c_store" "matrix"
+
+d6c_seq_stub="$d6c_root/seq-stub.sh"
+cat > "$d6c_seq_stub" <<'EOF'
+#!/bin/sh
+path="$1"
+[ -n "${STUB_LOG:-}" ] && echo "$path" >> "$STUB_LOG"
+case "$path" in
+  /v1/info)
+    cat "$STUB_INFO"
+    exit 0
+    ;;
+  /v1/accounts)
+    cat "$STUB_ACCOUNTS"
+    exit 0
+    ;;
+  /v1/chats\?*)
+    cat "$STUB_CHATS"
+    exit 0
+    ;;
+esac
+n=$(cat "$STUB_COUNTER")
+n=$((n + 1))
+echo "$n" > "$STUB_COUNTER"
+if [ "$n" -eq 1 ]; then
+  cat "$STUB_MSG_INCREMENTAL"
+else
+  cat "$STUB_MSG_LEGACY_MIXED"
+fi
+EOF
+chmod +x "$d6c_seq_stub"
+
+d6c_counter="$d6c_root/counter"
+echo 0 > "$d6c_counter"
+
+d6c_log="$d6c_root/stub-argv.log"
+(
+  export STUB_LOG="$d6c_log"
+  export STUB_COUNTER="$d6c_counter"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$d6_chats_single"
+  export STUB_MSG_INCREMENTAL="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_LEGACY_MIXED="$d6_msgs_legacy_mixed"
+  BEEPER_HTTP_STUB="$d6c_seq_stub" "$SWEEP_SCRIPT" --data-dir "$d6c_data"
+) > "$d6c_root/stdout-incr.log" 2>"$d6c_root/stderr-incr.log"
+d6c_incr_rc=$?
+assert_eq "d6 legacy fallback: prior incremental run exits 0" "$d6c_incr_rc" "0"
+
+# Simulate a chat whose first incremental capture predates the D6 fix:
+# remove the just-written coverage-floor entry while leaving the inbox
+# event (the legacy signal) in place.
+rm -f "$d6c_data/coverage-floor.tsv"
+
+d6c_bf_log="$d6c_root/stub-argv-backfill.log"
+(
+  export STUB_LOG="$d6c_bf_log"
+  export STUB_COUNTER="$d6c_counter"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$d6_chats_single"
+  export STUB_MSG_INCREMENTAL="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_LEGACY_MIXED="$d6_msgs_legacy_mixed"
+  BEEPER_HTTP_STUB="$d6c_seq_stub" "$SWEEP_SCRIPT" --data-dir "$d6c_data" --backfill
+) > "$d6c_root/stdout-backfill.log" 2>"$d6c_root/stderr-backfill.log"
+d6c_bf_rc=$?
+assert_eq "d6 legacy fallback: backfill run (no floor) exits 0" "$d6c_bf_rc" "0"
+
+if grep -rq 'msg-legacy-old-001' "$d6c_store"/inbox/*.md 2>/dev/null; then
+  pass "d6 legacy fallback: message older than the legacy oldest-covered timestamp is captured"
+else
+  fail "d6 legacy fallback: expected genuinely-older legacy message not found in any inbox event"
+fi
+
+d6c_dup_count="$(grep -rl 'msg-sample-001' "$d6c_store"/inbox/*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "d6 legacy fallback: already-captured message id appears only in the incremental run's own event, never re-captured by backfill" "$d6c_dup_count" "1"
+
+# -----------------------------------------------------------------------
+# 9d. History-clamped WARN: bridge history exhausted (hasMore false, no
+#     oldestCursor) before reaching the resolved window start ->
+#     `<chatID>=history-clamped@<oldest_ts>` appears in the backfill run's
+#     runs.log WARN field.
+# -----------------------------------------------------------------------
+d6d_root="$D6_ROOT/9d-history-clamped"
+d6d_data_root="$d6d_root/data-root"
+d6d_data="$d6d_data_root/connectors/beeper-in"
+d6d_store="$d6d_root/store"
+mkdir -p "$d6d_store" "$d6d_data"
+make_beeper_config "$d6d_data" "$d6d_store" "matrix"
+
+(
+  export STUB_LOG="$(mktemp)"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$d6_chats_single"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$d6d_data"
+) > /dev/null 2>&1
+
+d6d_log="$d6d_root/stub-argv-backfill.log"
+(
+  export STUB_LOG="$d6d_log"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$d6_chats_single"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$d6_msgs_older"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$d6d_data" --backfill
+) > "$d6d_root/stdout.log" 2>"$d6d_root/stderr.log"
+d6d_rc=$?
+assert_eq "d6 history-clamped: backfill run exits 0" "$d6d_rc" "0"
+
+d6d_runlog_last="$(tail -n1 "$d6d_data/runs.log" 2>/dev/null)"
+if printf '%s' "$d6d_runlog_last" | grep -Eq 'history-clamped@2026-06-15T10:00:00\.000Z'; then
+  pass "d6 history-clamped: runs.log WARN records history-clamped@<oldest_ts> for the exhausted chat"
+else
+  fail "d6 history-clamped: expected history-clamped@ warning not found in runs.log last line: [$d6d_runlog_last]"
+fi
+
+# -----------------------------------------------------------------------
+# 9e. Incremental files byte-identical: cursors.tsv and last-sweep (the
+#     incremental ledger) are byte-for-byte unchanged by a --backfill run
+#     against the same data dir.
+# -----------------------------------------------------------------------
+d6e_root="$D6_ROOT/9e-incremental-untouched"
+d6e_data_root="$d6e_root/data-root"
+d6e_data="$d6e_data_root/connectors/beeper-in"
+d6e_store="$d6e_root/store"
+mkdir -p "$d6e_store" "$d6e_data"
+make_beeper_config "$d6e_data" "$d6e_store" "matrix"
+
+(
+  export STUB_LOG="$(mktemp)"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$d6_chats_single"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$d6e_data"
+) > /dev/null 2>&1
+
+d6e_cursors_snapshot="$d6e_root/cursors.tsv.before"
+d6e_lastsweep_snapshot="$d6e_root/last-sweep.before"
+cp "$d6e_data/cursors.tsv" "$d6e_cursors_snapshot"
+cp "$d6e_data/last-sweep" "$d6e_lastsweep_snapshot"
+
+(
+  export STUB_LOG="$(mktemp)"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$d6_chats_single"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$d6_msgs_older"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$d6e_data" --backfill
+) > /dev/null 2>&1
+
+if diff -q "$d6e_cursors_snapshot" "$d6e_data/cursors.tsv" >/dev/null 2>&1; then
+  pass "d6 incremental untouched: cursors.tsv is byte-identical before/after a --backfill run"
+else
+  fail "d6 incremental untouched: cursors.tsv changed after a --backfill run — diff: $(diff "$d6e_cursors_snapshot" "$d6e_data/cursors.tsv" 2>&1 | tr '\n' ' ')"
+fi
+
+if diff -q "$d6e_lastsweep_snapshot" "$d6e_data/last-sweep" >/dev/null 2>&1; then
+  pass "d6 incremental untouched: last-sweep is byte-identical before/after a --backfill run"
+else
+  fail "d6 incremental untouched: last-sweep changed after a --backfill run — diff: $(diff "$d6e_lastsweep_snapshot" "$d6e_data/last-sweep" 2>&1 | tr '\n' ' ')"
+fi
+
+fi # D6 SWEEP_SCRIPT / NORMALIZE_SCRIPT / RESOLVE_WINDOW_SCRIPT present
 
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"

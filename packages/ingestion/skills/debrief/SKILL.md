@@ -53,18 +53,33 @@ This skill runs in one of two modes.
 Given one `inbox/<id>.md` path (e.g. handed off directly by a connector, or
 picked by a human/agent), file just that event. Skip it (log and stop,
 make no writes) if `<id>` already appears in `data/ingestion/debrief-
-filed.log` — it was filed before.
+filed.log` — it was filed before. An explicit single-event run on an id
+that appears in `data/ingestion/triage-held.log` (per
+`packages/ingestion/specs/import-triage.md`'s D3 ledger) is **not**
+skipped — it files the event normally, and this supersedes the hold: the
+resulting `data/ingestion/debrief-filed.log` entry outranks the held-log
+line everywhere from that point on (batch mode's exclusion check below is
+"not filed AND not held", so once filed the held-log line becomes moot).
+No ledger surgery is performed to un-hold it — the `triage-held.log` line
+is left in place, dead history, per that spec's append-only rule.
 
 ### Batch mode
 
 Sweep `<store-dir>/inbox/*.md` (excluding `inbox/quarantine/`, which this
 skill never reads — quarantine is for human review only, per
 `docs/data-layout.md`) for every capture event whose `id` is **not** in
-`data/ingestion/debrief-filed.log`. Process them oldest-first by
-`captured_at` (ties broken by filename), running the per-event flow below
-on each in turn. A failure or an outstanding ambiguous question on one
-event does not block the rest of the batch — move to the next unfiled
-event regardless.
+`data/ingestion/debrief-filed.log` and **not** in `data/ingestion/
+triage-held.log` (the deterministic pre-judgment hold ledger written by
+`packages/ingestion/scripts/triage-inbox.sh`, per `packages/ingestion/
+specs/import-triage.md`). Process them oldest-first by `captured_at` (ties
+broken by filename), running the per-event flow below on each in turn. A
+failure or an outstanding ambiguous question on one event does not block
+the rest of the batch — move to the next unfiled event regardless.
+
+Run `bash packages/ingestion/scripts/triage-inbox.sh <store-dir>` before a
+batch pass to populate `triage-held.log` with the current inbox's
+deterministic junk holds — batch mode itself must not spend judgment
+re-deciding a class of event triage has already, conservatively, held out.
 
 ## 2. Parse the envelope
 
