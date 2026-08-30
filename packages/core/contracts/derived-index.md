@@ -1,6 +1,6 @@
 # Contract: derived index
 
-`schema_version: 1.0.0`
+`schema_version: 1.1.0`
 
 Two flat, regenerable JSON artifacts derived from the markdown store
 (`people/*.md`, `interactions/*.md`) — no database, no embeddings, per
@@ -19,6 +19,16 @@ store's source-of-truth files.
 - **Sole writer:** `packages/core/scripts/build-index.sh`, invoked by the
   filing engine (`packages/ingestion`) at runtime after any write to
   `people/`.
+- **At filing time (1.1.0, plan 38):** `index.json` and `stats.json` are
+  regenerated together by `packages/core/scripts/reindex.sh <store-dir>`
+  (which runs `build-index.sh` then `build-stats.sh`), invoked by every
+  script or skill that writes `people/` or `interactions/` —
+  `file-structured.sh`, `file-thread.sh` callers (the debrief /
+  onboarding-seed / review-tiers skills), `person-set-kind.sh`,
+  `person-set-tier.sh`, `calibrate.sh`, and `feedback-parse.sh` when it
+  edits a person. Readers (`packages/query`, `packages/attention`) may
+  regenerate into their own cache (see the `staleness-cache` note below)
+  but never write into the store.
 - **Readers:** `packages/attention` (fast frontmatter filtering without
   opening every person file), `packages/query` (the `search_people` tool's
   filing/filter path, opportunistically — see the `staleness-cache` note
@@ -78,6 +88,16 @@ contract codifies existing behavior, it does not extend it.
 - **Sole writer at runtime:** `packages/core/scripts/build-stats.sh`,
   invoked by the filing engine (`packages/ingestion`) after any write to
   `people/` or `interactions/`. Same single-writer rule as `index.json`.
+- **At filing time (1.1.0, plan 38):** `stats.json` and `index.json` are
+  regenerated together by `packages/core/scripts/reindex.sh <store-dir>`
+  (which runs `build-index.sh` then `build-stats.sh`), invoked by every
+  script or skill that writes `people/` or `interactions/` —
+  `file-structured.sh`, `file-thread.sh` callers (the debrief /
+  onboarding-seed / review-tiers skills), `person-set-kind.sh`,
+  `person-set-tier.sh`, `calibrate.sh`, and `feedback-parse.sh` when it
+  edits a person. Readers (`packages/query`, `packages/attention`) may
+  regenerate into their own cache (see the `staleness-cache` note below)
+  but never write into the store.
 - **Cache-copy exemption:** `packages/query`'s MCP server never writes into
   the store. Per `docs/DECISIONS.md#staleness-cache`, when it detects the
   store's `stats.json`/`index.json` are stale relative to the newest mtime
@@ -217,3 +237,9 @@ touchpoint there is no gap to measure, hence `median_gap_days: null`.)
 - `generated_at` in `stats.json` is the freshness signal every `query` MCP
   tool result surfaces; `index.json` carries no such field today; a
   consumer wanting index freshness falls back to the file's own mtime.
+
+## Changelog
+
+- 1.1.0 — plan 38: `reindex.sh` is the filing-time writer of both
+  artifacts; freshness invariant: `generated_at` of both ≥ newest mtime
+  under `people/` and `interactions/` after any writer completes.

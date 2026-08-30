@@ -14,6 +14,9 @@ usually `null`. Renders per `packages/core/contracts/answer-style.md`
 1.0.0 — read that contract in full; this skill restates its rules below for
 convenience but the contract is the source of truth.
 
+**Budget:** ≤ 2 tool calls before judging (the pool + optional
+`upcoming_meetings`) — every round-trip is a model turn the user waits on.
+
 ## 0. Pick the read path
 
 If the `spomni-query` MCP tools (`suggest_reachouts`, `search_people`,
@@ -47,18 +50,21 @@ unchanged, regardless of which path built the pool.
 
 ## 2. Build the candidate pool
 
-- Call `suggest_reachouts {limit: 10}`.
-- Call `search_people` (page 1–2), sorted by oldest `last_interaction`.
-- Union the two lists; drop anyone touched in the last 14 days.
-- Drop stubs: `tags` contains `name-from-email`, or `name` is a single
-  token with zero Facts bullets (checked in step 3).
-- Cap the working pool at 20 candidates before the per-person lookup.
+- Call `who_next_pool {mode, limit: 20}` — ONE call. It returns exactly
+  the pre-filtered (14-day cooldown, mode rules, transactional/
+  linkedin-outreach exclusions), pre-ranked candidate pool
+  `scripts/who-next-direct.sh` would build, each candidate carrying its
+  `facts`, `personal`, and `open_threads_text` inline — no separate
+  `get_person` lookup needed.
+- Drop stubs: any candidate with `"stub": true` (`tags` contains
+  `name-from-email`, or `name` is a single token with zero Facts bullets).
 
 ## 3. Judge each candidate from facts
 
-For each of the ≤20 candidates, call `get_person {slug}` and read the
-`Facts` / `Personal details` sections — this is judgment on the wording,
-not a regex match. Classify:
+For each of the ≤20 candidates, read the `facts` / `personal` fields
+already on the pool object (the tool call above supplied them inline —
+no per-candidate lookup needed) — this is judgment on the wording, not a
+regex match. Classify:
 
 - **friend** — hang out, trip, board games, family terms, "close friend",
   running buddy, standing invitations.
@@ -134,10 +140,10 @@ Ranking is from facts by hand — no tiers exist yet; run /review-tiers --all to
 
 ## 8. This skill never sends
 
-Draft, never send — this skill only reads (`suggest_reachouts`,
-`search_people`, `get_person`, `get_contact_stats`, `upcoming_meetings`,
-and the optional read-only calendar list) and never calls any `send` or
-`create` tool.
+Draft, never send — this skill only reads (`who_next_pool`,
+`suggest_reachouts`, `search_people`, `get_person`, `get_contact_stats`,
+`upcoming_meetings`, and the optional read-only calendar list) and never
+calls any `send` or `create` tool.
 
 If the user replies `<n> draft`, compose the draft in-session from that
 person's Facts and, if present, `profile.md`'s `## Style notes`. Head it

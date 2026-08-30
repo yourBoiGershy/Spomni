@@ -101,9 +101,9 @@ from and never invent.
 |---|---|---|---|
 | 08 | Chat MCP & query data layer (6 read-only tools) | 01 | Done 2026-08-29 |
 | 07 | Brief skill only (`skills/brief/`; `skills/query/` dropped — 08 + 35 cover it; "Upcoming" from `upcoming_meetings`, not 04) | 21, 38 G | **Later** — not one of the five goals |
-| 38 | Retrieval speed — measured baseline + per-surface targets, single-pass `build-index`/`validate-store`/`who-next-direct`, `reindex.sh` freshness at every writer, non-blocking MCP staleness, one-call `who_next_pool` (≤ 2 round-trips per question), regression guard; **owns every bench + `test-all` perf wiring** | 35 | **In progress** 2026-08-30 — wave 1 in worktree `.claude/worktrees/chunk-38-retrieval-speed`; plan `docs/plans/2026-08-30-38-retrieval-speed.md` |
+| 38 | Retrieval speed — measured baseline + per-surface targets, single-pass `build-index`/`validate-store`/`who-next-direct`, `reindex.sh` freshness at every writer, non-blocking MCP staleness, one-call `who_next_pool` (≤ 2 round-trips per question), regression guard; **owns every bench + `test-all` perf wiring** | 35 | **Built** 2026-08-30 — every 127-person target met on the real store (build-index 3.8 s → 0.03 s, validate-store 15.4 s → 0.84 s, who-next-direct 3.7 s → 0.05 s, stale MCP cold start 4.2 s → 0.19 s); guard in `test-all.sh`. Owed: `validate-store` 8.75 s vs 8 s at 1000 people / 10k interactions (accept or third pass — user call); one live `/who-next` run confirming ≤ 2 calls |
 
-**Owed now:** finish 38 (Goal 3).
+**Owed now:** 38 open items (validate-store scale target decision; live `/who-next` run); then 07 brief to 38 G's 2-call budget.
 
 ### 5. Relationship judgment & learning
 
@@ -218,6 +218,9 @@ is a row in it, not a second script. **Owns `test-all.sh` perf wiring** (39 B1's
 `store-sync commit` calls.
 **Done when:** every §2 target green on fixture + scale stores in CI; `/who-next`
 ≤ 2 tool calls; before/after table on the real store.
+**Status 2026-08-30:** built and merged — table in plan §5; fixture guard green in CI;
+scale envelope in `run-perf.sh` (manual) with one miss (`validate-store` 8.75 s vs
+8 s at 10k interactions); live `/who-next` call-count run still owed.
 
 ### Goal 4 — Mobile / cloud speed → chunk 09 (trimmed)
 

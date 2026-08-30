@@ -9,8 +9,10 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { StoreReader } from "../store/reader.ts";
+import { excerptSummary } from "./list-interactions.ts";
 
 const MAX_SUGGESTIONS = 5;
+const MAX_INCLUDE_INTERACTIONS = 20;
 
 /** Plain Levenshtein distance — "edit-distance-lite" per the brief: no
  * transposition handling, no weighting, just enough to rank near-miss slugs. */
@@ -47,7 +49,21 @@ function closestSlugs(slug: string, knownSlugs: string[]): string[] {
     .map((entry) => entry.known);
 }
 
-export function getPerson(reader: StoreReader, slug: string): object {
+/** Up to `n` most recent interactions for `slug`, newest first, id/date +
+ * a ~300-char `## Summary` excerpt — reuses list-interactions.ts's
+ * `excerptSummary` and stats.json's already-newest-first per-person
+ * `interactions` list rather than re-scanning interactions/*.md. */
+function recentInteractions(reader: StoreReader, slug: string, n: number): object[] {
+  const entry = reader.stats().people[slug];
+  if (!entry) return [];
+  return entry.interactions.slice(0, n).map((ref) => ({
+    id: ref.id,
+    date: ref.date,
+    summary_excerpt: excerptSummary(reader, ref.id),
+  }));
+}
+
+export function getPerson(reader: StoreReader, slug: string, includeInteractions = 0): object {
   const person = reader.getPerson(slug);
 
   if (!person) {
@@ -63,7 +79,7 @@ export function getPerson(reader: StoreReader, slug: string): object {
 
   const stats = reader.stats().people[slug] ?? null;
 
-  return {
+  const result: Record<string, unknown> = {
     generated_at: reader.generatedAt,
     slug,
     source: person.sourcePath.includes("people/")
@@ -73,10 +89,27 @@ export function getPerson(reader: StoreReader, slug: string): object {
     sections: person.sections,
     stats,
   };
+
+  if (includeInteractions > 0) {
+    result.interactions = recentInteractions(reader, slug, includeInteractions);
+  }
+
+  return result;
 }
 
 const inputSchema = {
   slug: z.string().describe("The person's slug, matching people/<slug>.md"),
+  include_interactions: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_INCLUDE_INTERACTIONS)
+    .optional()
+    .describe(
+      "When > 0, adds an `interactions` array: the person's N most recent filed " +
+        "interactions (id, date, ~300-char summary excerpt), newest first. Omitted " +
+        "or 0 leaves the result unchanged.",
+    ),
 };
 
 export function registerGetPerson(server: McpServer, reader: StoreReader): void {
@@ -88,11 +121,13 @@ export function registerGetPerson(server: McpServer, reader: StoreReader): void 
         "Full record for one person: frontmatter, the Facts/Open threads/Personal " +
         "details sections with provenance tags intact, and the stats.json rollup. " +
         "Cites people/<slug>.md. Read-only; an unknown slug returns an error-shaped " +
-        "result naming the slug and up to 5 closest known slugs, never a guess.",
+        "result naming the slug and up to 5 closest known slugs, never a guess. " +
+        "Optional `include_interactions` adds the person's N most recent filed " +
+        "interactions inline (id, date, summary excerpt), newest first.",
       inputSchema,
     },
-    ({ slug }) => {
-      const result = getPerson(reader, slug);
+    ({ slug, include_interactions }) => {
+      const result = getPerson(reader, slug, include_interactions ?? 0);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );

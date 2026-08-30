@@ -307,10 +307,11 @@ async function assertionReadOnly() {
       "search_people",
       "suggest_reachouts",
       "upcoming_meetings",
+      "who_next_pool",
     ];
     ok(
       JSON.stringify(toolNames) === JSON.stringify(expectedNames),
-      `tools/list returns exactly the seven registered tools (got ${JSON.stringify(toolNames)})`,
+      `tools/list returns exactly the eight registered tools (got ${JSON.stringify(toolNames)})`,
     );
 
     // Exercise every registered tool at least once, including error paths.
@@ -327,6 +328,7 @@ async function assertionReadOnly() {
       { name: "get_contact_stats", arguments: { slug: "no-such-slug-zzz" } },
       { name: "suggest_reachouts", arguments: {} },
       { name: "suggest_reachouts", arguments: { limit: 10 } },
+      { name: "who_next_pool", arguments: { mode: "all", limit: 5, today: "2026-08-30" } },
     ];
 
     let allCalled = true;

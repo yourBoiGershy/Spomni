@@ -237,6 +237,7 @@ dur_to_days() {
 
 APPLIED_COUNT=0
 FREEFORM_COUNT=0
+TIER_CHANGED=0
 
 # log_applied <capture-id> <line-no> <type> <exit>
 log_applied() {
@@ -452,11 +453,12 @@ apply_line() {
         return
       fi
       _rest="$(strip_tokens "${_text}" 3)"
-      "${PERSON_SET_TIER_SH}" "${STORE}" "${_slug}" --tier "${_tier}" --source stated-by-user --today "${TODAY}" --feedback-source reply --feedback-channel beeper-self --feedback-text "${_rest}"
+      "${PERSON_SET_TIER_SH}" "${STORE}" "${_slug}" --tier "${_tier}" --source stated-by-user --today "${TODAY}" --no-index --feedback-source reply --feedback-channel beeper-self --feedback-text "${_rest}"
       _ec=$?
       if [ "${_ec}" -eq 0 ]; then
         log_applied "${_capture_id}" "${_line_no}" "tier-correction" "${_ec}"
         APPLIED_COUNT=$((APPLIED_COUNT + 1))
+        TIER_CHANGED=1
       else
         feedback_freeform "person:${_slug}" "${_text}" "op-exit-${_ec}"
         log_applied "${_capture_id}" "${_line_no}" "freeform" "${_ec}"
@@ -545,6 +547,13 @@ while IFS= read -r stem; do
 
   printf '%s\n' "${stem}" > "${CURSOR_FILE}"
 done < "${NEW_EVENTS_FILE}"
+
+# Reindex once per run (plan 38 D2), not per wrong-tier line: any
+# person-set-tier.sh call above ran with --no-index for exactly this
+# reason.
+if [ "${TIER_CHANGED}" -eq 1 ]; then
+  "${SCRIPT_DIR}/../../core/scripts/reindex.sh" "${STORE}" --quiet
+fi
 
 echo "feedback-parse: applied=${APPLIED_COUNT} freeform=${FREEFORM_COUNT}"
 exit 0

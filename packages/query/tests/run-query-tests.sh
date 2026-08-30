@@ -4,8 +4,11 @@
 # Runs the golden tests for the MCP query tool surface
 # (packages/query/tests/test-tools.mjs) against the 31-persona fixture store
 # (packages/core/fixtures/store/), plus the personalization-overlay goldens
-# (packages/query/tests/test-personalization.mjs) and the upcoming_meetings
-# tool tests (packages/query/tests/test-upcoming-meetings.mjs), and prints a
+# (packages/query/tests/test-personalization.mjs), the upcoming_meetings
+# tool tests (packages/query/tests/test-upcoming-meetings.mjs), and the
+# bounded-cold-start staleness tests (packages/query/tests/test-staleness.mjs),
+# and the who_next_pool equivalence tests
+# (packages/query/tests/test-who-next-pool.mjs), and prints a
 # PASS/FAIL/XFAIL/XPASS/SKIP per assertion plus a summary line per test file.
 # Exits 0 only if every test file exited 0; loudly SKIPs (still nonzero exit)
 # if the server, its node_modules, or the fixture store are missing rather
@@ -54,7 +57,7 @@ fi
 
 overall_status=0
 
-for TEST_FILE in "$SCRIPT_DIR/test-tools.mjs" "$SCRIPT_DIR/test-personalization.mjs" "$SCRIPT_DIR/test-upcoming-meetings.mjs"; do
+for TEST_FILE in "$SCRIPT_DIR/test-tools.mjs" "$SCRIPT_DIR/test-personalization.mjs" "$SCRIPT_DIR/test-upcoming-meetings.mjs" "$SCRIPT_DIR/test-staleness.mjs" "$SCRIPT_DIR/test-who-next-pool.mjs"; do
   echo "--- $TEST_FILE ---"
 
   if [ ! -f "$TEST_FILE" ]; then

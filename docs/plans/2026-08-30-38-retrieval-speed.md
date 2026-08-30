@@ -154,7 +154,37 @@ and the current script excerpt it rewrites.
 - Byte-identical `index.json` and identical `validate-store.sh` verdicts before and
   after B1/B2 (tests).
 
-Live table (fill on proof): _pending_.
+Live table — private store, 127 people / 356 interactions, laptop, scratch copy with
+mtimes preserved, measured 2026-08-30 after waves 1–2 (same method as §1):
+
+| Surface | Condition | Before | After | Target | Met |
+|---|---|---|---|---|---|
+| `build-index.sh` | full | 3.8 s | **0.03 s** | ≤ 0.3 s | ✓ |
+| `build-stats.sh` | full | 0.11 s | 0.12 s | — | — |
+| `validate-store.sh` | full | 15.4 s | **0.84 s** | ≤ 1.5 s | ✓ |
+| `who-next-direct.sh` | index fresh | 3.7 s | **0.05 s** | ≤ 0.5 s | ✓ |
+| `who-next-direct.sh` | index missing | 7.7 s | **0.29 s** | ≤ 1 s | ✓ |
+| MCP cold start → `initialize` | fresh | 0.18 s | 0.28 s | ≤ 0.5 s | ✓ |
+| MCP cold start → `initialize` | stale | 4.2 s | **0.19 s** | ≤ 0.5 s | ✓ |
+| MCP tools warm | any | ≤ 2 ms | ≤ 1 ms | p95 ≤ 200 ms | ✓ |
+| `/who-next` MCP path | per question | ≤ 22 round-trips | **1** (`who_next_pool`) + optional `upcoming_meetings` | ≤ 2 | ✓ (skill amended; live session run still owed) |
+
+Scale (`run-perf.sh`, synthetic `gen-scale-store.sh` 1000 people / 10 000
+interactions, median of 3): `build-index` 0.46 s (≤ 2 s ✓), `who-next-direct` 0.18 s
+(≤ 2 s ✓), stale server startup 0.20 s (≤ 1 s ✓), `who_next_pool` p95 35 ms ✓,
+**`validate-store` 8.75 s (≤ 8 s ✗ — the one open miss)**. It is 3.5 s on a 1000/2800
+store (the private store's 2.8 interactions-per-person ratio), and the remaining cost is
+bash interpreter time (per-line `read`, `[[ =~ ]]` link extraction), not process
+spawns; two fix rounds spent. Open decision for the user: accept 8.75 s at 10k
+interactions (re-baseline the `run-perf.sh` target to ≤ 10 s) or schedule a third
+pass (single-pass frontmatter map per file, awk-side link extraction).
+**Post-merge note (chunk 36 merged first, PR #41):** its person 1.4.0 checks
+(Open threads `as-of`, `## Resolved`) were written against the old script and spawn
+2–4 `awk`/`grep` per person; after porting them onto the single-pass version the 127
+store measures 1.4 s (still ≤ 1.5 s; main's un-rewritten script measures 15.9 s on
+the same checks). Folding those checks into the precomputed awk pass is the natural
+first step of any third pass. **Unit E (incremental index) skipped** — full rebuild is under target;
+recorded as decision `full-rebuild-is-cheap-enough`.
 
 ## 6. Out of scope
 

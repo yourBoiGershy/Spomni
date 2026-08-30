@@ -14,10 +14,10 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 import { MarkdownStoreReader, type StoreReader } from "./reader.ts";
-import type { IndexFile, StatsFile } from "./types.ts";
+import type { IndexFile, StatsFile, WakeupFile } from "./types.ts";
 
 const CORE_SCRIPTS_DIR =
   process.env.SPOMNI_CORE_SCRIPTS_DIR ??
@@ -168,15 +168,159 @@ function regenerateIntoCache(
   }
 }
 
+/**
+ * A `StoreReader` that starts out delegating to a (possibly stale) inner
+ * `MarkdownStoreReader` and swaps to a fresh one in place once a
+ * background regeneration completes — so tool calls made before the swap
+ * see the old (but honestly-labelled, `stale: true`) data, and calls made
+ * after see the new data, with no restart and no blocking. Existing
+ * callers close over the `StoreReader` interface once at startup, so the
+ * swap has to happen *inside* an object identity that never changes —
+ * hence delegation via a mutable `inner` field rather than reassigning the
+ * `reader` binding in `index.ts`.
+ */
+class SwappableStoreReader implements StoreReader {
+  private inner: MarkdownStoreReader;
+  stale: boolean;
+
+  constructor(inner: MarkdownStoreReader, stale: boolean) {
+    this.inner = inner;
+    this.stale = stale;
+  }
+
+  /** Called once background regeneration succeeds; swaps the delegate and
+   * clears the stale flag. */
+  swap(inner: MarkdownStoreReader): void {
+    this.inner = inner;
+    this.stale = false;
+  }
+
+  get generatedAt(): string {
+    return this.inner.generatedAt;
+  }
+
+  index(): IndexFile {
+    return this.inner.index();
+  }
+
+  stats(): StatsFile {
+    return this.inner.stats();
+  }
+
+  getPerson(slug: string): ReturnType<StoreReader["getPerson"]> {
+    return this.inner.getPerson(slug);
+  }
+
+  getInteraction(id: string): ReturnType<StoreReader["getInteraction"]> {
+    return this.inner.getInteraction(id);
+  }
+
+  listWakeups(): WakeupFile[] {
+    return this.inner.listWakeups();
+  }
+}
+
+/**
+ * Runs build-index.sh / build-stats.sh into the cache dir asynchronously
+ * (non-blocking `spawn`, not `spawnSync`) and, on success, swaps `reader`'s
+ * inner delegate to the freshly-built copy. Regeneration failure keeps
+ * serving the stale copy and logs once — never throws, never crashes the
+ * server.
+ */
+function regenerateInBackground(
+  absStoreDir: string,
+  cacheDir: string,
+  reader: SwappableStoreReader,
+): void {
+  const scratch = makeScratchDir(absStoreDir);
+
+  const runOne = (scriptName: string): Promise<boolean> =>
+    new Promise((resolve) => {
+      const scriptPath = path.join(CORE_SCRIPTS_DIR, scriptName);
+      if (!fs.existsSync(scriptPath)) {
+        process.stderr.write(
+          `spomni-query: ${scriptName} not found at ${scriptPath} — skipping background regeneration (soft condition)\n`,
+        );
+        resolve(false);
+        return;
+      }
+      const child = spawn("bash", [scriptPath, scratch], { stdio: ["ignore", "ignore", "pipe"] });
+      let stderrBuf = "";
+      child.stderr.on("data", (d: Buffer) => {
+        stderrBuf += d.toString();
+      });
+      child.on("error", (err) => {
+        process.stderr.write(
+          `spomni-query: background ${scriptName} failed to spawn: ${String(err)}\n`,
+        );
+        resolve(false);
+      });
+      child.on("close", (code) => {
+        if (code !== 0) {
+          process.stderr.write(
+            `spomni-query: background ${scriptName} failed (exit ${String(code)}): ${stderrBuf}\n`,
+          );
+          resolve(false);
+          return;
+        }
+        resolve(true);
+      });
+    });
+
+  void Promise.all([runOne("build-index.sh"), runOne("build-stats.sh")])
+    .then(([indexOk, statsOk]) => {
+      try {
+        fs.mkdirSync(cacheDir, { recursive: true });
+        const cacheIndexPath = path.join(cacheDir, "index.json");
+        const cacheStatsPath = path.join(cacheDir, "stats.json");
+
+        if (indexOk && fs.existsSync(path.join(scratch, "index.json"))) {
+          fs.copyFileSync(path.join(scratch, "index.json"), cacheIndexPath);
+        }
+        if (statsOk && fs.existsSync(path.join(scratch, "stats.json"))) {
+          fs.copyFileSync(path.join(scratch, "stats.json"), cacheStatsPath);
+        }
+
+        if (!indexOk || !statsOk) {
+          // Partial or total failure: keep serving stale rather than swap
+          // to an incomplete pair.
+          return;
+        }
+
+        const index = readJson<IndexFile>(cacheIndexPath);
+        const stats = readJson<StatsFile>(cacheStatsPath);
+        const fresh = new MarkdownStoreReader({ storeDir: absStoreDir, index, stats });
+        reader.swap(fresh);
+        process.stderr.write(
+          `spomni-query: cache refreshed (generated_at=${fresh.generatedAt})\n`,
+        );
+      } catch (err) {
+        process.stderr.write(`spomni-query: background regeneration swap failed: ${String(err)}\n`);
+      } finally {
+        fs.rmSync(scratch, { recursive: true, force: true });
+      }
+    })
+    .catch((err: unknown) => {
+      process.stderr.write(`spomni-query: background regeneration failed: ${String(err)}\n`);
+      fs.rmSync(scratch, { recursive: true, force: true });
+    });
+}
+
 export interface EnsureFreshResult {
   reader: StoreReader;
   generatedAt: string;
 }
 
 /**
- * Ensures fresh index.json/stats.json are available (store copy, cache
- * copy, or a freshly-regenerated cache copy) and returns a `StoreReader`
- * over them. Never writes into `storeDir`.
+ * Ensures a `StoreReader` is available with a *bounded* cold start
+ * (docs/plans/2026-08-30-38-retrieval-speed.md unit F): if both
+ * index.json/stats.json copies (store or cache) are fresh, serves them
+ * directly as before. If a copy exists but is stale, serves it
+ * *immediately* with `stale: true` and kicks off regeneration in the
+ * background, swapping in the fresh copy once it lands. Only when NO copy
+ * exists at all (nothing to serve yet) does this block synchronously on
+ * regeneration — unavoidable, and fast at today's scale. Never writes into
+ * `storeDir`.
  */
 export function ensureFresh(storeDir: string): EnsureFreshResult {
   const absStoreDir = path.resolve(storeDir);
@@ -189,27 +333,43 @@ export function ensureFresh(storeDir: string): EnsureFreshResult {
   const cacheIndexPath = path.join(cacheDir, "index.json");
   const cacheStatsPath = path.join(cacheDir, "stats.json");
 
-  let indexPath = chooseFreshCopy(storeIndexPath, cacheIndexPath, threshold);
-  let statsPath = chooseFreshCopy(storeStatsPath, cacheStatsPath, threshold);
+  const freshIndexPath = chooseFreshCopy(storeIndexPath, cacheIndexPath, threshold);
+  const freshStatsPath = chooseFreshCopy(storeStatsPath, cacheStatsPath, threshold);
 
-  if (indexPath === null || statsPath === null) {
-    const regenerated = regenerateIntoCache(absStoreDir, cacheDir);
-
-    if (indexPath === null && regenerated.index) {
-      indexPath = cacheIndexPath;
-    }
-    if (statsPath === null && regenerated.stats) {
-      statsPath = cacheStatsPath;
-    }
-
-    // Soft-condition fallback: regeneration didn't happen (e.g. build-stats.sh
-    // doesn't exist yet) — serve whatever copy exists even if stale, rather
-    // than failing the whole server.
-    indexPath ??=
-      [storeIndexPath, cacheIndexPath].find((p) => fs.existsSync(p)) ?? null;
-    statsPath ??=
-      [storeStatsPath, cacheStatsPath].find((p) => fs.existsSync(p)) ?? null;
+  if (freshIndexPath !== null && freshStatsPath !== null) {
+    // Both copies are fresh — serve directly, no background work needed.
+    const index = readJson<IndexFile>(freshIndexPath);
+    const stats = readJson<StatsFile>(freshStatsPath);
+    const reader = new MarkdownStoreReader({ storeDir: absStoreDir, index, stats });
+    return { reader, generatedAt: reader.generatedAt };
   }
+
+  // At least one copy is stale or missing. If SOME copy (even stale)
+  // exists for both index and stats, serve it now and regenerate async.
+  const staleIndexPath =
+    freshIndexPath ?? [storeIndexPath, cacheIndexPath].find((p) => fs.existsSync(p)) ?? null;
+  const staleStatsPath =
+    freshStatsPath ?? [storeStatsPath, cacheStatsPath].find((p) => fs.existsSync(p)) ?? null;
+
+  if (staleIndexPath !== null && staleStatsPath !== null) {
+    const index = readJson<IndexFile>(staleIndexPath);
+    const stats = readJson<StatsFile>(staleStatsPath);
+    const inner = new MarkdownStoreReader({ storeDir: absStoreDir, index, stats });
+    const reader = new SwappableStoreReader(inner, true);
+    regenerateInBackground(absStoreDir, cacheDir, reader);
+    return { reader, generatedAt: reader.generatedAt };
+  }
+
+  // No copy at all for at least one of index/stats — nothing to serve yet,
+  // so this one time we have to block synchronously.
+  const regenerated = regenerateIntoCache(absStoreDir, cacheDir);
+
+  const indexPath =
+    staleIndexPath ?? (regenerated.index ? cacheIndexPath : null) ??
+    [storeIndexPath, cacheIndexPath].find((p) => fs.existsSync(p)) ?? null;
+  const statsPath =
+    staleStatsPath ?? (regenerated.stats ? cacheStatsPath : null) ??
+    [storeStatsPath, cacheStatsPath].find((p) => fs.existsSync(p)) ?? null;
 
   const index: IndexFile = indexPath ? readJson<IndexFile>(indexPath) : {};
   const stats: StatsFile = statsPath ? readJson<StatsFile>(statsPath) : emptyStats();

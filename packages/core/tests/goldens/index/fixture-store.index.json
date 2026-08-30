@@ -1,0 +1,402 @@
+{
+  "aiko-tanaka": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2025-12-05",
+    "location": "Tokyo, Japan",
+    "org": "Orbital Labs",
+    "role": "Research Scientist",
+    "tags": [
+      "college-friend",
+      "science"
+    ]
+  },
+  "ayesha-malik": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-22",
+    "location": "New York, NY",
+    "org": "Brightline Health",
+    "role": "Senior Product Manager",
+    "tags": [
+      "work",
+      "colleague"
+    ]
+  },
+  "beatrice-okonjo": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-07-08",
+    "location": "Nairobi, Kenya",
+    "org": null,
+    "role": "Family Friend, Retired Nurse",
+    "tags": [
+      "family-friend"
+    ]
+  },
+  "ben-whitmore": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-07-30",
+    "location": "Portland, OR",
+    "org": null,
+    "role": "Freelance Illustrator",
+    "tags": [
+      "college-friend",
+      "art"
+    ]
+  },
+  "chris-doyle": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-18",
+    "location": "San Francisco, CA",
+    "org": "Ironclad Supply Co.",
+    "role": "VP of Sales",
+    "tags": [
+      "business",
+      "sales"
+    ]
+  },
+  "diego-fuentes": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-16",
+    "location": "Austin, TX",
+    "org": "Casa Fuentes",
+    "role": "Chef & Owner",
+    "tags": [
+      "friend",
+      "food"
+    ]
+  },
+  "eleanor-combs": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-10",
+    "location": "Ann Arbor, MI",
+    "org": null,
+    "role": "Retired schoolteacher",
+    "tags": [
+      "family",
+      "grandmother"
+    ]
+  },
+  "felix-adeyemi": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-14",
+    "location": "Lagos, Nigeria",
+    "org": "Kite Logistics",
+    "role": "Founder & CEO",
+    "tags": [
+      "founder",
+      "logistics"
+    ]
+  },
+  "grace-lindqvist": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-26",
+    "location": "Seattle, WA",
+    "org": "Cascade Cloud",
+    "role": "Director of Engineering",
+    "tags": [
+      "work",
+      "mentor"
+    ]
+  },
+  "hana-kobayashi": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-27",
+    "location": "New York, NY",
+    "org": "Fernbank Capital",
+    "role": "Head of Product",
+    "tags": [
+      "fintech",
+      "business"
+    ]
+  },
+  "ingrid-solberg": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-07-08",
+    "location": "Oslo, Norway",
+    "org": null,
+    "role": "Marine Biologist",
+    "tags": [
+      "family",
+      "cousin"
+    ]
+  },
+  "james-okafor": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2025-09-15",
+    "location": "Chicago, IL",
+    "org": "Redline Consulting",
+    "role": "Principal Consultant",
+    "tags": [
+      "business",
+      "consulting"
+    ]
+  },
+  "katarina-novak": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-07-12",
+    "location": "Prague, Czech Republic",
+    "org": "Bright Path Foundation",
+    "role": "Executive Director",
+    "tags": [
+      "nonprofit",
+      "mentor"
+    ]
+  },
+  "lena-vogel": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-06-01",
+    "location": "Berlin, Germany",
+    "org": "Nordkreis Media",
+    "role": "Marketing Director",
+    "tags": [
+      "business",
+      "marketing"
+    ]
+  },
+  "marcus-chen": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-15",
+    "location": "New York, NY",
+    "org": "Vantage Financial",
+    "role": "Director of Business Development",
+    "tags": [
+      "fintech",
+      "business"
+    ]
+  },
+  "marcus-fielding": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-19",
+    "location": "Boston, MA",
+    "org": "Fielding & Cross",
+    "role": "Partner, Employment Law",
+    "tags": [
+      "college-friend",
+      "law"
+    ]
+  },
+  "marisol-vega": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-24",
+    "location": "Mexico City, Mexico",
+    "org": "Vega Textiles",
+    "role": "Founder & CEO",
+    "tags": [
+      "founder",
+      "business"
+    ]
+  },
+  "nadia-petrov": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-07-30",
+    "location": "Chicago, IL",
+    "org": null,
+    "role": "Painter",
+    "tags": [
+      "friend",
+      "art"
+    ]
+  },
+  "nora-voss": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-05",
+    "location": "Berlin, Germany",
+    "org": "Kestrel Robotics",
+    "role": "Product Design Lead",
+    "tags": [
+      "work",
+      "colleague"
+    ]
+  },
+  "oliver-grant": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-01",
+    "location": "San Diego, CA",
+    "org": "Summit Advisory Partners",
+    "role": "Managing Partner",
+    "tags": [
+      "mentor",
+      "business"
+    ]
+  },
+  "owen-brady": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-07-08",
+    "location": "Dublin, Ireland",
+    "org": null,
+    "role": "Retired Ferry Captain",
+    "tags": [
+      "family",
+      "uncle"
+    ]
+  },
+  "priya-anand": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-20",
+    "location": "New York, NY",
+    "org": "Lumen Pay",
+    "role": "VP of Partnerships",
+    "tags": [
+      "fintech",
+      "college-friend"
+    ]
+  },
+  "priyanka-deshmukh": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": null,
+    "location": "Bangalore, India",
+    "org": "Solstice Health",
+    "role": "VP of Engineering",
+    "tags": [
+      "work",
+      "healthtech"
+    ]
+  },
+  "ravi-kapoor": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-07-20",
+    "location": "Chicago, IL",
+    "org": "Kapoor & Sons Architecture",
+    "role": "Architect",
+    "tags": [
+      "family",
+      "cousin"
+    ]
+  },
+  "rosa-alonso": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-02",
+    "location": "Barcelona, Spain",
+    "org": null,
+    "role": "High School Teacher",
+    "tags": [
+      "childhood-friend"
+    ]
+  },
+  "sofia-reyes": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-25",
+    "location": "Austin, TX",
+    "org": "Fernway Logistics",
+    "role": "Founder & CEO",
+    "tags": [
+      "founder",
+      "startup"
+    ]
+  },
+  "soraya-bellweather": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-21",
+    "location": "Asheville, NC",
+    "org": "Driftwood Ceramics",
+    "role": "Studio Owner",
+    "tags": [
+      "maker",
+      "ceramics"
+    ]
+  },
+  "tomas-rivera": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-07-30",
+    "location": "Denver, CO",
+    "org": "Denver Public Schools",
+    "role": "High School Science Teacher",
+    "tags": [
+      "childhood-friend"
+    ]
+  },
+  "walter-combs": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-05",
+    "location": "Ann Arbor, MI",
+    "org": null,
+    "role": "Retired civil engineer",
+    "tags": [
+      "family",
+      "father"
+    ]
+  },
+  "wei-zhang": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-06-28",
+    "location": "San Francisco, CA",
+    "org": "Vertex Ventures",
+    "role": "Principal, Investor",
+    "tags": [
+      "business",
+      "investor"
+    ]
+  },
+  "yusuf-demir": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2025-11-02",
+    "location": "Istanbul, Turkey",
+    "org": null,
+    "role": "Freelance Photographer",
+    "tags": [
+      "friend",
+      "art"
+    ]
+  }
+}
