@@ -212,8 +212,11 @@ domain_allowed() {
         *".example."*) return 0 ;;
     esac
 
-    # vendor allowlist (notification/system senders), and their subdomains
-    for base in linkedin.com beeper.com github.com composio.dev anthropic.com google.com; do
+    # vendor allowlist (notification/system senders — CI/deploy, newsletter,
+    # chat-ops, and marketing/CRM platforms, never personal mailboxes), and
+    # their subdomains
+    for base in linkedin.com beeper.com github.com composio.dev anthropic.com google.com \
+        vercel.com slack.com substack.com mailchimp.com sendgrid.net hubspot.com circleci.com buildkite.com; do
         is_domain_or_subdomain "$d" "$base" && return 0
     done
 

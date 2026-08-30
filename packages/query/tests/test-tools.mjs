@@ -2,7 +2,7 @@
 //
 // Golden tests for the five read/detail MCP tools (search_people,
 // get_person, list_interactions, get_interaction, get_contact_stats)
-// against the 30-persona fixture store (packages/core/fixtures/store/).
+// against the 31-persona fixture store (packages/core/fixtures/store/).
 // `suggest_reachouts` is out of scope (covered by a separate unit).
 //
 // Plain node, no new dependencies: imports the MCP SDK's Client and
@@ -24,9 +24,9 @@
 //   - tier=inner-circle: grep '^tier:' packages/core/fixtures/store/people/
 //     *.md => exactly eleanor-combs, owen-brady, walter-combs (3 people).
 //   - no-match search: text="zzz-nonexistent-zzz" matches no person field.
-//   - broad search (no filters): 30 person files in
-//     packages/core/fixtures/store/people/ => total=30, page 1 has 25
-//     (PAGE_SIZE in search-people.ts), page 2 has the remaining 5.
+//   - broad search (no filters): 31 person files in
+//     packages/core/fixtures/store/people/ => total=31, page 1 has 25
+//     (PAGE_SIZE in search-people.ts), page 2 has the remaining 6.
 //   - grace-lindqvist: people/grace-lindqvist.md frontmatter name "Grace
 //     Lindqvist"; `## Facts` has 2 bullets, both tagged
 //     `**[told-by-user]**` verbatim; 11 interactions/*.md files list
@@ -204,12 +204,12 @@ async function main() {
 
     {
       const page1 = await callTool(client, "search_people", {});
-      assertEqual("search_people: broad search total is 30", page1.total, 30);
+      assertEqual("search_people: broad search total is 31", page1.total, 31);
       assertEqual("search_people: broad search page 1 respects page_size (25)", page1.results.length, 25);
       const page2 = await callTool(client, "search_people", { page: 2 });
-      assertEqual("search_people: broad search page 2 has the remaining 5", page2.results.length, 5);
+      assertEqual("search_people: broad search page 2 has the remaining 6", page2.results.length, 6);
       const allSlugs = new Set([...page1.results.map((p) => p.slug), ...page2.results.map((p) => p.slug)]);
-      assertEqual("search_people: pages 1+2 together cover all 30 distinct people", allSlugs.size, 30);
+      assertEqual("search_people: pages 1+2 together cover all 31 distinct people", allSlugs.size, 31);
     }
 
     // -------------------------------------------------------------------

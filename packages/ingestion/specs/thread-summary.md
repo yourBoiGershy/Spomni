@@ -1,6 +1,6 @@
 # Spec: thread summary
 
-`schema_version: 1.0.0`
+`schema_version: 1.1.0`
 
 Status: spec (plan 32 D1). Package: `packages/ingestion`. Implemented by
 `packages/ingestion/scripts/summarize-thread.sh`. Mission test: one headless
@@ -35,6 +35,17 @@ followed by a single-line JSON body:
 `"True"`/`"False"` depending on capture source generation — both are
 accepted identically.
 
+### `--kind email` variant (1.1.0)
+
+`summarize-thread.sh --kind email <event-file>` summarizes a non-chat
+capture — an email or email-thread capture event with From/To/Subject/body
+fields — through the same one-call contract, rather than a `chat-message`
+capture's `chatID`/`messages` body. There is no `chatID` requirement in this
+mode: `chat_id` in the output is the Gmail thread id when the capture
+carries one, else the capture's own `id`; `chat_type` is always `single`.
+`--kind` defaults to `chat` when omitted (the pre-1.1.0 behavior is
+unchanged for `chat-message` captures).
+
 ## Prompt construction
 
 Before prompting, drop from the message list, in this order:
@@ -62,8 +73,15 @@ the model:
   pitch from an actual stranger is **not** a skip — it is a person with
   `role_guess: unsolicited` (plan 32 D4: the model must not use `skip` as
   an escape hatch for "I don't know this person").
-- `gist` is 2-4 sentences describing what the thread is about and where it
-  currently stands — never a message-by-message narration.
+- `gist` is 2-4 sentences describing where things stand now; earlier
+  history is included only as context for that — never a message-by-message
+  narration.
+- `resolved_threads` lists the verbatim text of any existing open-thread
+  bullet (from `person.md`'s `## Open threads`, per `specs/currency.md`)
+  that this thread closes out. The model may only echo bullet text it was
+  actually shown in the prompt — it must never invent or paraphrase an open
+  thread it wasn't given. When no open threads were shown, or none of them
+  closed, `resolved_threads` is `[]`.
 - For `chat_type: group`, list **every** non-self participant who sent 2 or
   more messages (name + `sender_ids`), each with their own `role_guess` —
   a participant with only a single message may be omitted. For a `single`
@@ -74,14 +92,15 @@ the model:
   prose before or after it. The script strips a defensive ```json fence if
   the model wraps the object in one anyway.
 
-## Output schema (1.0.0)
+## Output schema (1.1.0)
 
 ```json
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "capture_id": "<id from frontmatter>",
   "chat_id": "<chatID>",
   "chat_type": "single|group",
+  "kind": "chat|email",
   "skip": null,
   "people": [
     {
@@ -95,6 +114,7 @@ the model:
   "relationship_kind_guess": "friend|family|colleague|client|collaborator|acquaintance|unsolicited|unknown|group",
   "gist": "string, 2-4 sentences",
   "open_threads": ["string"],
+  "resolved_threads": ["string"],
   "commitments": [
     {"owner": "user|<display_name>", "what": "string", "by": "string|null"}
   ],
@@ -108,13 +128,14 @@ Or, when the thread is a skip:
 
 ```json
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "capture_id": "<id from frontmatter>",
   "chat_id": "<chatID>",
   "chat_type": "single|group",
+  "kind": "chat|email",
   "skip": {"reason": "bot|broadcast|self-note|security-notice|empty"},
   "people": [], "relationship_kind_guess": "unknown", "gist": "",
-  "open_threads": [], "commitments": [], "facts": []
+  "open_threads": [], "resolved_threads": [], "commitments": [], "facts": []
 }
 ```
 
@@ -128,19 +149,29 @@ the drop rules above (e.g. every message was a NOTICE row) — there is
 nothing to summarize, and no person to name.
 
 The script validates this shape with `python3` before printing it (or
-writing it to `--out`): required top-level keys present, `skip` is either
-`null` or an object with a `reason` in the fixed set above, every `people[]`
-entry has the four required keys (`display_name`, `sender_ids`, `is_self`,
-`role_guess`) with `role_guess` in the fixed enum, plus an optional
-`message_count` (non-negative integer, when present), every `facts[]`
-entry's `provenance` in `{told-by-user, inferred-from-thread}`.
+writing it to `--out`): required top-level keys present, `kind` in
+`{chat, email}`, `skip` is either `null` or an object with a `reason` in the
+fixed set above, every `people[]` entry has the four required keys
+(`display_name`, `sender_ids`, `is_self`, `role_guess`) with `role_guess` in
+the fixed enum, plus an optional `message_count` (non-negative integer, when
+present), every `facts[]` entry's `provenance` in `{told-by-user,
+inferred-from-thread}`, and every `resolved_threads[]` entry is a string.
 Any violation prints the specific reason to stderr and exits `4` — nothing
 partial is printed to stdout in that case.
+
+### Versioning note (1.0.0 → 1.1.0)
+
+Additive, backward-compatible: `resolved_threads` and `kind` are new
+top-level keys. A 1.0.0 consumer that only reads `open_threads`,
+`commitments`, and `facts` still works unmodified against a 1.1.0 output —
+it simply never sees the new fields. `file-thread.sh` (`specs/currency.md`'s
+latest-interaction-wins consumer) is the one caller that requires 1.1.0,
+since it reads `resolved_threads`.
 
 ## CLI
 
 ```
-summarize-thread.sh <event-file> [--model <m>] [--out <path>]
+summarize-thread.sh <event-file> [--kind chat|email] [--model <m>] [--out <path>]
 ```
 
 Prints the validated summary JSON to stdout, or to `<path>` when `--out` is

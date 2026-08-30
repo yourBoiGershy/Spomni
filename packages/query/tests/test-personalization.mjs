@@ -3,7 +3,7 @@
 // T1 personalization golden tests (plan 12, unit 3, $0): overlays the
 // plan-11 personalization fixtures (profile.md, ranking-weights.json,
 // wakeup v1.1 files — packages/query/tests/fixtures/personalization-overlay/)
-// onto the 30-persona base fixture store, spawns the real query MCP server
+// onto the 31-persona base fixture store, spawns the real query MCP server
 // over stdio exactly per test-tools.mjs's pattern, and pins four goldens:
 //
 //   (a) XFAIL — opted-out signal-type absent from suggest_reachouts.

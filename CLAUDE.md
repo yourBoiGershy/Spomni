@@ -117,6 +117,7 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   `.claude/scripts/oss-guard.sh`; CI runs the same). Individually:
   `bash packages/core/tests/run-store-tests.sh`,
   `bash packages/core/tests/run-render-tests.sh`,
+  `bash packages/core/tests/run-merge-tests.sh`,
   `bash packages/connectors/tests/run-capture-tests.sh`,
   `bash packages/connectors/tests/run-beeper-capture-tests.sh`,
   `bash packages/connectors/tests/run-beeper-out-tests.sh`,
@@ -127,6 +128,8 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   `bash packages/ingestion/tests/run-shard-tests.sh`,
   `bash packages/ingestion/tests/run-structured-tests.sh`,
   `bash packages/ingestion/tests/run-feedback-tests.sh`,
+  `bash packages/ingestion/tests/run-refresh-tests.sh`,
+  `bash packages/ingestion/tests/run-merge-candidates-tests.sh`,
   `bash packages/ingestion/tests/run-embeddings-tests.sh`,
   `bash packages/attention/tests/run-attention-tests.sh`,
   `bash packages/attention/tests/run-capacity-tests.sh`, and
