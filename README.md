@@ -15,6 +15,13 @@ It runs inside [Claude Code](https://claude.com/claude-code) on your Mac.
 Your contact graph lives in a private directory you own; this repo is
 machinery only.
 
+Under the hood it's a **platform, not just an app**: the machinery captures
+and melds your data (Beeper chats, Gmail, Calendar) into a private store you
+own, and exposes versioned primitives to weigh, query, and manipulate it. The
+shipped skills — `/who-next`, `/debrief`, the wake-up nudges — are worked
+examples of one way to use it; `/make-skill` helps you author your own
+([`docs/SKILL-AUTHORING.md`](docs/SKILL-AUTHORING.md)).
+
 ## Principles
 
 - **Draft, never send** — a human holds the send button.
@@ -62,6 +69,18 @@ Open a Claude Code session and say *"run first-run setup from docs/SETUP.md"*.
 
 More scenarios: `docs/USE-CASES.md`.
 
+## Make it yours
+
+The shipped skills answer one user's question ("who am I slowly losing touch
+with?"). Yours may differ — a pre-trip "who's in Lisbon?", a mentor
+loop-closer, a client signal-watcher. Say `/make-skill` in a session: it
+interviews you, mission-tests the design, scaffolds a skill in *your private
+data repo* (`<data-dir>/skills/<name>/`), links it as a slash command, and
+dry-runs it against your store. The authoring contract — the blessed
+read/write/render surface and what the platform guarantees (no send path
+exists in the primitives; provenance is validator-enforced) — is in
+[`docs/SKILL-AUTHORING.md`](docs/SKILL-AUTHORING.md).
+
 ## Docs
 
 | | |
@@ -69,6 +88,7 @@ More scenarios: `docs/USE-CASES.md`.
 | `docs/SETUP.md` | Full first-run setup, connectors, scheduling, troubleshooting, uninstall |
 | `docs/ARCHITECTURE.md` | How it's built: the pipeline, the five packages, contracts, the store |
 | `docs/USE-CASES.md` | The mission and the scenario map |
+| `docs/SKILL-AUTHORING.md` | Build your own skill on the data layer: where it lives, the blessed API, the guarantees |
 | `docs/DECISIONS.md` | Every design decision with its rationale |
 | `CONTRIBUTING.md` · `SECURITY.md` | How to help; how to report something that leaks or sends |
 

@@ -153,6 +153,17 @@ card reaches the user; ≥ 80 % of meetings with tracked people auto-matched.
 
 **Owed now:** 39 waves B2–B5 (contract-currency check); wave A is live and gating every PR.
 
+### 8. Platform & user skills — use it how *you* want
+
+**Goal.** Spomni is a data layer plus a blessed primitive surface; the shipped
+skills are forkable worked examples. A developer (the ICP) decides what they
+want from their data and authors their own skill — with `/make-skill` doing the
+guiding — without touching this repo (decision `platform-over-product`).
+
+| # | Plan | Depends on | Status |
+|---|---|---|---|
+| 42 | Skills platform — `user-skill.md` 1.0.0 contract + template, `link-user-skills.sh` (data-repo `skills/` → `~/.claude/skills` symlinks), `/make-skill` guided authoring, `docs/SKILL-AUTHORING.md` (blessed API + guarantees-vs-norms line), README/SETUP reframe | 08, 35, 38 | **Built** 2026-08-30 (worktree `chunk-42-skills-platform`, plan `docs/plans/2026-08-30-42-skills-platform.md`). Owed: first real user-authored skill dogfooded end-to-end |
+
 Plans 05 and 06 are two plans within one package (DECISIONS.md `attention-merge`).
 Numbering collisions (11/12 → 13–16; 35 → 36) are recorded in the plan files.
 

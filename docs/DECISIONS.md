@@ -423,3 +423,26 @@ measures 0.03 s at 127 people and 0.7 s at 1000 — far under any target — so 
 incremental path would be complexity with nothing to buy. Plan 38.
 Revisit if: a full `reindex.sh` exceeds 2 s on a real store (then plan 38 unit E,
 `reindex.sh --only <slug>…`).
+
+**platform-over-product** · 2026-08-30
+Spomni's product is the data layer plus a blessed, versioned primitive surface
+(query tools, store scripts, answer-style); the shipped skills (`/who-next`,
+`/debrief`, …) are forkable worked examples, not the product. ICP is developers
+— or anyone adopting the author's own usage — who decide what they want from
+their data and author their own skills (`docs/SKILL-AUTHORING.md`, `/make-skill`).
+Why: the ingredients/running-cost mission never said *which* running costs matter
+per user; only they know. Doctrine stays enforced at the layer we control: the
+primitives expose no send path, validators require provenance, CI lints the
+enrichment denylist. User skills in private repos are norm-bound, not
+enforcement-bound — stated honestly in SKILL-AUTHORING.md.
+Revisit if: example skills atrophy (a platform with no flagship example is a schema).
+
+**user-skills-in-data-repo** · 2026-08-30
+User-authored skills live at `<data-dir>/skills/<name>/SKILL.md` in the private
+data repo (contract `user-skill.md` 1.0.0) and are exposed at user scope via
+`link-user-skills.sh` → `~/.claude/skills/<name>` symlinks. Why: a user's skill
+is opinion about their relationships — data-adjacent, so it versions and syncs
+with the store (`code-data-separation` applies to opinions too); user-scope
+linking keeps the public repo's `.claude/skills/` and gitignore untouched and
+works from any session on the machine.
+Revisit if: multi-machine skill sync needs more than the data repo's own git.

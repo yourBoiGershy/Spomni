@@ -51,6 +51,12 @@ Three consequences:
   you" always sounded like admitting you don't care. Here, memory exists so
   the agent can cut the *other* costs well — timing, starting, following
   through.
+- **Which running costs matter is the user's call.** The shipped skills
+  encode one user's answer; the platform stance (decision
+  `platform-over-product`, guide `SKILL-AUTHORING.md`) lets any user author
+  their own skill over the same store and primitives — the mission test
+  travels with them as a design tool, and the no-send guarantee stays in the
+  layer we control.
 
 <details><summary>Footnote — the three framings this replaced</summary>
 

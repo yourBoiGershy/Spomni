@@ -369,6 +369,25 @@ Vectors land in `data/store/index/embeddings.jsonl` (regenerable; never
 leaves the machine). Override the endpoint/model with `OLLAMA_URL` /
 `EMBED_MODEL`; tests inject a deterministic shim via `EMBED_CMD`.
 
+## 8. Optional: your own skills (plan 42)
+
+The shipped skills are worked examples; you can author your own over the same
+store. Say `/make-skill` in a session and it walks you through the whole flow
+— or by hand:
+
+```sh
+mkdir -p <data-dir>/skills/my-skill
+cp packages/core/templates/user-skill.md <data-dir>/skills/my-skill/SKILL.md
+# edit SKILL.md (frontmatter name: must equal the directory name), then:
+bash packages/core/scripts/link-user-skills.sh <data-dir>
+```
+
+Skills land as symlinks in `~/.claude/skills/` (user scope — any session on
+this machine sees them; `--prune` cleans up removed ones). They live in your
+private data repo, so commit them there. The authoring contract — blessed
+read/write surfaces, rendering rules, what the platform guarantees — is
+`docs/SKILL-AUTHORING.md`.
+
 ## Troubleshooting quick reference
 
 | Symptom | Cause / fix |

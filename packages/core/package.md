@@ -65,12 +65,16 @@ nothing.
   numbered, unsent-marked chat message via `scripts/render-nudge-cards.sh`;
   1.0.0, per plan 33),
   `contracts/answer-style.md` 1.0.0 — render rules for every user-facing
-  answer/card (action-first, ≤2 lines/item, cap 5, draft on demand, no-guilt)
+  answer/card (action-first, ≤2 lines/item, cap 5, draft on demand, no-guilt),
+  `contracts/user-skill.md` (1.0.0 — `<data-dir>/skills/<name>/SKILL.md`,
+  the shape and doctrine a user-authored skill inherits, per plan 42)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
   `templates/profile.md`, `templates/sync-lanes.tsv`, `templates/user-model.md`,
   `templates/data-repo-CLAUDE.md` (the cold-session bootstrap `CLAUDE.md`
   `init-store.sh` writes into a store when absent — zero-setup query/debrief
-  paths for a phone or cloud session opened directly on the data repo)
+  paths for a phone or cloud session opened directly on the data repo),
+  `templates/user-skill.md` (the `SKILL.md` scaffold for a user-authored
+  skill, per `contracts/user-skill.md`)
 - Store scripts: `scripts/build-index.sh` (people/ → index.json; projects the
   1.1.0 `kind`/`kind_source`/`kind_expires` columns when present, per plan 30),
   `scripts/build-stats.sh` (people/ + interactions/ → stats.json, per
@@ -119,8 +123,15 @@ nothing.
   laptop, launchd lane, phone/cloud session — uses against a git-backed store:
   `status`/`pull`/`commit`/`push`/`tick` (pull+commit+push in one call, quiet
   when nothing changed); reindexes + runs `validate-store.sh` before every
-  commit and refuses to stage on failure; never rebases)
+  commit and refuses to stage on failure; never rebases),
+  `scripts/link-user-skills.sh` (symlinks each `<data-dir>/skills/<name>/`
+  containing a valid `SKILL.md` into a personal-scope Claude Code skills dir
+  (default `$HOME/.claude/skills`) — `--prune`/`--dry-run` supported, never
+  clobbers a non-symlink or foreign symlink, per `contracts/user-skill.md`,
+  plan 42)
 - Fixtures: `fixtures/store/` (synthetic personas), `fixtures/corrupted/`
+- Skills: `skills/make-skill/` (guided authoring of a user skill conforming
+  to `contracts/user-skill.md`, per plan 42)
 
 ## Consumes
 
@@ -180,3 +191,7 @@ The `person.md` 1.4.0 currency model (Open threads as-of/unverified-since,
 `## Resolved`, Facts `[stale]`) and the `feedback-event.md` 1.2.0
 `merge`/`noise-sender`/`stale-marked` event types are by plan 36
 (docs/plans/2026-08-30-36-store-currency-dedup-remainder-speed-preference-loop.md).
+
+`contracts/user-skill.md`, `templates/user-skill.md`, and
+`scripts/link-user-skills.sh` are by plan 42
+(docs/plans/2026-08-30-42-skills-platform.md).
