@@ -90,20 +90,28 @@ What exists that this plan wires together:
   nudge-card.md` 1.0.0 + `packages/core/scripts/render-nudge-cards.sh`): the
   batch is attention's artifact and the adapters are connectors', so the
   render is a shared contract, not either package's file. One message per
-  fired batch. Cards numbered `1.`, `2.` … in batch `entries` order; each
-  card = trigger line (`why`, signal type in parens when present) +
-  ammunition (`context`) + optional draft block headed `Draft (unsent):` +
-  people as `[[slug]]`. A `mentions[]` line renders once, after the cards,
-  un-numbered. Footer = reply grammar (D4). **No-guilt rules (binding):**
-  never render `held_budget`/`held_adjacent` counts, `budget`, "pending",
-  "missed", "overdue", streaks, or the batch's age. Plain text, no markdown
-  tables (Beeper renders it as a chat message).
+  fired batch. **Nudge first, draft on demand** (user direction 2026-08-30):
+  a card is the push to reach out, not a message to copy. Cards numbered
+  `1.`, `2.` … in batch `entries` order; each card is **two lines max**:
+  line 1 = name + trigger (`why`, signal type in parens when present);
+  line 2 = `→ <one concrete action>` (call, coffee Tue AM, reply to the
+  invite, …) derived from `context`. `context` prose is NOT rendered — it is
+  the ammunition the `draft` reply uses. The `draft` field is never rendered
+  in the card; it is returned only when the user replies `<n> draft` (plan
+  34 parses; the draft is written to `outbox/` and posted to the same
+  self-chat, headed `Draft (unsent):`). A `mentions[]` line renders once,
+  after the cards, un-numbered. Footer = reply grammar (D4). Cap 5 cards per
+  message. **No-guilt rules (binding):** never render `held_budget`/
+  `held_adjacent` counts, `budget`, "pending", "missed", "overdue", streaks,
+  or the batch's age. Plain text, no markdown tables (Beeper renders it as
+  a chat message).
 - **D4 Reply grammar** (footer text defined here; parsed in plan 34):
   ```
-  Reply with the number: <n> done | <n> snooze <dur> | <n> skip | <n> never <signal-type> | <n> not-them | <n> wrong-tier <tier>
+  Reply: <n> draft | <n> done | <n> snooze <dur> | <n> skip | <n> never <signal-type> | <n> not-them | <n> wrong-tier <tier>
   ```
-  Free text after the verb is kept verbatim by the parser. The footer is
-  one line, identical across channels.
+  `draft` is first because it is the expected next step. Free text after the
+  verb is kept verbatim by the parser (`3 draft mention the Tokyo race`). The
+  footer is one line, identical across channels.
 - **D5 Cadence rides on sync.** New `packages/connectors/scripts/
   deliver-tick.sh <store-dir>`: for every `wakeups/fired/*-batch.json` not
   listed in `<store>/outbox/delivered.log` (connectors-owned, outside
@@ -176,14 +184,17 @@ birthday with no draft, job-change with a draft, event-proposal; plus one
                   "date": "...", "people": ["slug"], "line": "<text>" } ]   // optional
 }
 ```
-Render per D3/D4; `budget`, `held_*` never appear. Event-proposal card shows
-title/start/end and "reply `<n> done` after you create it". Empty `entries`
+Render per D3/D4; `budget`, `held_*`, `context` prose and `draft` text never
+appear in the card (two lines per card; `draft` is served only on a `<n>
+draft` reply). Event-proposal card shows title/start/end and "reply `<n>
+done` after you create it". Empty `entries`
 → exit 3, no output (the tick treats it as nothing to send).
 
 **U3 [worker] core — renderer tests.** File: `packages/core/tests/
 run-store-tests.sh` (extend) or `run-render-tests.sh` + `test-all.sh`
 listing. Cases: fixture renders byte-equal to `expected.txt`; numbering
-follows entries order; draft block present and headed `Draft (unsent):`;
+follows entries order; no `Draft (unsent):` block in the card render (draft-on-demand); each card
+≤ 2 lines, line 2 starts `→ `;
 no-guilt grep (`pending|missed|overdue|held|budget` absent from output);
 mentions line un-numbered; empty entries → exit 3; footer line exact
 string from D4; profile `## Notify` validate-store cases (valid, bad enum,

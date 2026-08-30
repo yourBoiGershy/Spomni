@@ -1,10 +1,10 @@
 # Feedback reply-parse spec
 
 Package: ingestion. Sole entry point: `packages/ingestion/scripts/feedback-parse.sh
-<store-dir> --data-dir <d> [--today YYYY-MM-DD]`. Consumes `feedback-event@1.0.0`
+<store-dir> --data-dir <d> [--today YYYY-MM-DD]`. Consumes `feedback-event@1.1.0`
 (`packages/core/contracts/feedback-event.md`), `capture-event@1.2.0`
 (`packages/core/contracts/capture-event.md`), and plan 33's delivered-batch/
-`delivered.log` shapes. Plan 34 D2/U8.
+`delivered.log` shapes. Plan 34 D2/U8, U8b (`draft` verb).
 
 ## Purpose
 
@@ -88,9 +88,10 @@ stripped — internal spacing, punctuation, and case are untouched).
 | `<n> done [<rest>]` | `wakeup-queue.sh dismiss <id> --reason already-handled --source reply --channel beeper-self [--text <rest>]` | `feedback-file.sh --type done --target wakeup:<id> [--text <rest>]` (in addition to the `dismiss` line `wakeup-queue.sh` already appends via its own ledger hook) |
 | `<n> snooze <dur>` | `wakeup-queue.sh snooze <id> --days <D> --today <today> --source reply --channel beeper-self` | ledgered by `wakeup-queue.sh`'s own hook (`type: snooze`, `reason: <dur>`) |
 | `<n> skip` | `dismiss <id> --reason not-now ...` | via the hook (`type: dismiss`) |
-| `<n> never <signal-type> [<rest>]` | `dismiss <id> --reason not-this-signal-type ...`, then (only if the dismiss succeeded) append `- **[stated-by-user]** <signal-type> — all (<today>)` to `profile.md`'s `## Signal opt-outs` (skipped if a bullet for that signal-type already reads `— all`) | via the hook (`type: dismiss`), plus `feedback-file.sh --type opt-out --target signal:<signal-type> --to all --source reply --text <rest>` |
+| `<n> never <signal-type> [<rest>]` | `dismiss <id> --reason not-this-signal-type ...`, then (only if the dismiss succeeded) append `- **[stated-by-user]** <signal-type> — all` to `profile.md`'s `## Signal opt-outs` (skipped if a bullet for that signal-type already reads `— all`; no date suffix — `packages/core/scripts/validate-store.sh`'s Signal opt-outs grammar is `<signal-type> — (all|[[slug]])`, no trailing date) | via the hook (`type: dismiss`), plus `feedback-file.sh --type opt-out --target signal:<signal-type> --to all --source reply --text <rest>` |
 | `<n> not-them` | `dismiss <id> --reason not-this-person ...` | via the hook (`type: dismiss`) |
 | `<n> wrong-tier <tier> [<rest>]` | `person-set-tier.sh <store> <slug> --tier <tier> --source stated-by-user --today <today> --feedback-source reply --feedback-channel beeper-self --feedback-text <rest>` (`<slug>` = `.entries[n-1].people[0]`; `<tier>` must be one of `inner-circle\|close\|active\|dormant` and `<slug>` must be non-empty, else this row falls through to the catch-all) | via `person-set-tier.sh`'s own hook (`type: tier-correction`) |
+| `<n> draft [<rest>]` | write `<store-dir>/outbox/drafts/<batch-stem>-<n>-draft.txt` (`mkdir -p`; unsent text, never sent by this step) — see "Draft on demand" below | `feedback-file.sh --type draft-request --target wakeup:<id> [--text <rest>]` |
 | `<n> <anything else>` | nothing applied | `feedback-file.sh --type freeform --target wakeup:<id> --text "<whole line>" --source reply --channel beeper-self` |
 | no valid leading integer, or `n < 1`, or `n > entries.length`, or no delivered-batch map at all | nothing applied | `feedback-file.sh --type freeform --target model --text "<whole line>" --source reply --channel beeper-self` |
 
@@ -101,6 +102,55 @@ an unrecognized tier or a card with no primary person, does not fall back
 to a *different* action — it is ledgered exactly like the catch-all
 (`freeform`, `--target wakeup:<id>`), because the verb and card were
 identified even though the argument could not be applied.
+
+## Draft on demand (plan 34 U8b)
+
+`<n> draft [<rest>]` is the nudge-first / draft-on-demand reply: the user is
+never shown a drafted message unsolicited, and never asked to write one
+themselves — they ask for it, once, against a delivered card, and get back
+exactly what already exists for it. This step never composes or invents a
+draft; that is a model session's or the sweep's job (per U16, drafts are
+composed from `context` + `profile.md`'s `## Style notes` ahead of time and
+stored on the wake-up's `Draft` section, which `wakeup-queue.sh fire`
+carries into the fired batch's `.entries[n-1].draft`). This deterministic
+tick only serves what a prior pass already wrote:
+
+- `.entries[n-1].draft` non-empty → written verbatim as the file's body.
+- `.entries[n-1].draft` empty/null → the file reads exactly `no draft
+  available for <n>` (`<n>` is the card number as typed). Never falls back
+  to composing something from `context` — an empty draft field means no
+  draft was pre-composed, full stop; inventing one here would be exactly
+  the "performing the relationship for the user" the mission rules out.
+- Free text after `draft` (`<rest>`) is appended as a final `Note: <rest>`
+  line, verbatim, so the sender can see their own ask reflected back
+  (useful when the request is later re-read out of the outbox).
+
+File path: `<store-dir>/outbox/drafts/<batch-stem>-<n>-draft.txt`, where
+`<batch-stem>` is the resolved batch file's name with its `.json`
+extension stripped. The file is unsent text — the human sends it, same as
+every other draft in this repo (`Draft, never send.`, `CLAUDE.md`).
+Contents:
+```
+Draft (unsent):
+<the entries[n-1].draft field, verbatim>
+Note: <free text verbatim>          (only if free text was given)
+```
+or, with no draft on file:
+```
+Draft (unsent):
+no draft available for <n>
+Note: <free text verbatim>          (only if free text was given)
+```
+
+**Idempotency / re-request:** a second `<n> draft` reply against the same
+card normally overwrites the same file (nothing downstream has consumed it
+yet, so there is nothing to preserve). If that exact file name is already
+listed in `<store-dir>/outbox/delivered.log` column 1 — meaning an earlier
+draft file for this card was already picked up and sent out — a fresh
+request instead writes a timestamp-suffixed sibling
+(`<batch-stem>-<n>-draft-<compact-ts>.txt`) so the outbound lane sees a new
+file to deliver rather than silently missing a re-request for content it
+already delivered once.
 
 ## The "never dropped" rule
 

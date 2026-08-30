@@ -384,7 +384,7 @@ if [ "$optout_count" -eq 1 ]; then
 else
   fail "1 never birthday: expected exactly one opt-out bullet, got $optout_count"
 fi
-if grep -qF -- "- **[stated-by-user]** birthday — all (2026-08-30)" "$STORE_NEVER/profile.md"; then
+if grep -qF -- "- **[stated-by-user]** birthday — all" "$STORE_NEVER/profile.md"; then
   pass "1 never birthday: opt-out bullet has the expected shape"
 else
   fail "1 never birthday: opt-out bullet shape mismatch"
@@ -393,6 +393,22 @@ if jq -e 'select(.type == "opt-out" and .target == "signal:birthday" and .to == 
   pass "1 never birthday: ledgers opt-out signal:birthday -> all"
 else
   fail "1 never birthday: no matching opt-out ledger line"
+fi
+mkdir -p "$STORE_NEVER/interactions"
+# validate-store.sh's ## Notify allowance ships on the sibling chunk-33
+# branch (profile.md 1.1.0) and is not yet merged here — make this
+# assertion conditional so it goes live automatically once that branch
+# merges, rather than failing on a cross-branch gap this unit doesn't own.
+if grep -q '## Notify' "$REPO_ROOT/packages/core/scripts/validate-store.sh"; then
+  validate_out="$(bash "$REPO_ROOT/packages/core/scripts/validate-store.sh" "$STORE_NEVER" 2>&1)"
+  validate_status=$?
+  if [ "$validate_status" -eq 0 ]; then
+    pass "1 never birthday: validate-store.sh reports the resulting store clean"
+  else
+    fail "1 never birthday: validate-store.sh did not report clean (status $validate_status) — $validate_out"
+  fi
+else
+  echo "SKIP: validate-store lacks ## Notify (plan 33 not merged yet)"
 fi
 
 # --- case: "2 not-them" dismisses card 2 as not-this-person ---
@@ -578,7 +594,98 @@ else
   fail "template ## Notify (comment trap): reply was not applied — resolver likely matched the HTML comment instead of the real bullet"
 fi
 
+# --- case: "1 draft mention the Tokyo race" -> no draft available for
+# entry 1 (batch fixture has draft: null), Note line carries the free
+# text, ledgers draft-request. Mission test: draft served only on
+# request, never invented. ---
+STORE_DRAFT1="$(setup_store case-draft-1)"
+DATA_DRAFT1="$PARSE_WORKDIR/case-draft-1-data"
+write_event "$STORE_DRAFT1" 1 "$(one_msg_array 1 m1 "1 draft mention the Tokyo race")" >/dev/null
+"$FEEDBACK_PARSE" "$STORE_DRAFT1" --data-dir "$DATA_DRAFT1" --today 2026-08-30 >/dev/null 2>&1
+DRAFT1_FILE="$STORE_DRAFT1/outbox/drafts/20260830T120000Z-batch-1-draft.txt"
+EXPECTED_DRAFT1='Draft (unsent):
+no draft available for 1
+Note: mention the Tokyo race'
+if [ -f "$DRAFT1_FILE" ] && [ "$(cat "$DRAFT1_FILE")" = "$EXPECTED_DRAFT1" ]; then
+  pass "1 draft <text>: draft file has no-draft-available + Note line"
+else
+  fail "1 draft <text>: draft file mismatch, got [$(cat "$DRAFT1_FILE" 2>/dev/null)] want [$EXPECTED_DRAFT1]"
+fi
+if jq -e 'select(.type == "draft-request" and .target == "wakeup:2026-08-20-jane-doe" and .text == "mention the Tokyo race" and .source == "reply")' "$STORE_DRAFT1/signals/feedback.jsonl" >/dev/null 2>&1; then
+  pass "1 draft <text>: ledgers draft-request with text and source reply"
+else
+  fail "1 draft <text>: no matching draft-request ledger line"
+fi
+
+# --- case: "2 draft" -> entry 2's batch draft field served verbatim, no
+# Note line (no free text supplied) ---
+STORE_DRAFT2="$(setup_store case-draft-2)"
+DATA_DRAFT2="$PARSE_WORKDIR/case-draft-2-data"
+BATCH_DRAFT2="$STORE_DRAFT2/wakeups/fired/20260830T120000Z-batch.json"
+jq '.entries[1].draft = "Hey Sam — congrats on the move!"' "$BATCH_DRAFT2" > "$BATCH_DRAFT2.tmp" && mv "$BATCH_DRAFT2.tmp" "$BATCH_DRAFT2"
+write_event "$STORE_DRAFT2" 1 "$(one_msg_array 1 m1 "2 draft")" >/dev/null
+"$FEEDBACK_PARSE" "$STORE_DRAFT2" --data-dir "$DATA_DRAFT2" --today 2026-08-30 >/dev/null 2>&1
+DRAFT2_FILE="$STORE_DRAFT2/outbox/drafts/20260830T120000Z-batch-2-draft.txt"
+EXPECTED_DRAFT2='Draft (unsent):
+Hey Sam — congrats on the move!'
+if [ -f "$DRAFT2_FILE" ] && [ "$(cat "$DRAFT2_FILE")" = "$EXPECTED_DRAFT2" ]; then
+  pass "2 draft: draft file serves the batch entry's draft verbatim, no Note line"
+else
+  fail "2 draft: draft file mismatch, got [$(cat "$DRAFT2_FILE" 2>/dev/null)] want [$EXPECTED_DRAFT2]"
+fi
+
+# --- case: "1 draft" re-request after the original draft file was already
+# delivered -> a new timestamp-suffixed sibling is written, original
+# untouched ---
+STORE_DRAFT3="$(setup_store case-draft-3)"
+DATA_DRAFT3="$PARSE_WORKDIR/case-draft-3-data"
+DRAFT3_ORIG="$STORE_DRAFT3/outbox/drafts/20260830T120000Z-batch-1-draft.txt"
+mkdir -p "$STORE_DRAFT3/outbox/drafts"
+printf 'Draft (unsent):\nno draft available for 1\n' > "$DRAFT3_ORIG"
+printf '%s\tnone\t2026-08-30T13:00:00Z\tm0\n' "20260830T120000Z-batch-1-draft.txt" >> "$STORE_DRAFT3/outbox/delivered.log"
+orig_before="$(cat "$DRAFT3_ORIG")"
+write_event "$STORE_DRAFT3" 1 "$(one_msg_array 1 m1 "1 draft")" >/dev/null
+"$FEEDBACK_PARSE" "$STORE_DRAFT3" --data-dir "$DATA_DRAFT3" --today 2026-08-30 >/dev/null 2>&1
+sibling_count="$(find "$STORE_DRAFT3/outbox/drafts" -name '20260830T120000Z-batch-1-draft-*.txt' | wc -l | tr -d ' ')"
+if [ "$sibling_count" -eq 1 ]; then
+  pass "1 draft re-request: a new timestamp-suffixed sibling file is written"
+else
+  fail "1 draft re-request: expected 1 sibling draft file, got $sibling_count"
+fi
+if [ "$(cat "$DRAFT3_ORIG")" = "$orig_before" ]; then
+  pass "1 draft re-request: original delivered draft file is untouched"
+else
+  fail "1 draft re-request: original draft file was modified"
+fi
+
+# --- case: "9 draft" (n > entries) falls through to freeform target model,
+# no draft file written ---
+STORE_DRAFT_OOR="$(setup_store case-draft-out-of-range)"
+DATA_DRAFT_OOR="$PARSE_WORKDIR/case-draft-out-of-range-data"
+write_event "$STORE_DRAFT_OOR" 1 "$(one_msg_array 1 m1 "9 draft")" >/dev/null
+"$FEEDBACK_PARSE" "$STORE_DRAFT_OOR" --data-dir "$DATA_DRAFT_OOR" --today 2026-08-30 >/dev/null 2>&1
+if jq -e 'select(.type == "freeform" and .target == "model" and .text == "9 draft")' "$STORE_DRAFT_OOR/signals/feedback.jsonl" >/dev/null 2>&1; then
+  pass "9 draft: n > entries.length -> freeform target model"
+else
+  fail "9 draft: expected freeform target model ledger line"
+fi
+if [ ! -d "$STORE_DRAFT_OOR/outbox/drafts" ]; then
+  pass "9 draft: no draft file written"
+else
+  fail "9 draft: unexpected outbox/drafts/ dir created"
+fi
+
 fi # FEEDBACK_PARSE exists
+
+# --- case: feedback-file.sh --type draft-request is accepted ---
+STORE_DRAFT_TYPE="$WORKDIR/store-draft-type"
+"$FEEDBACK_FILE" "$STORE_DRAFT_TYPE" --type draft-request --target wakeup:2026-08-20-jane-doe --source reply >/dev/null 2>&1
+status_draft_type=$?
+if [ "$status_draft_type" -eq 0 ]; then
+  pass "--type draft-request is accepted (exit 0)"
+else
+  fail "--type draft-request expected exit 0, got $status_draft_type"
+fi
 
 # --- part 3: feedback-recent.sh + feedback-to-evals.sh ---
 #

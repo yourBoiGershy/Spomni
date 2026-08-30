@@ -34,6 +34,9 @@
 #   <n> never <signal-type>  -> dismiss --reason not-this-signal-type; append profile.md ## Signal opt-outs (skip if present); feedback-file.sh --type opt-out
 #   <n> not-them              -> dismiss --reason not-this-person
 #   <n> wrong-tier <tier>     -> person-set-tier.sh <slug> --tier <tier> --source stated-by-user --feedback-* (tier not in vocab -> freeform)
+#   <n> draft [free text]     -> write outbox/drafts/<batch>-<n>-draft.txt (unsent, verbatim; "no draft available
+#                                 for <n>" if the entry has no draft — never composed here); feedback-file.sh
+#                                 --type draft-request --target wakeup:<id> [--text <free text>]
 #   <n> <anything else>       -> feedback-file.sh --type freeform --target wakeup:<id>
 #   <no valid n / n > entries> -> feedback-file.sh --type freeform --target model
 #
@@ -256,7 +259,7 @@ feedback_freeform() {
 append_optout_bullet() {
   _sig="$1"
   [ -f "${PROFILE_FILE}" ] || return 0
-  _bullet="- **[stated-by-user]** ${_sig} — all (${TODAY})"
+  _bullet="- **[stated-by-user]** ${_sig} — all"
   if grep -qF "${_sig} — all" "${PROFILE_FILE}"; then
     return 0
   fi
@@ -456,6 +459,52 @@ apply_line() {
         APPLIED_COUNT=$((APPLIED_COUNT + 1))
       else
         feedback_freeform "person:${_slug}" "${_text}" "op-exit-${_ec}"
+        log_applied "${_capture_id}" "${_line_no}" "freeform" "${_ec}"
+        FREEFORM_COUNT=$((FREEFORM_COUNT + 1))
+      fi
+      ;;
+    draft)
+      # <n> draft [free text] — serve what already exists in the batch
+      # entry's `draft` field, verbatim, to outbox/drafts/ as unsent text;
+      # never compose or invent one here (that is the sweep's/a model
+      # session's job, per U16 — this deterministic tick only serves what
+      # a prior pass already wrote).
+      _rest="$(strip_tokens "${_text}" 2)"
+      _draft_val="$(jq -r ".entries[$((_n_tok - 1))].draft // empty" "${BATCH_PATH}")"
+      _batch_base="$(basename "${BATCH_PATH}")"
+      _batch_stem="${_batch_base%.json}"
+      _drafts_dir="${STORE}/outbox/drafts"
+      mkdir -p "${_drafts_dir}"
+      _out_file="${_drafts_dir}/${_batch_stem}-${_n_tok}-draft.txt"
+      _out_name="$(basename "${_out_file}")"
+      # If a draft file for this exact card was already delivered (listed
+      # in delivered.log col 1), a fresh request must be re-sent, not
+      # silently overwrite a file the outbound lane already picked up —
+      # write a timestamp-suffixed sibling instead.
+      if [ -f "${_out_file}" ] && [ -f "${DELIVERED_LOG}" ] && \
+         awk -F'\t' -v n="${_out_name}" '$1 == n { found=1 } END { exit !found }' "${DELIVERED_LOG}"; then
+        _out_file="${_drafts_dir}/${_batch_stem}-${_n_tok}-draft-$(date -u +%Y%m%dT%H%M%SZ).txt"
+      fi
+      {
+        printf 'Draft (unsent):\n'
+        if [ -n "${_draft_val}" ]; then
+          printf '%s\n' "${_draft_val}"
+        else
+          printf 'no draft available for %s\n' "${_n_tok}"
+        fi
+        [ -n "${_rest}" ] && printf 'Note: %s\n' "${_rest}"
+      } > "${_out_file}"
+      _ec=$?
+      if [ "${_ec}" -eq 0 ]; then
+        if [ -n "${_rest}" ]; then
+          "${FEEDBACK_FILE_SH}" "${STORE}" --type draft-request --target "wakeup:${_wakeup_id}" --source reply --channel beeper-self --text "${_rest}" >/dev/null 2>&1
+        else
+          "${FEEDBACK_FILE_SH}" "${STORE}" --type draft-request --target "wakeup:${_wakeup_id}" --source reply --channel beeper-self >/dev/null 2>&1
+        fi
+        log_applied "${_capture_id}" "${_line_no}" "draft-request" "${_ec}"
+        APPLIED_COUNT=$((APPLIED_COUNT + 1))
+      else
+        feedback_freeform "wakeup:${_wakeup_id}" "${_text}" "op-exit-${_ec}"
         log_applied "${_capture_id}" "${_line_no}" "freeform" "${_ec}"
         FREEFORM_COUNT=$((FREEFORM_COUNT + 1))
       fi

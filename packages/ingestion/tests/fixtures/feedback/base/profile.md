@@ -4,11 +4,7 @@ schema_version: 1.0.0
 
 ## Priorities
 
-- _none_
-
 ## Cadence wishes
-
-- _none_
 
 ## Notify
 
@@ -16,8 +12,4 @@ schema_version: 1.0.0
 
 ## Signal opt-outs
 
-- _none_
-
 ## Style notes
-
-- _none_

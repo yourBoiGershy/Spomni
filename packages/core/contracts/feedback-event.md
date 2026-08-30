@@ -1,6 +1,6 @@
 # Contract: feedback event
 
-`schema_version: 1.0.0`
+`schema_version: 1.1.0`
 
 ## Store location
 
@@ -25,8 +25,9 @@ rewritten. Lines are appended in timestamp order and never edited or deleted.
     feedback line only for stated (user-originated) writes, never for
     derived writes.
   - `packages/ingestion`'s review-tiers correction digest and
-    `feedback-parse.sh` (reply parsing) — logs corrections and freeform
-    replies surfaced through those flows.
+    `feedback-parse.sh` (reply parsing) — logs corrections, freeform
+    replies, and draft-on-demand requests (`draft-request`, plan 34 U8b)
+    surfaced through those flows.
 - **Readers:** `packages/ingestion` (`feedback-recent.sh`,
   `feedback-to-evals.sh`), `packages/attention` (`calibrate.sh`, proposal
   generation, the report card), `packages/query` (explaining "why did this
@@ -55,7 +56,7 @@ structure (no frontmatter, no wrapping array).
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `ts` | ISO 8601 timestamp | yes | `YYYY-MM-DDTHH:MM:SSZ`. When the feedback event was recorded. |
-| `type` | enum | yes | One of: `dismiss`, `snooze`, `acted-on`, `done`, `opt-out`, `tier-correction`, `kind-correction`, `draft-edit`, `model-confirm`, `freeform`. |
+| `type` | enum | yes | One of: `dismiss`, `snooze`, `acted-on`, `done`, `opt-out`, `tier-correction`, `kind-correction`, `draft-edit`, `model-confirm`, `freeform`, `draft-request`. `draft-request` (1.1.0, plan 34 U8b) records a `<n> draft [free text]` reply — the user asking to be served the pre-composed draft (or told none exists) for a delivered card; it never carries the draft text itself (that lives only in the outbox file the reply-verb writes), only the fact that it was asked for and any free text the user attached. |
 | `target` | string | yes | One of: `wakeup:<id>`, `person:<slug>`, `signal:<type>`, `model`. Identifies what the feedback is about. |
 | `from` | string or null | yes (may be `null`) | The prior value, for corrections (e.g. a prior tier or kind). `null` when not applicable. |
 | `to` | string or null | yes (may be `null`) | The new value, for corrections or opt-outs. `null` when not applicable. |
@@ -74,6 +75,7 @@ structure (no frontmatter, no wrapping array).
 {"ts":"2026-08-30T14:08:00Z","type":"opt-out","target":"signal:linkedin-post","from":null,"to":"all","reason":null,"text":"never linkedin","channel":"beeper-self","source":"reply"}
 {"ts":"2026-08-31T09:00:00Z","type":"acted-on","target":"wakeup:2026-08-30-sam-okafor","from":null,"to":null,"reason":null,"text":null,"channel":null,"source":"auto"}
 {"ts":"2026-08-30T14:09:00Z","type":"freeform","target":"wakeup:2026-08-30-jane-doe","from":null,"to":null,"reason":null,"text":"actually let's talk about this next week","channel":"beeper-self","source":"reply"}
+{"ts":"2026-08-30T14:10:00Z","type":"draft-request","target":"wakeup:2026-08-30-jane-doe","from":null,"to":null,"reason":null,"text":"mention the Tokyo race","channel":"beeper-self","source":"reply"}
 ```
 
 ## Notes

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # feedback-file.sh — the sole writer of the append-only feedback ledger
 # `<store-dir>/signals/feedback.jsonl` (packages/core/contracts/feedback-event.md
-# 1.0.0, plan 34 D1).
+# 1.1.0, plan 34 D1/U8b).
 #
 # Usage:
 #   feedback-file.sh <store-dir> --type <enum> --target <target> \
@@ -10,7 +10,8 @@
 #
 # Rules:
 #   - `type` must be one of: dismiss, snooze, acted-on, done, opt-out,
-#     tier-correction, kind-correction, draft-edit, model-confirm, freeform.
+#     tier-correction, kind-correction, draft-edit, model-confirm, freeform,
+#     draft-request.
 #   - `target` must match ^(wakeup:.+|person:[a-z0-9-]+|signal:[a-z0-9-]+|model)$.
 #   - `source` must be one of: reply, session, auto.
 #   - `--text` is the user's verbatim words — never rewritten, never
@@ -29,7 +30,7 @@
 
 set -u
 
-TYPE_VOCAB="dismiss|snooze|acted-on|done|opt-out|tier-correction|kind-correction|draft-edit|model-confirm|freeform"
+TYPE_VOCAB="dismiss|snooze|acted-on|done|opt-out|tier-correction|kind-correction|draft-edit|model-confirm|freeform|draft-request"
 SOURCE_VOCAB="reply|session|auto"
 TARGET_RE="^(wakeup:.+|person:[a-z0-9-]+|signal:[a-z0-9-]+|model)\$"
 
@@ -72,7 +73,7 @@ done
 [ -n "$store_dir" ] || die "missing <store-dir>" 2
 
 if ! printf '%s' "$type" | grep -qE "^(${TYPE_VOCAB})\$"; then
-    die "invalid --type: '${type}' (expected one of: dismiss, snooze, acted-on, done, opt-out, tier-correction, kind-correction, draft-edit, model-confirm, freeform)" 2
+    die "invalid --type: '${type}' (expected one of: dismiss, snooze, acted-on, done, opt-out, tier-correction, kind-correction, draft-edit, model-confirm, freeform, draft-request)" 2
 fi
 
 if ! printf '%s' "$target" | grep -qE "$TARGET_RE"; then
