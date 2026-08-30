@@ -37,6 +37,8 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 22 | Live-data query sync & verification (plan 18 close-out: smoke 6/6 over the filed live store, real chat with citations, legacy user-scope registration removed) | query (verification only — runs the machinery, builds none) | 18, 20 (filed backlog) | Done (2026-08-29, chunk-22-live-query-verify; smoke 6/6 non-degraded over the filed store (21 people), 3 fresh-session chat answers with real citations + provenance labels, legacy local-scope registration removed — exactly one remains, T2 evals 3 pass/2 xfail, store+query suites 10/10 + 29/29; plan 18 proof-of-done closed) |
 | 23 | Harness context economy (content-bearing briefs; warm per-package workers via SendMessage; fork guidance; capsule-sized manifests) | harness docs (`.claude/rules`, `.claude/context`) — no machinery | — | Done (2026-08-29, worktree-harness-context-economy) |
 | 24 | Onboarding deep backfill & priority seeding (backfill history on first run, seed tiers from participation signals) | connectors (backfill mode on direct lanes) + ingestion (seed pass, extends `specs/onboarding-tiering-seed.md`) + core (config) | 03, 15, 17 | Done (2026-08-29, chunk-24-onboarding-backfill; backfill modes on all 3 direct lanes + isolated namespaces, 6-month configurable window via new core contract onboarding-backfill 1.0.0, participation-signal scoring + onboarding-seed skill; suites 10/109/88/64/23 green, scheduler untouched, confirm-first T3 eval PASS + doctored-FAIL proven; rode along: eval-suite wave-parallel dispatch + smoke tags, eval-case 1.1.0). Also rode along: chunk-21 eval re-baseline debt repaired — 14 legacy ingestion T3 cases rewritten (operative-procedure prompts + fact-based graders), full suite 17/17 PASS; eval-suite rerun-failed mode (eval-case 1.2.0). Residual: live fresh-store onboarding run awaits a user session (first-party connectors) |
+| 25 | Backfill episode-split filing (debrief §5b-episodes: multi-day chat events file one interaction per active UTC day, so backfilled history yields real frequency instead of touchpoints=1) | ingestion (debrief skill + onboarding spec) | 03, 24 | In progress (2026-08-29, chunk-25-backfill-episode-split; live-onboarding finding, user-approved mid-run; rule + spec cross-ref landed and driving the live filing pass; needs golden/eval coverage before merge) |
+| 26 | Import & filing efficiency (deterministic triage tier; fetch-big-process-from-file capture; person-sharded parallel filing; beeper backfill cursor fix) | ingestion (triage + filing) + connectors (capture skills, beeper-in) | 24, 25 | Planned — plan file to author |
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
 attention-merge. Historical plan-number collisions (11/12 renumbered to 13–16 at merge)
@@ -225,6 +227,38 @@ signals; the chunk-20 examples rank correctly (unanswered pitch = very low,
 non-participating group = low, active thread = boosted); zero tier writes
 without confirmation (eval-guarded); window override honored end to end.
 
+### 26 — Import & filing efficiency
+
+**Context (from the 2026-08-29 live onboarding run).** Observed signal
+density: gmail ~5% person-relevant, calendar ~3%, beeper mixed — yet every
+event pays a full model-judgment filing pass, so ~95% of filing spend goes
+to deciding something is junk. Session-driven gmail capture transits every
+body through model context twice (fetch + archive transcription); the
+calendar leg accidentally proved the efficient alternative when an
+oversized MCP result was saved to disk and processed programmatically with
+perfect byte fidelity. Beeper backfill over-fetched pages already covered
+incrementally (duplicate-subset events, held by filing judgment), and
+bridge history is shallow (only since bridge connect).
+**Work.** (a) Deterministic triage tier in ingestion: a rule pass
+(bash/jq — noreply/marketing senders, self-only calendar events, OTP/
+security alerts, LinkedIn invitation notifications, single-message cold
+pitches) marks events `held-by-rule` before the debrief skill; only
+maybe-a-person events reach model judgment; reversible (inbox append-only).
+(b) "Fetch big, process from file" formalized in gmail-sweep /
+calendar-sweep: request max page sizes so MCP results land on disk, then
+archive/classify/normalize programmatically from the saved file — raw
+bytes never transcribed by the model (keeps first-party-mcp-only).
+(c) Person-sharded parallel filing: batches sharded so no two workers can
+touch the same person file; index rebuilt once at end. (d) beeper-in
+backfill fixes: exclude already-covered pages from the backfill bound;
+clamp the window to actual bridge history.
+**Deliverables / proof of done.** Triage pass auto-holds the junk classes
+from the chunk-24 live corpus with zero false-holds on its filed events
+(golden-tested); a gmail backfill page processes end to end with no body
+transcription in-session; a sharded filing wave files a mixed batch with
+zero cross-worker person-file conflicts; beeper backfill re-run produces
+zero duplicate-subset events; capture + filing suites green.
+
 ## Execution order (current)
 
 **Shipped 2026-08-30** (chunk 20 gate: GO — see `docs/ship-notes-2026-08-30.md`;
@@ -232,7 +266,7 @@ zero data loss, audits green; gmail filed→query leg accepted as a known gap,
 closes with 17's lanes + first human email).
 
 Post-ship order (17, 18, 19 landed in parallel sessions on ship day):
-1. **22** — live-data query sync & verification: mostly satisfied by 20's Phase 5
+1. **25** — episode-split filing (in flight on chunk-25-backfill-episode-split: golden/eval coverage, then PR). **26** — import & filing efficiency follows (plan file to author; both feed every future onboarding and the incremental loop).
    shakedown (6/6 cited answers via a fresh server); remaining = reconnect the
    session server (boot-snapshot known issue), `smoke-live.sh` over the filed
    store, ≥3 real chat questions with citations, legacy registration removal.
