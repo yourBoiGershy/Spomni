@@ -121,7 +121,7 @@ different language.
 **staleness-cache** · 2026-08-29
 The query MCP server never writes into the store. It detects stale index/stats
 (generated_at + mtime vs. newest store mtime) and regenerates via core's scripts into
-`${RA_CACHE_DIR:-$HOME/.cache/relationship-agent}/derived/`, serving from there; store
+`${SPOMNI_CACHE_DIR:-$HOME/.cache/spomni}/derived/`, serving from there; store
 copies of index.json/stats.json remain ingestion's to write. Every tool result carries
 `generated_at`. Why: preserves the single-writer rule while keeping answers fresh
 without depending on sweep timing.
@@ -310,3 +310,28 @@ answers the "outsourcing your friendships" objection (you outsource the part tha
 never the friendship). Supersedes the "external memory plus attention allocator"
 self-description in PROJECT-CONTEXT. Companion: docs/USE-CASES.md.
 Revisit if: never for the ingredient boundary; the running-cost list may grow.
+
+**open-source-release** · 2026-08-30
+The repo is published under MIT with the product name **Spomni** used everywhere a
+user can see it: launchd labels `com.spomni.sync.<lane>`, cache dir
+`~/.cache/spomni`, env vars `SPOMNI_STORE_DIR` / `SPOMNI_CACHE_DIR` /
+`SPOMNI_CORE_SCRIPTS_DIR` (the `RA_*` names remain as deprecated fallbacks; the
+internal eval knobs `RA_EVAL_*` / `RA_GRADER_*` are not renamed), MCP server and npm
+package `spomni-query`. `sync-scheduler.sh status` reports pre-rename agents as
+`LEGACY` rows rather than removing them. Why: a public repo with two names is a
+support cost, and renaming after users install breaks them; MIT because adoption
+and contribution matter more than preventing hosted forks of a tool whose value is
+local-first anyway.
+Guards added with the release: `.claude/scripts/oss-guard.sh` (run in CI and by
+`scripts/test-all.sh`) enforces the standing principles mechanically — `data/`
+tripwire, tracked-symlink check (product-skill symlinks in `.claude/skills/` are the
+one exemption), secret/PII/personal-path scans, a draft-never-send lint on connector
+and attention code, and an enrichment-host denylist. `check-store-location.sh`
+refuses store locations that would leak (inside the code repo, inside a sync folder,
+pointed at the public remote). Product skills are discovered via symlinks in
+`.claude/skills/` (Claude Code follows them); a demo store built from the core
+fixture (`scripts/setup.sh --demo`) lets a stranger try the query layer without
+linking any account.
+Revisit if: a contributor needs Linux (scheduler backend + drop the macOS-only
+CI runner), or the plugin manifest format becomes a better discovery surface than
+symlinks.

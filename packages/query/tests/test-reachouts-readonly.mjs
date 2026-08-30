@@ -121,7 +121,7 @@ async function startClient(storeDir, cacheDir) {
     env: {
       PATH: process.env.PATH ?? "",
       HOME: process.env.HOME ?? "",
-      RA_CACHE_DIR: cacheDir,
+      SPOMNI_CACHE_DIR: cacheDir,
     },
     stderr: "pipe",
   });

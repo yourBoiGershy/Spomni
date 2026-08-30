@@ -1,24 +1,19 @@
-# Relationship Agent
+# Spomni
 
 **What a friendship is made of, without what it costs to keep.**
 
 A relationship is made of trust, care, intent, and time. None of those are
 what makes it hard to keep — what's hard is what a relationship *costs to
 run*: the coordinating, following up, scheduling, restarting, remembering-to.
-None of that adds a gram of trust. Spomni is an open-source, **local-first
-personal assistant** that carries that running cost — business, friends,
-family — and never touches the ingredients. It notices when a moment is good
-(a birthday, a job change, a lull, a promise you made), hands you the
-context and a draft in your voice, and stops. **It drafts; you send.** Always.
+Spomni is an open-source, **local-first personal assistant** that carries
+that running cost — business, friends, family — and never touches the
+ingredients. It notices when a moment is good (a birthday, a job change, a
+lull, a promise you made), hands you the context and a draft in your voice,
+and stops. **It drafts; you send.** Always.
 
-The test for every feature: *does it cut a running cost, or substitute for
-an ingredient?* Only the first is ever built (see `docs/USE-CASES.md`).
-
-The design in one line: connectors feed a capture inbox → a filing engine
-builds a markdown people-store → a signal engine finds reasons to reach out →
-a wake-up queue delivers them when due. Your data never lives in this repo —
-`data/` is gitignored and points at your own private store
-(see `data/README.md`).
+It runs inside [Claude Code](https://claude.com/claude-code) on your Mac.
+Your contact graph lives in a private directory you own; this repo is
+machinery only.
 
 ## Principles
 
@@ -26,76 +21,64 @@ a wake-up queue delivers them when due. Your data never lives in this repo —
 - **Capture is optional and lossy-tolerant** — no streaks, no guilt.
 - **Provenance labeling** — told-by-you vs. inferred-from-public-web, never mixed.
 - **Other people's data stays local** — no scraping, no enrichment APIs,
-  first-party connectors only.
-- **Code and data are separate repos.**
+  first-party connectors only; nothing about your contacts leaves your machine.
+- **Code and data are separate** — `data/` is gitignored and points at your
+  own private store.
 
-## Current state
+The test for every feature: *does it cut a running cost, or substitute for
+an ingredient?* Only the first is built (`docs/USE-CASES.md`).
 
-The repo currently contains the **agent harness** — the delegation machinery
-the assistant is built with — plus the project skeleton. The assistant's own
-contracts and skills (debrief filing, query, briefs, wake-ups) land next, per
-the build plan.
+## Quick start (5 minutes, no accounts needed)
 
-## The harness (delegation model)
-
-A deliberately simple core extracted from the "Harness Core Blueprint"
-(Stage 1 + the delegation slice of Stage 3), focused on subagents and proper
-delegation:
-
-| Piece | Purpose |
-|---|---|
-| `CLAUDE.md` | Project doctrine + orchestration doctrine (orchestrate-don't-edit, caps, splitting rule, git safety) |
-| `.claude/rules/orchestration.md` | Full dispatch mechanics |
-| `.claude/hooks/` | Enforcement: `git-guard` (destructive git blocked), `checker-readonly` (checkers can't write), `orchestrator-edit-guard` (main session can't edit machinery under `packages/` or `.claude/skills|agents|scripts|hooks`), spawn + tool-call JSONL loggers |
-| `.claude/agents/` | Minimal roster: `dev-worker` (sonnet), `codebase-locator-checker` + `codebase-analyzer-checker` (haiku), `plan-architect` (inherit) |
-| `.claude/context/` | 4-section agent brief template + completion-report block |
-| `.claude/skills/` | `/explore` (parallel read-only scouting), `/implement` (split → brief → fan out → consolidate → commit per phase) |
-
-Naming is load-bearing and hook-enforced: `*-checker` = read-only,
-`*-worker` = mutating.
-
-**Deliberately skipped, adopt later from the blueprint as the project earns
-them:** gate system + shipping contract (§05), attestation (§06), the
-`/quality → /commit → /pr → /ship` pipeline (§07), agent-lint (§10), task
-triage (§04), worktree lifecycle, nested leads (§08).
-
-## Repo layout
-
-```
-CLAUDE.md          project + harness doctrine
-.claude/           harness: rules, hooks, agents, harness skills, context templates
-packages/          the assistant, five packages (see docs/PROJECT-CONTEXT.md):
-├── core/          versioned contracts, templates, store scripts, fixtures
-├── connectors/    all I/O, dumb: gmail-in, calendar-in, contacts-in, file-out, gmail-out
-├── ingestion/     filing engine, attendee matching, links, provenance
-├── attention/     signals + ranking + wake-up queue + sweeps
-└── query/         read-only answers + pre-meeting briefs ("the project's MCP")
-docs/plans/        implementation plans (ROADMAP.md maps plans → packages)
-data/              YOUR private store (gitignored; see data/README.md)
-```
-
-Work happens on branches; the initial commit is the one allowed commit on
-`main` — the git-guard hook blocks main commits/pushes from then on.
-
-## Smoke test — verifying delegation works
-
-Start a Claude Code session in this repo (hooks load from
-`.claude/settings.json`) and check four behaviors:
-
-1. **Orchestrator delegates:** ask for a trivial two-file change under
-   `packages/core/templates/` — the session should spawn dev-worker(s) rather
-   than editing directly; if it tries, `orchestrator-edit-guard.sh` blocks
-   with a pointer to the splitting rule.
-2. **Spawn trail exists:** `.claude/logs/agent-spawns.jsonl` gains one line
-   per spawn (and `tool-calls.jsonl` accumulates).
-3. **Checkers are read-only:** ask a `codebase-locator-checker` to "fix" a
-   file — its Write is blocked by `checker-readonly.sh` (exit 2).
-4. **Git guard bites:** `git push --force`, or a commit while on main —
-   blocked with `BLOCKED: <reason>`.
-
-Hooks can also be exercised directly, no session needed:
+Prerequisites: macOS, git, [Claude Code](https://claude.com/claude-code),
+Node ≥ 22.6, `jq`.
 
 ```sh
-echo '{"tool_input":{"command":"git push --force"}}' | bash .claude/hooks/git-guard.sh
-# → exit 2, "BLOCKED: force push"
+git clone https://github.com/yourBoiGershy/Spomni.git ~/spomni && cd ~/spomni
+bash scripts/setup.sh --demo        # installs deps, builds a synthetic demo store, wires data/store
+claude                              # approve the spomni-query MCP server when prompted
 ```
+
+Then ask:
+
+- "Who should I reach out to this week?"
+- "Who do I know at Northwind Labs?"
+- `/debrief` — "I had coffee with Dana, she's moving to Berlin in March"
+
+Everyone in the demo store is fictional. When you're ready to use your own
+data, run `bash scripts/setup.sh` without `--demo` and follow
+[`docs/SETUP.md`](docs/SETUP.md) — it covers linking Gmail/Calendar, Beeper
+for personal chats, and scheduled background capture. Prefer not to read it?
+Open a Claude Code session and say *"run first-run setup from docs/SETUP.md"*.
+
+## What it does
+
+| You | Spomni |
+|---|---|
+| Ramble a debrief after a coffee | files it: person, facts, promises, follow-ups (`/debrief`) |
+| Link Gmail + Calendar | captures who you actually talk to and meet; suggests priority tiers — you confirm |
+| Ask "who should I reach out to?" | ranks by warmth × time-since × reason, with the evidence |
+| Get a wake-up: "Priya's birthday Thursday — last time she was prepping the Berlin move" | you get context + a draft; you decide, you send |
+
+More scenarios: `docs/USE-CASES.md`.
+
+## Docs
+
+| | |
+|---|---|
+| `docs/SETUP.md` | Full first-run setup, connectors, scheduling, troubleshooting, uninstall |
+| `docs/ARCHITECTURE.md` | How it's built: the pipeline, the five packages, contracts, the store |
+| `docs/USE-CASES.md` | The mission and the scenario map |
+| `docs/DECISIONS.md` | Every design decision with its rationale |
+| `CONTRIBUTING.md` · `SECURITY.md` | How to help; how to report something that leaks or sends |
+
+## Status
+
+Alpha. macOS only (launchd scheduling, Beeper Desktop). Capture from Gmail,
+Google Calendar, and Beeper (WhatsApp/LinkedIn/Signal/…) works; filing,
+priority tiers, wake-ups, and the read-only query server are live. Headless
+scheduled Gmail/Calendar sweeps are in progress (`docs/ROADMAP.md`).
+
+## License
+
+MIT — see `LICENSE`.

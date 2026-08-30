@@ -52,6 +52,10 @@
 # incremental-owned, same as cursors.tsv). Logged to the same runs.log with
 # a `backfill-` outcome marker. One-shot; not wired into the sync scheduler.
 #
+# Token file permissions: before reading the token, checks that the token
+# file isn't group- or world-readable; if it is, warns to stderr (with a
+# chmod 600 remedy) and continues — never fatal.
+#
 # Portable to bash 3.2 (macOS default): no associative arrays, no mapfile.
 
 set -u
@@ -94,6 +98,24 @@ BEEPER_BACKFILL="$BACKFILL"
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/lib.sh"
 
+# warn_if_token_readable <path> — flags a token file that's readable by
+# group/other (macOS stat, falling back to GNU stat). Never fatal; just a
+# stderr nudge toward chmod 600.
+warn_if_token_readable() {
+  token_path="$1"
+  [ -f "$token_path" ] || return 0
+  perm="$(stat -f %Lp "$token_path" 2>/dev/null)"
+  if [ -z "$perm" ]; then
+    perm="$(stat -c %a "$token_path" 2>/dev/null)"
+  fi
+  [ -z "$perm" ] && return 0
+  other_bits="${perm#"${perm%??}"}"
+  case "$other_bits" in
+    00) ;;
+    *) echo "WARN: token file ${token_path} is readable by others — run: chmod 600 ${token_path}" >&2 ;;
+  esac
+}
+
 mkdir -p "$DATA_DIR"
 
 beeper_load_config "$DATA_DIR"
@@ -111,6 +133,8 @@ if [ "$LIST_ACCOUNTS" -eq 1 ]; then
     echo "beeper-sweep.sh: no token at ${TOKEN_FILE:-${DATA_DIR}/token}" >&2
     exit 1
   fi
+
+  warn_if_token_readable "$TOKEN_FILE"
 
   if [ -z "${BEEPER_TOKEN:-}" ]; then
     BEEPER_TOKEN="$(head -n 1 "$TOKEN_FILE" 2>/dev/null)"
@@ -157,6 +181,8 @@ case "$LOAD_RC" in
     exit 0
     ;;
 esac
+
+warn_if_token_readable "$TOKEN_FILE"
 
 RUN_START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 

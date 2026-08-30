@@ -51,12 +51,21 @@ nothing.
   `scripts/build-stats.sh` (people/ + interactions/ → stats.json, per
   `contracts/derived-index.md`), `scripts/validate-store.sh` (also validates
   person.md 1.1.0 kind fields, the optional `user-model.md` singleton, and the
-  optional `index/embeddings.jsonl`, per plan 30), `scripts/wakeup-add.sh`
+  optional `index/embeddings.jsonl` incl. unit-norm vectors, per plan 30),
+  `scripts/init-store.sh` (idempotent store layout creation +
+  README.md + index/stats + validate, refuses the code checkout itself),
+  `scripts/check-store-location.sh` (flags a store-dir inside the code
+  checkout, a cloud-sync folder, or sharing the code checkout's git remote;
+  warns on TCC-protected `~/Documents`/`~/Desktop`/`~/Downloads`),
+  `scripts/wakeup-add.sh`
   (the one sanctioned way any package appends a wake-up entry;
   `--signal-type` sets the 1.1 outcome fields at creation (plan 05)),
   `scripts/person-set-kind.sh` (the one sanctioned way ingestion writes the
   five `kind*` person.md frontmatter fields — derived writes never overwrite
   a stated kind, per plan 30),
+  `scripts/demo-store.sh` (materializes `fixtures/store/`'s 30 synthetic people
+  into a runnable demo store — index/stats built, validated, self-describing
+  `DEMO-STORE.md`; lets a stranger try the assistant without any real account),
   `scripts/gen-scale-store.sh` (generates an uncommitted synthetic large store for
   perf runs), `scripts/eval-run.sh` (T2 agent-tier eval runner, forward-declared —
   written by plan 12), `scripts/eval-run-skill.sh` (T3 skill-tier eval runner,
