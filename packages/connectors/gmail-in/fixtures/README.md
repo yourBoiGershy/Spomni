@@ -63,3 +63,13 @@ sender). No real person's data appears here, per
   drives `classify.sh`'s linkedin-notification rule.
 - `malformed-junk.txt` — not a Gmail resource shape at all; drives
   quarantine-path test coverage.
+- `get-thread-result.json` — a `get_thread`-style result (top-level object
+  with an `id` and a `messages[]` array, each message carrying its own
+  `plaintextBody`), distinct from `threads-page.json`'s `search_threads`
+  envelope; drives `extract-email-body.sh` byte-exact extraction and
+  absent-message-id test coverage.
+- `email-no-recipients.json` — a `get_message`-style single message object
+  with `toRecipients`/`ccRecipients`/`bccRecipients` absent entirely (the
+  live-verified absent-not-empty shape for a no-recipients-in-role
+  message); drives `extract-email-body.sh`'s no-crash coverage for that
+  shape.

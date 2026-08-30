@@ -71,7 +71,17 @@ for every calendar.
 ## 3. Per-calendar list_events, with failure isolation
 
 For each calendar id from §1, call `list_events` with that calendar's id and
-the window from §2:
+the window from §2, requesting the **maximum `pageSize` the tool accepts** —
+per `packages/core/contracts/import-pipeline.md` D5 (fetch-to-file), a large
+enough page pushes the result past the harness inline threshold so it lands
+on disk as a saved tool-result file instead of model context. **Verify the
+accepted maximum in Step-0 style, don't guess:** on the first `list_events`
+call of a run, request a high value (e.g. 2500) and read back the actual
+page size the tool honored from the response/tool-result metadata; if the
+tool caps it lower, use the observed cap for the remainder of the run. Note
+the saved-file path the harness reports for each page — every per-event step
+in §4–§8 below reads from that saved page file via jq, never from inline
+model context.
 
 ```json
 {
@@ -86,7 +96,10 @@ the window from §2:
 
 Events are under the top-level `events` array. Paginate via `pageToken`
 (pass the previous response's `nextPageToken`) until a response has no
-`nextPageToken` — that is the last page for that calendar.
+`nextPageToken` — that is the last page for that calendar; pagination
+mechanics are unchanged by the fetch-to-file mechanism above, each page just
+independently lands on disk (or, on the small-page residual, is captured per
+the inline-residual rule in §7).
 
 **Empty calendar — live-verified 2026-08-29:** a calendar with no events in
 the window returns an envelope with **no `events` key at all** (not an empty
@@ -113,7 +126,11 @@ deleted. Do not guess in code — the live run is the check.
 
 ## 4. Per-event fields
 
-Each event object observed live (2026-08-29, via `list_events`):
+Every field below is read out of the saved page file via jq, indexed per
+event as `.events[<i>]` (`<i>` the event's index within that page's array) —
+the shapes here document the fields for reference, they are not copied into
+model context. Each event object observed live (2026-08-29, via
+`list_events`):
 
 ```json
 {
@@ -161,6 +178,8 @@ Each event object observed live (2026-08-29, via `list_events`):
 
 ## 5. occurred_at
 
+Read via jq from the saved page file, e.g.
+`jq -r '.events[<i>].start.dateTime // .events[<i>].start.date' <saved-page-file>`.
 Event start normalized to UTC ISO 8601 (`YYYY-MM-DDTHH:MM:SSZ`):
 
 - Timed event (`start.dateTime` with a UTC offset) — convert to UTC.
@@ -175,8 +194,10 @@ acceptable; consistency within a run is what matters for `id` derivation).
 
 ## 6. Hints
 
-Pipe the event object (as JSON) into `scripts/extract-hints.sh`, which
-emits one `"Name <email>"`-form line per organizer, creator, and every
+Extract event `<i>` from the saved page file via jq and pipe it into
+`scripts/extract-hints.sh`:
+`jq -c '.events[<i>]' <saved-page-file> | bash scripts/extract-hints.sh`,
+which emits one `"Name <email>"`-form line per organizer, creator, and every
 attendee (in that order), falling back to bare email or bare name when the
 other half is missing. Duplicates across organizer/creator/attendees are
 expected and left as-is (no dedup). **Never filter out the user's own
@@ -188,24 +209,49 @@ Pass each line as its own `--hint` to `normalize-capture.sh`.
 
 ## 7. Body + raw archive
 
-The body is the event resource, pretty-printed as JSON (`jq .` on the raw
-event object) — the provider resource itself, not a summary. Before
-normalizing, compute the capture id up front (`<captured_at-compact>-
-calendar-in-calendar-<4-hex-rand>`, matching `normalize-capture.sh`'s
-default id form) and archive the **unmodified** per-item MCP tool output
-(the raw event object exactly as returned, not the pretty-printed body) at:
+The body is the event resource, pretty-printed as JSON — the provider
+resource itself, not a summary. Before normalizing, compute the capture id
+up front (`<captured_at-compact>-calendar-in-calendar-<4-hex-rand>`,
+matching `normalize-capture.sh`'s default id form). Both the raw archive and
+the body are produced programmatically from the saved page file, indexed per
+event as `.events[<i>]` — never copied through model context:
 
-```
-<store-dir>/archive/raw/<capture-id>.json
-```
+- **Raw archive** (the unmodified per-item provider output, exactly as
+  returned):
+
+  ```sh
+  jq -c '.events[<i>]' <saved-page-file> > <store-dir>/archive/raw/<capture-id>.json
+  ```
+
+- **Body** (pretty-printed for normalize-capture.sh):
+
+  ```sh
+  jq '.events[<i>]' <saved-page-file> > <body-file>
+  ```
+
+  `<body-file>` is a temp file passed to `normalize-capture.sh --file
+  <body-file>` in §8, rather than piping through a stdin heredoc built from
+  model context.
 
 This preserves the provenance trail across the JSON-pretty-print
-transformation applied to the body.
+transformation applied to the body, with jq (not the model) as the actor on
+both the compact archive form and the pretty-printed body form.
+
+**Inline residual (D5):** if a given `list_events` page arrives inline
+instead of landing on disk (a small enough final page), write that tool
+result to a temp file in **one verbatim, uninterpreted paste** — the session
+never summarizes, classifies, or excerpts it from context — then proceed
+identically to the disk path for every step above and below, treating that
+temp file as `<saved-page-file>` for the rest of this run. Count each such
+page in the run's `inline-spilled=<n>` summary field (§9). Byte fidelity is
+guaranteed on the disk path, best-effort on the inline residual.
 
 ## 8. Dedup and normalize
 
-For each event, compute the dedup key `<event-id>:<updated-timestamp>`
-(from `id` and `updated`). If that exact key is already present in
+For each event, compute the dedup key `<event-id>:<updated-timestamp>` by
+reading `id` and `updated` via jq from the saved page file (e.g.
+`jq -r '.events[<i>].id + ":" + .events[<i>].updated' <saved-page-file>`).
+If that exact key is already present in
 `data/connectors/calendar/processed.log`, skip the event — it was already
 captured and is unchanged. Otherwise:
 
@@ -217,7 +263,7 @@ bash packages/connectors/scripts/normalize-capture.sh <store-dir> \
   --occurred-at <occurred-at from §5> \
   --id <capture-id from §7> \
   --hint "<hint-line>" ... \
-  <<< "<pretty-printed event JSON>"
+  --file <body-file from §7>
 ```
 
 - **Exit 0** — the event landed in `inbox/`. Append the dedup key to
@@ -233,7 +279,19 @@ bash packages/connectors/scripts/normalize-capture.sh <store-dir> \
 
 At the end of the run, report: calendars swept, calendars skipped (with
 reasons, from `skipped-calendars.log`), events captured, events skipped as
-already-processed, and events quarantined.
+already-processed, events quarantined, and `inline-spilled=<n>` — the count
+of `list_events` pages that arrived inline instead of on disk and were
+handled via the §7 inline-residual rule (0 when every page landed on disk).
+
+## Fetch-to-file invariant
+
+No event body is ever read into, or written from, model context. From the
+`list_events` call in §3 through dedup, raw archive, body extraction, hints,
+and normalization in §4–§8, every per-event operation reads the saved page
+file (or, on the inline residual, the verbatim temp-file stand-in from §7)
+programmatically via jq or `scripts/extract-hints.sh` — the model only ever
+handles file paths, ids, indices, and timestamps. Backfill mode (below)
+inherits this invariant identically, since its §3–§7 apply unchanged.
 
 ## Invocation
 

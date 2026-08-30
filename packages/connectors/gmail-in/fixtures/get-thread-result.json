@@ -1,0 +1,36 @@
+{
+  "id": "18f2a3b9c0d1e400",
+  "messages": [
+    {
+      "id": "18f2a3b9c0d1e401",
+      "threadId": "18f2a3b9c0d1e400",
+      "date": "2026-08-29T10:00:00Z",
+      "historyId": "3916990",
+      "internalDate": "1788015000000",
+      "labelIds": ["INBOX"],
+      "sender": "dana.whitfield@example.com",
+      "sizeEstimate": 1820,
+      "snippet": "Sending over the revised proposal draft, let me know if Tuesday works...",
+      "subject": "Re: proposal draft",
+      "toRecipients": ["me@example.com"],
+      "plaintextBody": "Sending over the revised proposal draft. Let me know if Tuesday works for a quick call to go through it.\n",
+      "_fixture_note": "Live-verified 2026-08-29 shape (mcp__claude_ai_Gmail__get_thread / get_message, messageFormat=PLAIN_TEXT). This field is not part of the real tool's response and must not be treated as one."
+    },
+    {
+      "id": "18f2a3b9c0d1e402",
+      "threadId": "18f2a3b9c0d1e400",
+      "date": "2026-08-29T10:15:00Z",
+      "historyId": "3916992",
+      "internalDate": "1788015900000",
+      "labelIds": ["SENT"],
+      "sender": "me@example.com",
+      "sizeEstimate": 640,
+      "snippet": "Confirmed for Tuesday. Talk soon...",
+      "subject": "Re: proposal draft",
+      "toRecipients": ["dana.whitfield@example.com"],
+      "plaintextBody": "Confirmed for Tuesday.  \n\nTalk soon.\n",
+      "_fixture_note": "Live-verified 2026-08-29 shape (mcp__claude_ai_Gmail__get_thread / get_message, messageFormat=PLAIN_TEXT). plaintextBody deliberately carries trailing spaces on its first line, a blank line, and a trailing newline, to catch any byte-mangling in extract-email-body.sh. This field is not part of the real tool's response and must not be treated as one."
+    }
+  ],
+  "_fixture_note": "Live-verified 2026-08-29 get_thread envelope shape (mcp__claude_ai_Gmail__get_thread, messageFormat=PLAIN_TEXT): top-level object with an id and a messages[] array, each message carrying its own plaintextBody — distinct from the search_threads shape in threads-page.json (threads[] wrapping per-thread messages[] summaries with no plaintextBody). This field is not part of the real tool's response and must not be treated as one."
+}

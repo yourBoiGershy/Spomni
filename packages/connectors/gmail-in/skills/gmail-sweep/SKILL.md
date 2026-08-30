@@ -116,6 +116,15 @@ is therefore **page-budgeted per run**:
 
 ## Step 2 — per-thread / per-message loop
 
+**Invariant for this whole step: no message body is ever read into, or
+written from, model context.** Every substep below names the programmatic
+actor (a saved tool-result file plus `cp`/`jq`/a script) that does the
+work; the session's job is to call it and pass file paths and small
+scalar fields (ids, dates, subjects, addresses) between the calls — never
+to transcribe, summarize, or excerpt `plaintextBody` itself. This is the
+fetch-stage hard rule of `packages/core/contracts/import-pipeline.md`
+(schema_version 1.0.0), mechanism D5.
+
 Each `search_threads` page returns `threads[]`, each with an `id` and a
 `messages[]` array of message summaries (camelCase fields — see below).
 Flatten all message summaries across all fetched pages into one loop, in
@@ -124,10 +133,15 @@ any order (dedup makes order safe):
 1. **Dedup check.** If the message's `id` already appears in
    `data/connectors/gmail/processed.log`, skip it (count as deduped, do not
    re-fetch or re-normalize).
-2. **Fetch full message.** Call `get_thread` with `messageFormat:
-   "PLAIN_TEXT"` for the message's `threadId` (or `get_message` with the
-   message's `id` if only a single message is needed) to retrieve the full
-   message object. Live camelCase fields on the message object:
+2. **Fetch full message (D5: lands on disk).** Call `get_thread` with
+   `messageFormat: "PLAIN_TEXT"` for the message's `threadId` (or
+   `get_message` with the message's `id` if only a single message is
+   needed), requesting the maximum page size the tool allows. Per the
+   import-pipeline contract's fetch-stage mechanism, a result this size is
+   expected to exceed the harness inline threshold and land on disk as a
+   saved tool-result file — the session handles **only that file's path**
+   from here on, not its contents. Live camelCase fields on the message
+   object (referenced by later substeps via jq, never read by the model):
    - `id`, `threadId` — message and thread ids.
    - `date` — **already ISO 8601 `Z` UTC**; no conversion needed.
    - `sender` — bare address string (e.g. `"noreply@beeper.com"`). No
@@ -135,40 +149,77 @@ any order (dedup makes order safe):
      possible-but-unobserved — treat as a hint line either way.
    - `toRecipients` / `ccRecipients` / `bccRecipients` — **pre-split
      arrays** of bare-address strings, **absent entirely** when there are
-     no recipients in that role (not an empty array). This closes the
-     plan-14 caveat: there is no joined RFC-2822 header string to parse.
+     no recipients in that role (not an empty array — this closes the
+     plan-14 caveat: there is no joined RFC-2822 header string to parse).
+     Every jq expression that reads these fields below must handle
+     absence, e.g. `.toRecipients // []`.
    - `plaintextBody` — the readable message text directly. No MIME or
      base64 decoding — `messageFormat: "PLAIN_TEXT"` has already done the
      HTML→text conversion server-side.
    - `subject`, `labelIds`, `snippet`, `historyId`, `internalDate`,
      `sizeEstimate` also present; not used by this sweep beyond `subject`.
+
+   **Inline-residual case (D5).** If a small final page arrives inline in
+   the session's context instead of on disk, write that tool result to a
+   temp file in one verbatim, uninterpreted paste — never summarized,
+   classified, or excerpted from context — and proceed identically to the
+   disk path from step 2.3 onward. Count each such occurrence as
+   `inline-spilled` in the step 4 run summary. Byte fidelity is guaranteed
+   on the disk path, best-effort on the inline-residual path.
 3. **Compute the capture id up front** (needed before both the archive
    write and the `--id` flag): derive it the same way
    `normalize-capture.sh` would default it —
    `<captured_at-compact>-gmail-in-gmail-<4-hex-rand>` — where
    `captured_at` is this sweep run's own UTC time (step 4 below), so the id
    and archive path are stable and pre-known.
-4. **Archive the raw tool output, unmodified.** Write the full `get_thread`
-   / `get_message` tool result (byte-for-byte JSON, no transformation) to
-   `<store-dir>/archive/raw/<capture-id>.json` before normalizing.
-5. **Classify the message.** Call:
+4. **Archive the raw tool output, unmodified.**
    ```sh
-   bash packages/connectors/gmail-in/scripts/classify.sh "<subject>" "<sender>"
+   cp <saved-tool-result-file> <store-dir>/archive/raw/<capture-id>.json
+   ```
+   Byte-for-byte, straight from the saved file on disk — never a model
+   re-emission of the tool result.
+5. **Classify the message.** Extract `subject` and `sender` from the saved
+   file with jq, then call:
+   ```sh
+   SUBJECT="$(jq -r --arg mid "<message-id>" \
+     '(.messages[]? // .) | select(.id == $mid) | .subject // ""' \
+     <saved-tool-result-file>)"
+   SENDER="$(jq -r --arg mid "<message-id>" \
+     '(.messages[]? // .) | select(.id == $mid) | .sender // ""' \
+     <saved-tool-result-file>)"
+   bash packages/connectors/gmail-in/scripts/classify.sh "$SUBJECT" "$SENDER"
    ```
    This prints one of `voice-note` / `linkedin-notification` / `email` —
    pass it as `--type`.
-6. **Build participant hints.** One `--hint "<address>"` (as seen — bare
-   address on this lane, display-name form passed through unmodified if it
-   ever appears) per: the `sender` address, then every address in
-   `toRecipients`, then every address in `ccRecipients`. No self-filtering
-   — the user's own address is included if it appears. If
-   `toRecipients`/`ccRecipients` is absent on a given message, contribute
-   no hints from that field. `bccRecipients` is not used for hints (a
+6. **Build participant hints.** Extract `sender`, `toRecipients`, and
+   `ccRecipients` from the saved file with jq — arrays are absent entirely
+   when empty, so every extraction handles absence with `// []`:
+   ```sh
+   jq -r --arg mid "<message-id>" \
+     '(.messages[]? // .) | select(.id == $mid) | (.toRecipients // [])[]' \
+     <saved-tool-result-file>
+   jq -r --arg mid "<message-id>" \
+     '(.messages[]? // .) | select(.id == $mid) | (.ccRecipients // [])[]' \
+     <saved-tool-result-file>
+   ```
+   One `--hint "<address>"` (as seen — bare address on this lane,
+   display-name form passed through unmodified if it ever appears) per:
+   the `sender` address, then every address in `toRecipients`, then every
+   address in `ccRecipients`. No self-filtering — the user's own address
+   is included if it appears. `bccRecipients` is not used for hints (a
    `bcc` recipient would not have been visible to the sender in a real
    message; this sweep still only reads what the tool returns for the
    authenticated user's own view).
-7. **Build the body.** `Subject: <subject>` on the first line, one blank
-   line, then `plaintextBody` verbatim.
+7. **Build the body file (script, not model).**
+   ```sh
+   bash packages/connectors/gmail-in/scripts/extract-email-body.sh \
+     <saved-tool-result-file> <message-id> > <body-file>
+   ```
+   Prints `Subject: <subject>`, one blank line, then `plaintextBody`
+   verbatim to `<body-file>`; exits non-zero with a stderr reason if
+   `<message-id>` is absent from the saved file — treat a non-zero exit
+   here the same as a quarantine-worthy failure for that message (skip it,
+   do not abort the run, do not append to `processed.log`).
 8. **occurred_at** = the message's `date` field — already ISO 8601 UTC,
    used as-is.
 9. **captured_at** = this sweep run's own UTC time (same value for every
@@ -185,8 +236,10 @@ any order (dedup makes order safe):
       --hint "<sender>" \
       --hint "<toRecipients[0]>" \
       ...(remaining toRecipients/ccRecipients hints)... \
-      --file <body-file>
+      --file <body-file-from-step-7>
     ```
+    `<body-file-from-step-7>` is the file `extract-email-body.sh` wrote in
+    step 7 — never stdin fed from model-composed text.
 11. **On exit 0** (event written to `inbox/`): append the message `id` to
     `data/connectors/gmail/processed.log`. Count as captured.
 12. **On exit 1** (quarantined by the normalizer, per `inbox/quarantine/` +
@@ -216,8 +269,12 @@ runs converge without re-capturing anything already landed.
 Print an end-of-run count summary:
 
 ```
-gmail-sweep: fetched=<N> captured=<N> deduped=<N> quarantined=<N> pages=<N> drained=<yes|no>
+gmail-sweep: fetched=<N> captured=<N> deduped=<N> quarantined=<N> pages=<N> drained=<yes|no> inline-spilled=<n>
 ```
+
+`inline-spilled` counts step 2.2's inline-residual occurrences this run
+(D5) — messages whose tool result arrived inline instead of on disk and
+were written to a temp file verbatim before proceeding. Normally 0.
 
 Plus, list the banned mutating tools found present in step 0's enumeration
 ("present but never called").
@@ -283,3 +340,6 @@ rule (≥1 message captured this run AND the window fully drained) verbatim,
 substituting `backfill-checkpoint` / `backfill-processed.log` for
 `checkpoint` / `processed.log` throughout. Step 4's summary line applies
 unchanged, prefixed `gmail-sweep (backfill):` instead of `gmail-sweep:`.
+Step 2's no-body-in-model-context invariant (D5) is inherited identically —
+a backfill run's larger page volume makes it more likely, not less, that
+results land on disk; the mechanism does not change for backfill.

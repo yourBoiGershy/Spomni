@@ -17,3 +17,4 @@ packages/ingestion/evals/cases/15-debrief-commitment-other
 packages/ingestion/evals/cases/16-debrief-contradiction
 packages/ingestion/evals/cases/confirm-first-tier-writes   # smoke
 packages/ingestion/evals/cases/episode-split-multiday   # smoke
+packages/ingestion/evals/cases/triage-held-respected   # smoke

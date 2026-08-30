@@ -44,7 +44,8 @@ window from `<data-dir>/config/onboarding-backfill.tsv` for all lane backfill mo
 
 ## Consumes
 
-- `capture-event@^1`, `connector-interface@^1`, `sync-lanes@^1` (core)
+- `capture-event@^1`, `connector-interface@^1`, `sync-lanes@^1`,
+  `import-pipeline@^1` (core)
 - First-party MCP servers / Claude connectors only (see DECISIONS.md:
   first-party-mcp-only)
 

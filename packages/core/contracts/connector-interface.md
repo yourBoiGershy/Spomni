@@ -9,7 +9,9 @@ outside-world I/O. It does not define a store file format on its own; it
 defines the two obligations connectors must meet, and points at the
 contracts that carry the actual payload shapes. Per `docs/PROJECT-CONTEXT.md`
 ("dumb edges, smart middle"): **connectors never interpret, match, rank, or
-file.** All judgment lives in `ingestion`, `attention`, and `query`.
+file.** All judgment lives in `ingestion`, `attention`, and `query`. Input
+connectors implement the fetch and normalize stages of
+`import-pipeline.md`.
 
 ## Input connectors (`packages/connectors/*-in`)
 

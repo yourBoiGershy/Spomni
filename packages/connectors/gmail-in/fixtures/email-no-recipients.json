@@ -1,0 +1,14 @@
+{
+  "id": "18f2a3b9c0d1e420",
+  "threadId": "18f2a3b9c0d1e420",
+  "date": "2026-08-29T11:00:00Z",
+  "historyId": "3917000",
+  "internalDate": "1788015600000",
+  "labelIds": ["INBOX", "CATEGORY_UPDATES"],
+  "sender": "notifications-noreply@example.com",
+  "sizeEstimate": 1500,
+  "snippet": "Your weekly digest is ready. Nothing new from your contacts this week...",
+  "subject": "Weekly digest",
+  "plaintextBody": "Your weekly digest is ready. Nothing new from your contacts this week.",
+  "_fixture_note": "Live-verified 2026-08-29 shape (mcp__claude_ai_Gmail__get_message, messageFormat=PLAIN_TEXT), toRecipients/ccRecipients/bccRecipients absent entirely — the live-verified absent-not-empty convention for a message with no recipients in a given role (e.g. some automated notification mail). Drives extract-email-body.sh's no-crash regression coverage for that shape. This field is not part of the real tool's response and must not be treated as one."
+}
