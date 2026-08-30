@@ -35,7 +35,7 @@ Self identities come from `<data-dir>/config/onboarding-backfill.tsv`
 `self<TAB><identity>` rows (the same file `derive-participation.sh` reads;
 absent file means no self exclusion, never a hard failure). `ignore<TAB>
 <identity>` rows, same file, same shape, are dropped identically — for
-bot/noreply senders (e.g. `ask@bramble.solutions`) that aren't the user
+bot/noreply senders (e.g. `noreply@example.test`) that aren't the user
 but should never become a person either. A hint whose email or normalized
 bare-name text matches a configured self OR ignore identity is dropped
 before resolution. An event left with zero non-self/non-ignore hints is
