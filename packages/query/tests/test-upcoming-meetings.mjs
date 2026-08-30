@@ -25,7 +25,7 @@
 // person + calendar interaction plus one synthetic non-calendar interaction
 // dated the next day. `ensureFresh` never writes into the store dir it's
 // given (staleness.ts's own contract -- it regenerates index.json/stats.json
-// into RA_CACHE_DIR only), so both the real fixture store and the scratch
+// into SPOMNI_CACHE_DIR only), so both the real fixture store and the scratch
 // store stay pristine; a git-clean check on the fixture dir after the run
 // confirms it for the real one.
 //
@@ -85,17 +85,17 @@ function assertTrue(label, condition, detail) {
  * anything the caller has to clean up inside the store itself. */
 async function makeReader(storeDir) {
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "ra-upcoming-meetings-test-cache-"));
-  const prevCacheDir = process.env.RA_CACHE_DIR;
-  process.env.RA_CACHE_DIR = cacheDir;
+  const prevCacheDir = process.env.SPOMNI_CACHE_DIR;
+  process.env.SPOMNI_CACHE_DIR = cacheDir;
   try {
     const { ensureFresh } = await import(STALENESS_MODULE);
     const { reader } = ensureFresh(storeDir);
     return reader;
   } finally {
     if (prevCacheDir === undefined) {
-      delete process.env.RA_CACHE_DIR;
+      delete process.env.SPOMNI_CACHE_DIR;
     } else {
-      process.env.RA_CACHE_DIR = prevCacheDir;
+      process.env.SPOMNI_CACHE_DIR = prevCacheDir;
     }
     fs.rmSync(cacheDir, { recursive: true, force: true });
   }

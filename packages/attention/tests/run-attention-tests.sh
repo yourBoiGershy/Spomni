@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # packages/attention/tests/run-attention-tests.sh
 #
-# Test suite for packages/attention/scripts/proposal-confirm.sh (interim
-# confirm/decline lifecycle writer for kind: event-proposal wake-ups, per
+# Test suite for packages/attention/scripts/wakeup-queue.sh's confirm/decline
+# ops (ported verbatim from the now-retired proposal-confirm.sh, per
 # packages/core/contracts/wakeup.md 1.2.0), run against the Wave A
 # scheduling-intent fixtures (packages/attention/tests/fixtures/
 # scheduling-intent/). This is attention's first runnable script-test entry
@@ -26,10 +26,10 @@
 #           (declined-proposal/wakeups/2026-08-19-marisol-vance.md)
 #        d. decline with an invalid --reason
 #
-# proposal-confirm.sh deliberately never touches `status` on confirm — the
-# wakeup status enum (pending/fired/snoozed/dismissed) has no "confirmed"
-# member, so a confirmed pending proposal's status line must still read
-# `status: pending` afterward. See proposal-confirm.sh's own header comment.
+# confirm deliberately never touches `status` — the wakeup status enum
+# (pending/fired/snoozed/dismissed) has no "confirmed" member, so a confirmed
+# pending proposal's status line must still read `status: pending` afterward.
+# See wakeup-queue.sh's own header comment (confirm/decline op section).
 #
 # bash 3.2 portable (no associative arrays, no mapfile) — must run under
 # macOS's stock /bin/bash, invocable from anywhere.
@@ -40,7 +40,7 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
-CONFIRM="$REPO_ROOT/packages/attention/scripts/proposal-confirm.sh"
+CONFIRM="$REPO_ROOT/packages/attention/scripts/wakeup-queue.sh"
 VALIDATOR="$REPO_ROOT/packages/core/scripts/validate-store.sh"
 FIXTURES="$REPO_ROOT/packages/attention/tests/fixtures/scheduling-intent"
 CALIBRATION_FIXTURES="$REPO_ROOT/packages/attention/tests/fixtures/calibration-basic"
@@ -68,10 +68,10 @@ summary_and_exit() {
   fi
 }
 
-# --- proposal-confirm.sh must exist and be executable ---
+# --- wakeup-queue.sh must exist and be executable ---
 if [ ! -f "$CONFIRM" ]; then
   echo "SKIP: $CONFIRM not found — cannot run attention tests yet."
-  fail "proposal-confirm.sh missing at $CONFIRM"
+  fail "wakeup-queue.sh missing at $CONFIRM"
   summary_and_exit
 fi
 

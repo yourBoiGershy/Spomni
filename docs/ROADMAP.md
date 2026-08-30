@@ -4,6 +4,13 @@ Working tracker for the build. Each chunk is one plan in `docs/plans/`, sized so
 focused session (with subagent fan-out) can complete it. Update Status here as chunks
 move; the shareable build-plan artifact is the pretty view, this file is the truth.
 
+> **Mission (decision `mission-ingredients-vs-running-cost`, 2026-08-29):** *what a
+> friendship is made of, without what it costs to keep.* Every chunk block below carries
+> a **Mission test.** line — which running cost it cuts (remembering-to / noticing /
+> timing / deciding-who / starting / following-through, or "infrastructure for <cost>")
+> and which ingredient (trust / care / intent / time) it is nearest to and how it stays
+> clear. A chunk that can't answer doesn't get planned. Scenario map: `docs/USE-CASES.md`.
+
 > **2026-08-29 pivot (decision: composio-retired):** Composio is dropped entirely.
 > Gmail/Calendar move to the first-party claude.ai connectors driven by Claude directly.
 > Chunks 17–21 below carry the pivot and the next build phase: live query/chat, scheduled
@@ -17,14 +24,14 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 02 | Capture & Gmail inbox | connectors/gmail-in (+ core's inbox contract) | 01 | Superseded — folded into 17 (its classification/normalizer intelligence survives there) |
 | 03 | Filing engine | ingestion | 01 | Done (2026-08-29, stream-filing; 16 goldens green, 16 T3 eval cases wired) |
 | 04 | Calendar connector & matching | connectors/calendar-in + ingestion | 01 | Ready — connector half folded into 17; the ingestion-side matching (co-attendance) is what remains here |
-| 05 | Signal engine | attention (detection/ranking) | 01, capture lanes (13, 17), 04 (co-attendance) | Ready — blocked on 12's amendment unit; briefs must honor plan 15 touchpoints |
-| 06 | Wake-up scheduler | attention (queue/sweeps) | 01; orchestrates 03/05 outputs | Ready — blocked on 12's amendment unit; briefs must honor plan 15 touchpoints |
+| 05 | Signal engine | attention (detection/ranking) | 01, capture lanes (13, 17), 04 (co-attendance) | Done (2026-08-29, chunk-05-signal-engine; ranking spec w/ plan 12 capacity inversion + budget/hold/floor, 5 new detector specs, signal-scan skill (8 detectors), signals fixture store verified by hand — 3 promoted/1 held/1 suppressed; wakeup-add.sh `--signal-type`; tier-drift evals flip on with 06) |
+| 06 | Wake-up scheduler | attention (queue/sweeps) | 01; orchestrates 03/05 outputs | Done (2026-08-30, chunk-06-wakeup-scheduler; wakeup-queue.sh 7 ops incl. absorbed confirm/decline + acted-on, budget/adjacency/idempotent fired-batch, proposal-confirm.sh retired; sweep skill = daily-attention entry (skip-when-unbuilt: calendar-reconcile 04, output adapter 07); undebriefed-mention spec; queue suite 48 green; Wave C unattended run PASS. Residual: mention path exercised only via its ≥3-give gate — first real mention lands with 07's rendered batches) |
 | 07 | Output skills & adapters (briefs, nudge cards, file-out/gmail-out; query skill superseded by 08; + nudge-delivery channel — how a nudge physically reaches the user, see the 07 amendment block) | query + connectors/file-out, gmail-out | 01; 06 for nudge firing; 28 for scheduled delivery | Ready — gmail-out must target the first-party Gmail connector (composio-retired); nudge-delivery unit added 2026-08-29 |
 | 08 | Chat MCP & query data layer | query (MCP server) + core (stats contract, fixtures) | 01 | Done (2026-08-29, stream-mcp; 6 read-only tools implemented) — live wiring is chunk 18 |
 | 09 | Infrastructure: cloud runtime, data-repo discipline, egress | core (sync script) + harness guards + docs | 01; integrates 06, 19 | In progress (2026-08-29, stream-infrastructure; data repo live) |
 | 10 | Composio access layer | connectors/composio-in (+ shared normalizer) | 01 | Retired (was Done 2026-08-29) — teardown executes in 17; the shared normalizer + import standard survive |
 | 11 | Messaging-connectors research | docs only (fed 13) | — | Done (2026-08-29, stream-connectors) |
-| 12 | Cadence & capacity-aware scheduling (routine map, week-plan contract, capacity-aware nudge selection) | attention + core (week-plan contract) + docs/runtime-cloud.md | 01; amends 05/06 (its amendment unit must land before either is dispatched); integrates 09 | Ready — critical path for the proactive layer |
+| 12 | Cadence & capacity-aware scheduling (routine map, week-plan contract, capacity-aware nudge selection) | attention + core (week-plan contract) + docs/runtime-cloud.md | 01; amends 05/06 (its amendment unit must land before either is dispatched); integrates 09 | Done (2026-08-29, chunk-12-cadence-capacity; week-plan contract 1.0.0, capacity.sh + 3 goldens + 18 tests, weekly-planning skill, runtime-cloud cadence map; 05/06 amendment notes landed — both unblocked) |
 | 13 | Beeper capture connector (personal chats: whatsapp/linkedin/matrix) | connectors/beeper-in (+ shared normalizer) | 01 | Done (2026-08-29, stream-connectors; LIVE: launchd 15-min, 3 networks) |
 | 14 | Import standard (capture-event 1.1/1.2: typing, occurred_at, <connector>/<lane> source, transport rule; formerly "Composio import standard" — the contract is transport-agnostic and outlives Composio) | core (contract) + connectors (sweeps, normalizer, beeper alignment) | 01, 13 | Done (2026-08-29; suites capture 82, beeper 70, store 20 green). Caveat: Gmail To/Cc + calendar organizer/creator field shapes never live-verified — re-verify on the new direct lanes in 17 |
 | 15 | Preference & personalization layer | core (profile/ranking-weights/wakeup 1.1) + ingestion/attention specs+goldens | 01, 08 | Done (2026-08-29, stream-personalization) |
@@ -39,7 +46,7 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 24 | Onboarding deep backfill & priority seeding (backfill history on first run, seed tiers from participation signals) | connectors (backfill mode on direct lanes) + ingestion (seed pass, extends `specs/onboarding-tiering-seed.md`) + core (config) | 03, 15, 17 | Done (2026-08-29, chunk-24-onboarding-backfill; backfill modes on all 3 direct lanes + isolated namespaces, 6-month configurable window via new core contract onboarding-backfill 1.0.0, participation-signal scoring + onboarding-seed skill; suites 10/109/88/64/23 green, scheduler untouched, confirm-first T3 eval PASS + doctored-FAIL proven; rode along: eval-suite wave-parallel dispatch + smoke tags, eval-case 1.1.0). Also rode along: chunk-21 eval re-baseline debt repaired — 14 legacy ingestion T3 cases rewritten (operative-procedure prompts + fact-based graders), full suite 17/17 PASS; eval-suite rerun-failed mode (eval-case 1.2.0). Residual: live fresh-store onboarding run awaits a user session (first-party connectors) |
 | 25 | Backfill episode-split filing (debrief §5b-episodes: multi-day chat events file one interaction per active UTC day, so backfilled history yields real frequency instead of touchpoints=1) | ingestion (debrief skill + onboarding spec) | 03, 24 | Done (2026-08-29, chunk-25-backfill-episode-split; live-onboarding finding, user-approved mid-run; rule exercised live on ~25 multi-day chats → 121+ episode interactions, store clean; `episode-split-multiday` T3 eval PASS×2 + doctored-FAIL, smoke-tagged; full ingestion eval suite 17/17 against the amended skill; checker zero CRITICAL/HIGH. Rode along: eval parallel default 4→9, ~3-min full suite) |
 | 26 | Standard import pipeline (stage contract fetch→normalize→triage→judgment→file; every lane conforms — was "import & filing efficiency", reframed 2026-08-29: speed/timing/fleet split out to 27–29, judgment quality to 30) | core (stage contract) + connectors (fetch-to-file conformance, beeper backfill fixes) + ingestion (triage tier) | 24, 25 | Done (2026-08-29, chunk-26-standard-import-pipeline; import-pipeline 1.0.0 in core with conformance declared in all three lanes + ingestion; gmail/calendar SKILLs reworked to cp/jq-from-saved-file with no-transcription invariant + inline-residual rule; beeper coverage-floor D6 fix live-proven — backfill re-run 50 chats/0 events/37 history-clamps, incremental files untouched; triage-inbox.sh 5 precision-first rules + held-by-rule ledger + debrief §1 hook; live calibration 0 false-holds on 160-event corpus; suites 10/116/109/64/23/20 green, eval 19/19 incl. smoke `triage-held-respected`; checker 0 CRITICAL/HIGH, 4 MEDIUM fixed in 1 round). Residual: U12.3 live gmail/calendar fetch-to-file page proof awaits a user-driven sweep session |
-| 27 | Import speed & scaling (parallel deterministic stages; person-sharded parallel filing; onboarding wall-clock target) | ingestion (filing waves) + connectors (parallel fetch) | 26 | Planned |
+| 27 | Import speed & scaling (parallel deterministic stages; person-sharded parallel filing; onboarding wall-clock target) | ingestion (filing waves) + connectors (parallel fetch) | 26 | Done (2026-08-29, chunk-27-import-speed; `shard-filing-batch.sh` deterministic components pre-pass + `specs/parallel-filing.md` wave protocol + debrief shard mode with person-write confinement; live 4-shard wave over the 24-event bench: 0/16 people touched by >1 shard, shard workers filed in 19–26s each vs 293s serial; end-to-end 0.65× vs 0.6× target — near miss at bench scale (cold-start + 3-event serial tail dominate), projected ~0.2–0.25× at onboarding scale where the live pre-pass shows 123 eligible → 8 shards, leftover=0, 7s; onboarding Step 1 lane concurrency doc; chunk-26 perf advisories done (triage O(N+M), ~8% at current size); found+fixed core template blank `tier:` placeholder that failed validate; checker: 1 HIGH (same-name/different-email hints not merged) + 3 MEDIUM fixed in 2 rounds incl. a BSD-sed `[ \t]` portability bug; suites 10/118/109/64/23/23/29 green, eval 20/20 incl. smoke `shard-mode-confined`). Residual: confirm the 0.6× target on the next real onboarding-shaped wave; advisories = mechanical confinement enforcement, ingestion helper lib |
 | 28 | Sync timing & autonomous runtime (scheduled headless/cloud sessions run the MCP lanes; gmail/calendar join sync-lanes; per-lane intervals deliberate; catch-up on wake) | connectors/scripts + core (sync-lanes) + infrastructure docs | 19, 26; extends 09 | In progress (2026-08-29, chunk-28-autonomous-sync; plan `docs/plans/2026-08-29-28-autonomous-sync-runtime.md`; built + stub-proven: `mcp-lane-tick.sh` tick/preflight wrapper with triple cost cap, gmail-in 3600s / calendar-in 7200s template rows, scheduler suite 64→92; U5.2–5 live firing + fetch-only proof await a user session — also closes plan-26 U12.3) |
 | 29 | Connector fleet (lane roster: enable/disable by config; simultaneous-run isolation; new-lane playbook = fetch impl + normalizer mapping) | connectors + core (sync-lanes/roster) + docs | 26, 28 | Planned |
 | 30 | Scoring accuracy, judgment & weights (episode-aware tier bands; participation-weight sanity on the live store; judgment-stage accuracy; stated-over-derived preserved) | ingestion (seed/scoring specs) + attention specs | 15, 25, 26 | Planned |
@@ -52,7 +59,8 @@ package specs/commits are historical.
 ## New chunks — context, agent path, deliverables
 
 Each block is what the plan-architect needs to author the full plan, and what "Done"
-means. Every chunk follows the standing flow: plan-architect writes the plan file →
+means. Every block opens with a **Mission test.** line (see the note at the top); the
+plan-architect copies it into the plan's header. Every chunk follows the standing flow: plan-architect writes the plan file →
 orchestrator dispatches dev-workers per the splitting rule → checkers verify → suites
 run → merge → status logged (see Merge cadence).
 
@@ -273,6 +281,7 @@ its filed events (golden-tested); capture + filing suites green.
 
 ### 27 — Import speed & scaling
 
+**Mission test.** Infrastructure for *remembering-to* (bulk) — onboarding must reach first value in minutes, or the user never gets to a single nudge. Nearest ingredient: none; pure cost.
 **Context.** With 26's stages, everything before `judgment` is
 deterministic — parallel-safe with plain processes, no model cost — and
 `file` writes shard cleanly by person. Speed becomes an execution detail
@@ -287,6 +296,7 @@ rerun beats the plan's wall-clock target; suites green.
 
 ### 28 — Sync timing & autonomous runtime
 
+**Mission test.** Infrastructure for *noticing* — signals only exist if capture runs without the user. Nearest ingredient: time — the runtime must never ping the user around a meeting (principle 3).
 **Context.** The sync-lanes contract (19) already makes "which lane, what
 interval" pure config, but only beeper actually runs — gmail/calendar need
 a live Claude session for the first-party MCP connectors, which launchd
@@ -304,6 +314,7 @@ body transcription); reboot-safe like the rest of 19.
 
 ### 29 — Connector fleet
 
+**Mission test.** Infrastructure for *noticing* (breadth of sources). Nearest ingredient: none; pure cost — but every new lane is first-party only (other-people's-data-stays-local).
 **Context.** With the stage contract, a provider is a fetch implementation
 plus a normalizer mapping — the roster of lanes and their concurrency
 becomes an independent service, decoupled from what any lane imports.
@@ -319,6 +330,7 @@ dry-run fixture lane is sufficient).
 
 ### 30 — Scoring accuracy, judgment & weights
 
+**Mission test.** Cuts *deciding-who* and *timing* — the queue is only as good as its ranking. Nearest ingredient: **intent** — tiers and kinds are derived-and-confirmed, never silently inferred; the user decides who matters.
 **Context (from the 2026-08-29 live run).** All 20 tier suggestions
 saturated to inner-circle: episode-split density gives chat contacts
 median gaps of 1–7 days against bands designed for meeting cadence.
@@ -365,7 +377,9 @@ then its independent consumers — speed, timing, fleet, judgment):
 2. **27** — import speed & scaling, immediately on 26's heels (mechanical
    once the stages are deterministic).
 3. **12 (amendment unit) → 05 + 06** — the attention layer on its own
-   stream, in parallel with 26/27, honoring plan 15 touchpoints.
+   stream, in parallel with 26/27, honoring plan 15 touchpoints. **Done
+   2026-08-30** (12 PR #15, 05 PR #18, 06 chunk-06-wakeup-scheduler) — 07
+   is now unblocked on 06.
 4. **28 → 29** — sync timing & autonomous runtime, then the connector
    fleet (28 needs 26's thin fetch; 29 needs 28's runtime).
 5. **30** — scoring accuracy/judgment/weights (needs 26; independent of

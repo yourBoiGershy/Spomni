@@ -6,7 +6,8 @@
 // build-index.sh / build-stats.sh against a scratch dir of symlinks (so the
 // scripts' own "<store-dir>/index.json" output convention never lands inside
 // the real store) and copies the result into
-// `${RA_CACHE_DIR:-$HOME/.cache/relationship-agent}/derived/<store-hash>/`,
+// `${SPOMNI_CACHE_DIR:-$HOME/.cache/spomni}/derived/<store-hash>/`
+// (RA_CACHE_DIR is a deprecated fallback),
 // then serves from whichever of store-copy vs. cache-copy is freshest.
 
 import crypto from "node:crypto";
@@ -19,12 +20,15 @@ import { MarkdownStoreReader, type StoreReader } from "./reader.ts";
 import type { IndexFile, StatsFile } from "./types.ts";
 
 const CORE_SCRIPTS_DIR =
+  process.env.SPOMNI_CORE_SCRIPTS_DIR ??
   process.env.RA_CORE_SCRIPTS_DIR ??
   path.resolve(import.meta.dirname, "../../../../core/scripts");
 
 function cacheRootDir(): string {
   return (
-    process.env.RA_CACHE_DIR ?? path.join(os.homedir(), ".cache", "relationship-agent")
+    process.env.SPOMNI_CACHE_DIR ??
+    process.env.RA_CACHE_DIR ??
+    path.join(os.homedir(), ".cache", "spomni")
   );
 }
 
@@ -122,14 +126,14 @@ function runScript(scriptName: string, scratchDir: string): boolean {
   const scriptPath = path.join(CORE_SCRIPTS_DIR, scriptName);
   if (!fs.existsSync(scriptPath)) {
     process.stderr.write(
-      `relationship-agent-query: ${scriptName} not found at ${scriptPath} — skipping regeneration (soft condition)\n`,
+      `spomni-query: ${scriptName} not found at ${scriptPath} — skipping regeneration (soft condition)\n`,
     );
     return false;
   }
   const result = spawnSync("bash", [scriptPath, scratchDir], { encoding: "utf8" });
   if (result.status !== 0) {
     process.stderr.write(
-      `relationship-agent-query: ${scriptName} failed (exit ${String(result.status)}): ${result.stderr}\n`,
+      `spomni-query: ${scriptName} failed (exit ${String(result.status)}): ${result.stderr}\n`,
     );
     return false;
   }
@@ -212,7 +216,7 @@ export function ensureFresh(storeDir: string): EnsureFreshResult {
 
   if (!statsPath) {
     process.stderr.write(
-      "relationship-agent-query: no stats.json available (store, cache, or regenerated) — serving degraded empty stats\n",
+      "spomni-query: no stats.json available (store, cache, or regenerated) — serving degraded empty stats\n",
     );
   }
 

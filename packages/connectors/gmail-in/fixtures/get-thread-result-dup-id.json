@@ -1,0 +1,51 @@
+{
+  "id": "18f2a3b9c0d1e400",
+  "messages": [
+    {
+      "id": "18f2a3b9c0d1e401",
+      "threadId": "18f2a3b9c0d1e400",
+      "date": "2026-08-29T10:00:00Z",
+      "historyId": "3916990",
+      "internalDate": "1788015000000",
+      "labelIds": ["INBOX"],
+      "sender": "dana.whitfield@example.com",
+      "sizeEstimate": 1820,
+      "snippet": "Sending over the revised proposal draft, let me know if Tuesday works...",
+      "subject": "Re: proposal draft",
+      "toRecipients": ["me@example.com"],
+      "plaintextBody": "Sending over the revised proposal draft. Let me know if Tuesday works for a quick call to go through it.\n",
+      "_fixture_note": "Synthetic fixture (plan 27 R2 test): the target message id below is deliberately duplicated to exercise extract-email-body.sh's first(...) duplicate-id guard. Not a live-verified shape."
+    },
+    {
+      "id": "18f2a3b9c0d1e402",
+      "threadId": "18f2a3b9c0d1e400",
+      "date": "2026-08-29T10:15:00Z",
+      "historyId": "3916992",
+      "internalDate": "1788015900000",
+      "labelIds": ["SENT"],
+      "sender": "me@example.com",
+      "sizeEstimate": 640,
+      "snippet": "Confirmed for Tuesday. Talk soon...",
+      "subject": "Re: proposal draft",
+      "toRecipients": ["dana.whitfield@example.com"],
+      "plaintextBody": "Confirmed for Tuesday.  \n\nTalk soon.\n",
+      "_fixture_note": "Synthetic fixture (plan 27 R2 test): duplicated message id to exercise extract-email-body.sh's first(...) duplicate-id guard. Not a live-verified shape."
+    },
+    {
+      "id": "18f2a3b9c0d1e402",
+      "threadId": "18f2a3b9c0d1e400",
+      "date": "2026-08-29T11:00:00Z",
+      "historyId": "3916995",
+      "internalDate": "1788018000000",
+      "labelIds": ["SENT"],
+      "sender": "me@example.com",
+      "sizeEstimate": 512,
+      "snippet": "duplicate id, second occurrence...",
+      "subject": "DUPLICATE - should never be printed",
+      "toRecipients": ["dana.whitfield@example.com"],
+      "plaintextBody": "This is the second message sharing id 18f2a3b9c0d1e402. If the duplicate-id guard regresses, this block would be concatenated after the first match's body.\n",
+      "_fixture_note": "Synthetic fixture (plan 27 R2 test): second row deliberately reusing message id 18f2a3b9c0d1e402 to exercise extract-email-body.sh's first(...) duplicate-id guard. Not a live-verified shape."
+    }
+  ],
+  "_fixture_note": "Synthetic fixture (plan 27 R2 test), derived from get-thread-result.json, with message id 18f2a3b9c0d1e402 deliberately duplicated across two entries. This field is not part of the real tool's response and must not be treated as one."
+}

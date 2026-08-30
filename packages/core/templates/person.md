@@ -8,7 +8,6 @@ tags: []
 birthday:
 how-met:
 last-touch:
-tier:
 ---
 
 ## Facts

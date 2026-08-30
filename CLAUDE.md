@@ -1,10 +1,20 @@
 # Relationship Agent — Project Doctrine
 
-An open-source, local-first personal assistant that helps its user maintain
-relationships (business, friends, family) by remembering — people, context,
-signals, and reasons to reach out. It nudges and drafts; the human always
-sends. This repo holds the machinery; user data never lives here (see
-`data/README.md`).
+**Mission: what a friendship is made of, without what it costs to keep.**
+A relationship is made of trust, care, intent, and time; what makes it hard
+to keep is its *running cost* (coordinating, following up, scheduling,
+restarting, remembering-to), which adds nothing to the bond. Spomni — an
+open-source, local-first personal assistant — carries the running cost
+(business, friends, family) and never touches the ingredients. It nudges and
+drafts; the human always sends. This repo holds the machinery; user data
+never lives here (see `data/README.md`). Full mission + scenario map:
+`docs/USE-CASES.md`.
+
+**The mission test** (every chunk, plan, and brief §1 answers it): *does
+this cut a running cost, or substitute for an ingredient?* Only cost-cutting
+is built. Substituting for trust/care/intent/time — auto-send, generic
+drafts, engagement metrics, performing the relationship for the user — is
+permanently out of scope.
 
 ## Standing principles (non-negotiable)
 
@@ -40,7 +50,9 @@ I/O, dumb, sub-package per lane), `ingestion` (filing, matching, links),
 briefs). **Single-writer rule:** each runtime artifact type has exactly one
 writing package; siblings communicate only through core's contracts, declared
 in each `package.md` manifest as provides/consumes with versions. Product
-skills live in `packages/<pkg>/skills/`; `.claude/skills/` is harness-only.
+skills live in `packages/<pkg>/skills/` and are symlinked into
+`.claude/skills/` so Claude Code exposes them as slash commands; the only
+real directories there are the harness skills (`explore`, `implement`).
 Full detail: `docs/PROJECT-CONTEXT.md` (Packages section).
 
 ---
@@ -99,11 +111,25 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   (override via `HARNESS_PROTECTED_PREFIXES` in the hook's environment).
 - One package = one focused agent/session's territory; cross-package needs are
   met via the other package's `package.md` + core contracts, never its files.
-- Test commands (bash 3.2, no npm/jest — run all before any merge):
+- Test commands (bash 3.2, no npm/jest — run all before any merge). The
+  one-shot wrapper is `bash scripts/test-all.sh` (every suite below, the
+  query suite when node is present, plus `.claude/scripts/oss-guard.sh`; CI
+  runs the same). Individually:
   `bash packages/core/tests/run-store-tests.sh`,
   `bash packages/connectors/tests/run-capture-tests.sh`,
-  `bash packages/connectors/tests/run-beeper-capture-tests.sh`, and
-  `bash packages/connectors/tests/run-scheduler-tests.sh`.
+  `bash packages/connectors/tests/run-beeper-capture-tests.sh`,
+  `bash packages/connectors/tests/run-scheduler-tests.sh`,
+  `bash packages/ingestion/tests/run-seed-tests.sh`,
+  `bash packages/ingestion/tests/run-triage-tests.sh`,
+  `bash packages/ingestion/tests/run-shard-tests.sh`,
+  `bash packages/attention/tests/run-attention-tests.sh`,
+  `bash packages/attention/tests/run-capacity-tests.sh`, and
+  `bash packages/attention/tests/run-queue-tests.sh`,
+  `bash packages/query/tests/run-query-tests.sh` (needs node ≥ 22.6 +
+  `npm ci` in `packages/query/server`), and
+  `bash .claude/scripts/tests/run-oss-guard-tests.sh`.
+  Open-source guard (data-dir tripwire, secrets/PII scan, never-send lint,
+  enrichment denylist): `bash .claude/scripts/oss-guard.sh`.
   Store sanity: `bash packages/core/scripts/validate-store.sh <store-dir>`
   (checks people/interactions/wakeups only — not inbox/).
   Capture-sync audit: `bash packages/connectors/scripts/check-sync.sh <store-dir>`

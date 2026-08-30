@@ -1,0 +1,61 @@
+#!/bin/bash
+# test-all.sh — run every suite in the repo plus the open-source guard.
+#
+# Usage: bash scripts/test-all.sh [--skip-node]
+#
+# Plain bash 3.2; every suite runs against committed synthetic fixtures — no
+# live data, no network. The query suite needs `node` (>= 22.6) and
+# `npm ci` in packages/query/server; pass --skip-node (or lack node) to skip it.
+# CI runs this exact script (.github/workflows/ci.yml).
+set -u
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+SKIP_NODE=0
+[ "${1:-}" = "--skip-node" ] && SKIP_NODE=1
+
+SUITES="
+packages/core/tests/run-store-tests.sh
+packages/connectors/tests/run-capture-tests.sh
+packages/connectors/tests/run-beeper-capture-tests.sh
+packages/connectors/tests/run-scheduler-tests.sh
+packages/ingestion/tests/run-seed-tests.sh
+packages/ingestion/tests/run-triage-tests.sh
+packages/ingestion/tests/run-shard-tests.sh
+packages/ingestion/tests/run-scoring-tests.sh
+packages/attention/tests/run-attention-tests.sh
+packages/attention/tests/run-capacity-tests.sh
+packages/attention/tests/run-queue-tests.sh
+.claude/scripts/tests/run-oss-guard-tests.sh
+.claude/scripts/oss-guard.sh
+"
+
+pass=0; fail=0; skip=0; failed=""
+run() {
+  local s="$1"
+  if [ ! -f "$s" ]; then
+    echo "SKIP  $s (not present)"; skip=$((skip+1)); return
+  fi
+  echo "=== $s"
+  if bash "$s"; then pass=$((pass+1)); echo "PASS  $s"
+  else fail=$((fail+1)); failed="$failed
+  $s"; echo "FAIL  $s"; fi
+}
+
+for s in $SUITES; do run "$s"; done
+
+if [ "$SKIP_NODE" = 1 ] || ! command -v node >/dev/null 2>&1; then
+  echo "SKIP  packages/query/tests/run-query-tests.sh (node unavailable or --skip-node)"; skip=$((skip+1))
+else
+  if [ ! -d packages/query/server/node_modules ]; then
+    echo "--- npm ci (packages/query/server)"
+    (cd packages/query/server && npm ci --silent) || { echo "FAIL  npm ci"; fail=$((fail+1)); }
+  fi
+  run packages/query/tests/run-query-tests.sh
+fi
+
+echo
+echo "TOTAL: $pass passed, $fail failed, $skip skipped"
+[ -n "$failed" ] && echo "FAILED:$failed"
+[ "$fail" -eq 0 ]

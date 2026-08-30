@@ -2,7 +2,7 @@
 tier: skill
 store: packages/attention/tests/fixtures/tier-drift-upward
 expected: packages/attention/evals/cases/tier-drift-upward/expected
-runnable-when: "05"
+runnable-when: "06"
 ---
 Act as the tier-drift detector specified in
 `packages/attention/specs/tier-drift.md` and run it against `./store` as of

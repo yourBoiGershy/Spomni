@@ -1,14 +1,14 @@
 {
-  "name": "relationship-agent-query",
+  "name": "spomni-query",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Read-only MCP server exposing the relationship-agent store as query tools.",
+  "description": "Read-only MCP server exposing the Spomni store as query tools.",
   "engines": {
     "node": ">=22.6"
   },
   "bin": {
-    "relationship-agent-query": "src/index.ts"
+    "spomni-query": "src/index.ts"
   },
   "scripts": {
     "start": "node --experimental-strip-types src/index.ts"

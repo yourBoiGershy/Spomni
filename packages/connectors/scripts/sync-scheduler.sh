@@ -17,24 +17,26 @@
 # the lane command's exit code.
 #
 # `install` renders one launchd agent per *enabled* configured lane from
-# launchd/com.relationship-agent.sync.plist.template, writes it to
+# launchd/com.spomni.sync.plist.template, writes it to
 # ~/Library/LaunchAgents, boots any prior instance out (ignoring failure),
 # then bootstraps the new one. It is idempotent. After installing the
 # current lane set it prunes any previously-installed
-# com.relationship-agent.sync.* agent whose lane no longer has a config row.
+# com.spomni.sync.* agent whose lane no longer has a config row.
 # `--dry-run` prints the rendered plists and the actions that would be taken
 # (including prune) without touching disk, ~/Library/LaunchAgents, or
 # launchctl.
 #
 # `uninstall <lane>` boots out and removes that lane's agent. `uninstall
 # --all` does the same for every currently-installed
-# com.relationship-agent.sync.* agent, regardless of config. `--dry-run`
+# com.spomni.sync.* agent, regardless of config. `--dry-run`
 # prints the actions without performing them.
 #
 # `status` prints one row per configured lane (enabled or not) with columns
 # LANE ENABLED INTERVAL INSTALLED LAST_RUN LAST_EXIT NEXT_RUN, plus one extra
-# ORPHAN row per installed com.relationship-agent.sync.* agent that has no
-# matching config row. Never silent: every configured lane gets exactly one
+# ORPHAN row per installed com.spomni.sync.* agent that has no
+# matching config row, plus one LEGACY row per installed pre-rename
+# com.relationship-agent.sync.* agent (old label prefix — detected, never
+# auto-removed). Never silent: every configured lane gets exactly one
 # row. Only fails (exit 1) if the config itself cannot be parsed, since rows
 # can't be enumerated in that case; otherwise always exits 0 (it's a report).
 #
@@ -47,8 +49,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # shellcheck source=./sync-lib.sh
 . "$SCRIPT_DIR/sync-lib.sh"
 
-TEMPLATE="$SCRIPT_DIR/launchd/com.relationship-agent.sync.plist.template"
-LABEL_PREFIX="com.relationship-agent.sync."
+TEMPLATE="$SCRIPT_DIR/launchd/com.spomni.sync.plist.template"
+LABEL_PREFIX="com.spomni.sync."
+LEGACY_LABEL_PREFIX="com.relationship-agent.sync."
 
 usage() {
 	echo "Usage: $0 run <lane> [--data-dir <dir>]" >&2
@@ -162,7 +165,7 @@ $LANES_OUTPUT
 EOF
 		fi
 
-		# Prune: any installed com.relationship-agent.sync.* agent whose lane
+		# Prune: any installed com.spomni.sync.* agent whose lane
 		# is not currently enabled.
 		if [ -d "$HOME/Library/LaunchAgents" ]; then
 			for PLIST_PATH in "$HOME/Library/LaunchAgents/${LABEL_PREFIX}"*.plist; do
@@ -313,6 +316,16 @@ EOF
 				esac
 			done
 		fi
+
+		# Legacy detection (pre-rename installs): report, never auto-remove.
+		if [ -d "$HOME/Library/LaunchAgents" ]; then
+			for PLIST_PATH in "$HOME/Library/LaunchAgents/${LEGACY_LABEL_PREFIX}"*.plist; do
+				[ -e "$PLIST_PATH" ] || continue
+				BASENAME="$(basename "$PLIST_PATH" .plist)"
+				echo "LEGACY $BASENAME  (pre-rename install; remove with: launchctl bootout gui/\$UID/$BASENAME; rm $PLIST_PATH)"
+			done
+		fi
+
 		exit 0
 		;;
 

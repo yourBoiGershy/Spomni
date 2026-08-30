@@ -2,7 +2,7 @@
 tier: skill
 store: packages/attention/tests/fixtures/declined-proposal
 expected: packages/attention/evals/cases/declined-proposal/expected
-runnable-when: "05"
+runnable-when: "06"
 ---
 Act as the tier-drift detector specified in
 `packages/attention/specs/tier-drift.md` and run it against `./store` as of

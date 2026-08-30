@@ -156,7 +156,7 @@ automatic via cursors, so missed intervals cost nothing.
 ## Work units
 
 All paths relative to the worktree root
-`/Users/ericg/Documents/relationship-agent-worktrees/connectors/`. Every unit is a
+`<worktrees-root>/connectors/`. Every unit is a
 `dev-worker` brief sized ≤3 min; bash 3.2 portable (no associative arrays, no
 mapfile), `jq` allowed (existing-lane precedent). Doc rides with its
 implementation unit; tests are separate units.

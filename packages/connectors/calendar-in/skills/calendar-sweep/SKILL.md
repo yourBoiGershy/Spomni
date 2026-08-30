@@ -23,6 +23,8 @@ ever called. `create_event`, `update_event`, `delete_event`, and
 `respond_to_event` are **banned** — never call them from this skill, under
 any circumstance (draft-never-send; capture is read-only against the
 account). `suggest_time` is part of the verified tool set but unused here.
+Draft, never send: this skill is read-only against Calendar; the tools
+above are listed only so they are never called.
 
 ## State this skill owns
 

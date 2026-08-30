@@ -6,12 +6,26 @@ with a matching entry in [DECISIONS.md](DECISIONS.md).
 
 ## What this is
 
-An open-source, local-first personal agent that helps its user maintain relationships —
-business, friends, family — by remembering what the user can't hold in their head and
-surfacing timely, contextual reasons to reach out. It **drafts, but never sends**: the
+**Mission.** A relationship is made of trust, care, intent, and time. None of
+those are what makes it hard to keep. What makes it hard is what the
+relationship *costs to run* — the coordinating, following up, scheduling,
+restarting, remembering-to — and none of that adds a gram of trust. Spomni
+gives you **what a friendship is made of, without what it costs to keep.**
+
+**The mission test** — every chunk, plan, brief, and feature answers it:
+*does this cut a running cost, or does it substitute for an ingredient?*
+Cutting cost is in scope. Substituting for trust, care, intent, or time —
+auto-sending, generic drafts, engagement metrics, anything that performs the
+relationship on the user's behalf — is out of scope, permanently.
+(Decision: `mission-ingredients-vs-running-cost`.)
+
+Concretely: an open-source, local-first personal agent that carries the running cost of the
+user's relationships — business, friends, family — by noticing when a moment is good and
+handing over context plus a draft in the user's voice. It **drafts, but never sends**: the
 human always holds the send button. The user's core problem is bandwidth, not willingness;
-the agent is external memory plus an attention allocator, never a replacement for the
-relationship itself.
+memory and noticing are *inputs* the agent uses to cut the other costs (timing, deciding-who,
+starting, following-through) — never a replacement for the relationship itself. The
+scenario map lives in [USE-CASES.md](USE-CASES.md).
 
 Primary user story shapes:
 - "Who do I know in marketing / fintech / healthcare data?"
@@ -69,8 +83,9 @@ packages/
    `package.md` manifest as provides/consumes with versions. Dependency direction:
    core ← everyone; siblings never import siblings' internals.
 
-Product skills live inside their package (`packages/<pkg>/skills/`); `.claude/skills/`
-holds only harness skills (`/explore`, `/implement`). Packages stay `0.x` until the
+Product skills live inside their package (`packages/<pkg>/skills/`) and are symlinked
+into `.claude/skills/` for slash-command discovery; the harness skills (`/explore`,
+`/implement`) are the only real directories there. Packages stay `0.x` until the
 live trial; contracts are semver'd from day one. Each package's plan + contracts +
 golden tests are its durable spec — implementations are regenerable from them.
 
@@ -100,6 +115,9 @@ index.json      # auto-generated: person → tags, org, location, last-touch
    holding credentials; first-party connectors only, plus whatever the user explicitly plugs in.
 6. **Give more than you ask** — target ≥3:1 useful output to capture prompts.
 7. **Nudges carry a trigger and ammunition** — never bare cadence ("it's been 90 days").
+8. **The mission test** — every chunk, plan, and brief states which running cost it cuts
+   and which ingredient it stays clear of. Features that substitute for an ingredient are
+   never built (decision: mission-ingredients-vs-running-cost).
 
 ## Bound research findings (Aug 2026 — see DECISIONS.md for the why)
 
