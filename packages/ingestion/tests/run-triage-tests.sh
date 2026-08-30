@@ -257,6 +257,41 @@ else
   fail "quarantine: expected scanned=11 in the first run's summary — got: $(cat "$run1_out")"
 fi
 
+# =============================================================================
+# Assertion group 7 — extract_subject is fully case-insensitive on the
+# header token itself (regression for the ALL-CAPS "SUBJECT:" case: the old
+# sed only matched "Subject:"/"subject:", so a nonstandard-cased header
+# yielded an empty subject and the otp-security rule silently never fired).
+# Isolated one-off store: the shared fixture above is pinned to exactly 11
+# scanned / 5 held by several assertions, so this case gets its own tiny
+# store rather than perturbing those counts.
+# =============================================================================
+
+capscase_store="$WORK_DIR/capscase-store"
+mkdir -p "$capscase_store/inbox"
+cat > "$capscase_store/inbox/hold-otp-caps-subject.md" <<'EOF_FIXTURE'
+---
+schema_version: 1.2.0
+id: hold-otp-caps-subject
+source: gmail-in
+captured_at: 2026-08-03T09:00:00Z
+type: email
+participant-hints:
+  - "security@bigbank.example.com"
+---
+SUBJECT: Your one-time passcode
+
+Use code 482913 to sign in to your account.
+EOF_FIXTURE
+
+capscase_data="$WORK_DIR/capscase-data"
+capscase_out="$WORK_DIR/capscase-out.txt"
+"$TRIAGE" "$capscase_store" --data-dir "$capscase_data" > "$capscase_out" 2>/dev/null
+
+capscase_held="$capscase_data/triage-held.log"
+assert_ledger_line "$capscase_held" "hold-otp-caps-subject" "otp-security"
+
+# =============================================================================
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 

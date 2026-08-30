@@ -138,7 +138,7 @@ EOF_HINTS
 
 # extract_subject <body-text> — the first "Subject: ..." line's value.
 extract_subject() {
-  printf '%s\n' "$1" | grep -m1 -i '^Subject:' | sed -n 's/^[Ss]ubject:[ \t]*//p'
+  printf '%s\n' "$1" | grep -m1 -i '^Subject:' | sed -n 's/^[Ss][Uu][Bb][Jj][Ee][Cc][Tt]:[ \t]*//p'
 }
 
 # sender_known <hints-newline-list> — 0 (true/known) if any hint's email
@@ -213,6 +213,12 @@ cold_pitch_match() {
 
 # ---------------------------------------------------------------------------
 # Main scan
+#
+# Pattern source of truth: the five rule regexes below are duplicated
+# verbatim (shell-safe form) from packages/ingestion/specs/import-triage.md
+# "The five rule classes" (and its "Pattern source of truth" note). That
+# spec section is authoritative — any pattern content change MUST land in
+# the spec and here in the same commit.
 # ---------------------------------------------------------------------------
 
 scanned=0

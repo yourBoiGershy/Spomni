@@ -99,7 +99,7 @@ subcommands now own this lane's launchd lifecycle.
 
 ## Consumes
 
-- `capture-event@^1.2`, `connector-interface@^1` (core)
+- `capture-event@^1.2`, `connector-interface@^1`, `import-pipeline@^1` (core)
 - The user's own Beeper Desktop/Server Client API + a user-created Bearer token
   (out-of-band; token lives under the private data dir, never in this repo, per
   `docs/DECISIONS.md#code-data-separation`)

@@ -55,7 +55,7 @@ is neither a read nor a mutation this sweep needs).
 
 ## Consumes
 
-- `capture-event@^1.2`, `connector-interface@^1` (core)
+- `capture-event@^1.2`, `connector-interface@^1`, `import-pipeline@^1` (core)
 - The user's own first-party claude.ai Google Calendar connector, linked
   in-session (out-of-band; no credentials live in this repo, per
   `docs/DECISIONS.md#code-data-separation`)

@@ -398,12 +398,24 @@ beeper_legacy_oldest_covered_ts() {
     [ "$body_chat_id" != "$chat_id" ] && continue
     file_min="$(printf '%s' "$body" | jq -r '[.messages[]?.timestamp] | min // empty' 2>/dev/null)"
     [ -z "$file_min" ] && continue
+    # Reject the literal string "null" and anything not shaped like an
+    # ISO-8601 timestamp (conservative "YYYY-" prefix check, bash 3.2 safe).
+    # An unrejected non-timestamp floor (e.g. "null") would sort lower than
+    # every real ISO timestamp lexically and poison the backfill bound.
+    case "$file_min" in
+      [0-9][0-9][0-9][0-9]-*) ;;
+      *) continue ;;
+    esac
     if [ -z "$oldest" ] || [ "$file_min" \< "$oldest" ]; then
       oldest="$file_min"
     fi
   done
 
   [ -z "$oldest" ] && return 1
+  case "$oldest" in
+    [0-9][0-9][0-9][0-9]-*) ;;
+    *) return 1 ;;
+  esac
   printf '%s\n' "$oldest"
   return 0
 }

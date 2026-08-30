@@ -89,6 +89,15 @@ Fields referenced below are from capture-event 1.2.0
 (`<connector>/<lane>`), and the body (raw captured text — for
 `calendar-event`, the raw event JSON).
 
+## Pattern source of truth
+
+This spec is authoritative for the five rule regexes below. The checker
+script (`packages/ingestion/scripts/triage-inbox.sh`) duplicates them
+verbatim (BSD/POSIX-shell-safe form) rather than sourcing this file — there
+is no sync mechanism between the two copies. Any change to a pattern's
+content MUST land in this spec section and the script's rules section in the
+same commit; a change to only one side is a spec/script drift bug.
+
 ## The five rule classes
 
 ### 1. `noreply-marketing`

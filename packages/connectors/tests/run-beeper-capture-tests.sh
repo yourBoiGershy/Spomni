@@ -1692,6 +1692,31 @@ d6c_dup_count="$(grep -rl 'msg-sample-001' "$d6c_store"/inbox/*.md 2>/dev/null |
 assert_eq "d6 legacy fallback: already-captured message id appears only in the incremental run's own event, never re-captured by backfill" "$d6c_dup_count" "1"
 
 # -----------------------------------------------------------------------
+# 9c2. Null-timestamp poison guard: beeper_legacy_oldest_covered_ts must
+#      reject a candidate floor that is the literal string "null" (or
+#      anything not shaped like an ISO-8601 timestamp), not just an empty
+#      one. An unguarded "null" floor sorts lexically higher than every
+#      real ISO timestamp ('n' > '2'), so `.timestamp < $lm` would match
+#      every covered message and backfill would re-capture the whole chat.
+#      Exercised directly against the function (not via the full sweep)
+#      for a deterministic, single-shot repro of the exact poisoned value.
+# -----------------------------------------------------------------------
+d6c2_store="$D6_ROOT/9c2-null-timestamp-guard/store"
+mkdir -p "$d6c2_store/inbox"
+d6c2_chat_id='!poison-chat:example.org'
+cat > "$d6c2_store/inbox/poison-event.md" <<EOF
+---
+id: test-legacy-null-poison
+---
+{"chatID": "$d6c2_chat_id", "messages": [{"id": "msg-poison-1", "timestamp": "null"}]}
+EOF
+
+d6c2_out="$(beeper_legacy_oldest_covered_ts "$d6c2_store" "$d6c2_chat_id")"
+d6c2_rc=$?
+assert_eq "d6 null-timestamp guard: a chat whose only prior event has a literal-\"null\" timestamp yields no candidate floor (rc=1)" "$d6c2_rc" "1"
+assert_eq "d6 null-timestamp guard: no poisoned \"null\" string is ever printed as the floor" "$d6c2_out" ""
+
+# -----------------------------------------------------------------------
 # 9d. History-clamped WARN: bridge history exhausted (hasMore false, no
 #     oldestCursor) before reaching the resolved window start ->
 #     `<chatID>=history-clamped@<oldest_ts>` appears in the backfill run's
