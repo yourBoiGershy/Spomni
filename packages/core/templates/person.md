@@ -1,5 +1,5 @@
 ---
-schema_version: 1.3.0
+schema_version: 1.4.0
 name: <name>
 org:
 role:
@@ -25,7 +25,9 @@ tier:
 
 ## Open threads
 
-<!-- Things to follow up on next time — questions asked, topics promised, loose ends. No provenance tag required. -->
+<!-- Things to follow up on next time — questions asked, topics promised, loose ends. No provenance tag required. Optional trailing suffix (plan 36): `(as-of YYYY-MM-DD)`, later grown to `(as-of YYYY-MM-DD, unverified since YYYY-MM-DD)` by the filing engine on latest-interaction-wins. No suffix reads as as-of = last-touch. -->
+
+<!-- Optional ## Resolved section goes here once a thread is explicitly closed (plan 36): bullets `- <text> (resolved YYYY-MM-DD)`, written by the filing engine only. Omit this section entirely on a fresh file. -->
 
 ## Personal details
 

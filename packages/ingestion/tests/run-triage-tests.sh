@@ -136,7 +136,7 @@ else
   fail "triage-held.log: expected exactly 5 lines, got $held_line_count"
 fi
 
-if grep -q '^triage: scanned=11 held=5 already-filed=0 already-held=0 per-rule=noreply-marketing:1,self-only-calendar:1,otp-security:1,linkedin-invitation:1,cold-pitch:1$' "$run1_out"; then
+if grep -q '^triage: scanned=11 held=5 already-filed=0 already-held=0 per-rule=noreply-marketing:1,self-only-calendar:1,otp-security:1,linkedin-invitation:1,cold-pitch:1,noise-sender:0,calendar-ignore:0$' "$run1_out"; then
   pass "triage-inbox.sh: summary line matches exactly (scanned=11 held=5, one per rule)"
 else
   fail "triage-inbox.sh: summary line mismatch — got: $(cat "$run1_out")"
@@ -174,7 +174,7 @@ else
   fail "idempotency: second run exit=$run2_status, triage-held.log now has $held_line_count_2 lines (expected 0 exit, still 5)"
 fi
 
-if grep -q '^triage: scanned=11 held=0 already-filed=0 already-held=5 per-rule=noreply-marketing:0,self-only-calendar:0,otp-security:0,linkedin-invitation:0,cold-pitch:0$' "$run2_out"; then
+if grep -q '^triage: scanned=11 held=0 already-filed=0 already-held=5 per-rule=noreply-marketing:0,self-only-calendar:0,otp-security:0,linkedin-invitation:0,cold-pitch:0,noise-sender:0,calendar-ignore:0$' "$run2_out"; then
   pass "idempotency: second run's summary line correctly reports held=0 already-held=5"
 else
   fail "idempotency: second run summary line mismatch — got: $(cat "$run2_out")"
@@ -338,6 +338,211 @@ else
     fail "T-F4 (positive control): cold-pitch-known-name.md (display name matches a real people/*.md name) was incorrectly held"
   else
     pass "T-F4 (positive control): cold-pitch-known-name.md (display name matches a real people/*.md name) correctly not held"
+  fi
+fi
+
+# =============================================================================
+# Assertion group 8 — rule 6 (noise-sender): one held capture per seeded
+# name in packages/ingestion/config/noise-senders.tsv's `from`/`ci-subject`
+# rows, ledgered as `noise-sender:<name>`, plus a zero-false-hold check on
+# a real-looking person email. Dedicated store:
+# packages/ingestion/tests/fixtures/triage/store-noise/, synthetic PII
+# only. (The two remaining shipped rows, verification-code-subject and
+# security-alert-subject, are intentionally not exercised here — both are
+# always shadowed by rule 3 (otp-security), which runs earlier and matches
+# the identical subject phrasing first; see the noise-sender-shadow
+# assertion below.)
+# =============================================================================
+
+noise_store="$REPO_ROOT/packages/ingestion/tests/fixtures/triage/store-noise"
+
+if [ ! -d "$noise_store" ]; then
+  fail "rule 6 fixture missing at $noise_store"
+else
+  noise_data="$WORK_DIR/noise-data"
+  noise_out="$WORK_DIR/noise-out.txt"
+  "$TRIAGE" "$noise_store" --data-dir "$noise_data" > "$noise_out" 2>/dev/null
+  noise_status=$?
+
+  if [ "$noise_status" -eq 0 ]; then
+    pass "rule 6: triage-inbox.sh exits 0 against the store-noise fixture"
+  else
+    fail "rule 6: exited $noise_status against the store-noise fixture"
+  fi
+
+  noise_held="$noise_data/triage-held.log"
+
+  for pair in \
+    "hold-noise-github:noise-sender:github" \
+    "hold-noise-vercel:noise-sender:vercel" \
+    "hold-noise-slack:noise-sender:slack" \
+    "hold-noise-google-notifications:noise-sender:google-notifications" \
+    "hold-noise-ci-sender:noise-sender:ci-sender" \
+    "hold-noise-security:noise-sender:security" \
+    "hold-noise-newsletter:noise-sender:newsletter" \
+    "hold-noise-transactional:noise-sender:transactional" \
+    "hold-noise-ci-subject:noise-sender:ci-subject"
+  do
+    pid="${pair%%:*}"
+    prule="${pair#*:}"
+    assert_ledger_line "$noise_held" "$pid" "$prule"
+  done
+
+  noise_held_count="$(wc -l < "$noise_held" 2>/dev/null | tr -d ' ')"
+  if [ "$noise_held_count" = "9" ]; then
+    pass "rule 6: exactly 9 held lines (one per seeded name, no extras)"
+  else
+    fail "rule 6: expected exactly 9 held lines, got $noise_held_count"
+  fi
+
+  if grep -q '^golden-noise-real-person	' "$noise_held" 2>/dev/null; then
+    fail "rule 6 zero-false-holds: golden-noise-real-person.md (real-looking alex@example.net sender) was incorrectly held"
+  else
+    pass "rule 6 zero-false-holds: golden-noise-real-person.md (real-looking alex@example.net sender) correctly not held"
+  fi
+
+  if grep -q 'per-rule=.*noise-sender:9,calendar-ignore:0$' "$noise_out"; then
+    pass "rule 6: summary line's noise-sender count is 9"
+  else
+    fail "rule 6: summary line missing noise-sender:9 — got: $(cat "$noise_out")"
+  fi
+fi
+
+# =============================================================================
+# Assertion group 9 — noise-sender shadow note: the shipped
+# verification-code-subject/security-alert-subject rows are present in the
+# config (documenting rule 6's intended coverage) even though, for
+# type: email, rule 3 (otp-security) always fires first on the identical
+# subject phrasing — this pins that both rows still exist in the shipped
+# table (a config-drift regression check), not that they are reachable.
+# =============================================================================
+
+noise_tsv="$REPO_ROOT/packages/ingestion/config/noise-senders.tsv"
+if grep -q '^verification-code-subject	' "$noise_tsv" && grep -q '^security-alert-subject	' "$noise_tsv"; then
+  pass "rule 6 config: verification-code-subject and security-alert-subject rows are present in the shipped table"
+else
+  fail "rule 6 config: verification-code-subject and/or security-alert-subject rows missing from $noise_tsv"
+fi
+
+# =============================================================================
+# Assertion group 10 — local override table: <data-dir>/noise-senders.local.tsv.
+# A local row sharing a shipped row's name overrides it (blocked below); a
+# local-only new name is held under its own name. Both runs pre-seed
+# --data-dir with the local tsv before invoking triage-inbox.sh, the same
+# pattern the append-only group above uses for ledger pre-seeding.
+# =============================================================================
+
+override_block_data="$WORK_DIR/override-block-data"
+mkdir -p "$override_block_data"
+printf 'github\tNEVERMATCHXYZABC\tfrom\n' > "$override_block_data/noise-senders.local.tsv"
+"$TRIAGE" "$noise_store" --data-dir "$override_block_data" >/dev/null 2>&1
+
+override_block_held="$override_block_data/triage-held.log"
+if grep -q '^hold-noise-github	' "$override_block_held" 2>/dev/null; then
+  fail "local override (block): a local 'github' row with a non-matching regex should have blocked hold-noise-github.md, but it was still held"
+else
+  pass "local override (block): a local 'github' row with a non-matching regex correctly blocks hold-noise-github.md from being held"
+fi
+
+other_noise_held_count="$(wc -l < "$override_block_held" 2>/dev/null | tr -d ' ')"
+if [ "$other_noise_held_count" = "8" ]; then
+  pass "local override (block): the other 8 noise-sender names in store-noise are still held normally (override is scoped to 'github' only)"
+else
+  fail "local override (block): expected 8 other holds to survive, got $other_noise_held_count"
+fi
+
+override_newname_store="$REPO_ROOT/packages/ingestion/tests/fixtures/triage/store-noise-local-only"
+if [ ! -d "$override_newname_store" ]; then
+  fail "local override (new name) fixture missing at $override_newname_store"
+else
+  override_newname_data="$WORK_DIR/override-newname-data"
+  mkdir -p "$override_newname_data"
+  printf 'internal-bot\tbot@internal-tool\\.example\\.com\tfrom\n' > "$override_newname_data/noise-senders.local.tsv"
+  "$TRIAGE" "$override_newname_store" --data-dir "$override_newname_data" >/dev/null 2>&1
+
+  override_newname_held="$override_newname_data/triage-held.log"
+  assert_ledger_line "$override_newname_held" "hold-noise-internal-bot" "noise-sender:internal-bot"
+fi
+
+# =============================================================================
+# Assertion group 11 — rule 7 (calendar-ignore): declined-self and
+# over-cap holds, a zero-false-hold small accepted meeting, a self-only
+# block still ledgered as rule 2 (first-match-wins), a no-response-data
+# event correctly not held (precision-first), and the calendar-max-
+# attendees config override raising the cap so a 15-attendee event is no
+# longer held. Dedicated store:
+# packages/ingestion/tests/fixtures/triage/store-calignore/, synthetic
+# PII only (example.net).
+# =============================================================================
+
+calignore_store="$REPO_ROOT/packages/ingestion/tests/fixtures/triage/store-calignore"
+
+if [ ! -d "$calignore_store" ]; then
+  fail "rule 7 fixture missing at $calignore_store"
+else
+  calignore_data="$WORK_DIR/calignore-data"
+  calignore_out="$WORK_DIR/calignore-out.txt"
+  "$TRIAGE" "$calignore_store" --data-dir "$calignore_data" > "$calignore_out" 2>/dev/null
+  calignore_status=$?
+
+  if [ "$calignore_status" -eq 0 ]; then
+    pass "rule 7: triage-inbox.sh exits 0 against the store-calignore fixture"
+  else
+    fail "rule 7: exited $calignore_status against the store-calignore fixture"
+  fi
+
+  calignore_held="$calignore_data/triage-held.log"
+
+  assert_ledger_line "$calignore_held" "hold-cal-declined" "calendar-ignore:skipped-declined"
+  assert_ledger_line "$calignore_held" "hold-cal-large" "calendar-ignore:skipped-large:15"
+  assert_ledger_line "$calignore_held" "hold-cal-self-only" "self-only-calendar"
+
+  calignore_held_count="$(wc -l < "$calignore_held" 2>/dev/null | tr -d ' ')"
+  if [ "$calignore_held_count" = "3" ]; then
+    pass "rule 7: exactly 3 held lines (declined, over-cap, and the self-only block claimed by rule 2 — no extras)"
+  else
+    fail "rule 7: expected exactly 3 held lines, got $calignore_held_count"
+  fi
+
+  if grep -q '^golden-cal-accepted-small	' "$calignore_held" 2>/dev/null; then
+    fail "rule 7 zero-false-holds: golden-cal-accepted-small.md (3-person accepted meeting) was incorrectly held"
+  else
+    pass "rule 7 zero-false-holds: golden-cal-accepted-small.md (3-person accepted meeting) correctly not held"
+  fi
+
+  if grep -q '^golden-cal-no-response-data	' "$calignore_held" 2>/dev/null; then
+    fail "rule 7 precision-first: golden-cal-no-response-data.md (attendees present, no responseStatus fields) was incorrectly held"
+  else
+    pass "rule 7 precision-first: golden-cal-no-response-data.md (attendees present, no responseStatus fields) correctly not held"
+  fi
+
+  if grep -q 'per-rule=.*calendar-ignore:2$' "$calignore_out"; then
+    pass "rule 7: summary line's calendar-ignore count is 2 (declined + over-cap; the self-only hold counts under self-only-calendar, not here)"
+  else
+    fail "rule 7: summary line missing calendar-ignore:2 — got: $(cat "$calignore_out")"
+  fi
+fi
+
+# --- calendar-max-attendees config override: the 15-attendee event is no
+# longer held once the local config raises the cap to 20. ------------------
+
+if [ -d "$calignore_store" ]; then
+  calignore_override_data="$WORK_DIR/calignore-override-data"
+  mkdir -p "$WORK_DIR/config"
+  printf 'calendar-max-attendees\t20\n' > "$WORK_DIR/config/onboarding-backfill.tsv"
+  "$TRIAGE" "$calignore_store" --data-dir "$calignore_override_data" >/dev/null 2>&1
+
+  calignore_override_held="$calignore_override_data/triage-held.log"
+  if grep -q '^hold-cal-large	' "$calignore_override_held" 2>/dev/null; then
+    fail "rule 7 config override: calendar-max-attendees=20 should have unheld the 15-attendee event, but it was still held"
+  else
+    pass "rule 7 config override: calendar-max-attendees=20 correctly unholds the 15-attendee event (15 <= 20)"
+  fi
+
+  if grep -q '^hold-cal-declined	' "$calignore_override_held" 2>/dev/null; then
+    pass "rule 7 config override: the declined-self hold is unaffected by the attendee-cap override"
+  else
+    fail "rule 7 config override: hold-cal-declined should still be held (declined-self is independent of the attendee cap)"
   fi
 fi
 

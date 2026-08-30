@@ -175,6 +175,26 @@ extract_section_bullets() {
   ' "$file"
 }
 
+# packages/ingestion/specs/currency.md "Consumers": drop an
+# "unverified since D" open thread when D is older than the person's
+# second-most-recent interaction date — it went stale before the touch
+# before last, not just the latest one. Bare bullets and fresh "as-of"
+# bullets (no "unverified since" marker) always pass through untouched.
+# threshold="" (fewer than one prior interaction on file) keeps
+# everything — staleness can't be judged without a second date.
+filter_open_threads() {
+  file="$1"
+  heading="$2"
+  threshold="$3"
+  extract_section_bullets "$file" "$heading" | while IFS= read -r line; do
+    unverified_date="$(printf '%s\n' "$line" | sed -n 's/.*unverified since \([0-9][0-9-]*\).*/\1/p')"
+    if [ -n "$unverified_date" ] && [ -n "$threshold" ] && [[ "$unverified_date" < "$threshold" ]]; then
+      continue
+    fi
+    printf '%s\n' "$line"
+  done
+}
+
 # Prose lines (non-empty, non-bullet) between "## <heading>" and the next "## ".
 extract_section_prose() {
   file="$1"
@@ -197,12 +217,18 @@ for slug in $(jq -r 'to_entries[] | select(.value | type == "object") | .key' "$
   name="$(extract_field "$fm" name)"
   fm_tier="$(extract_field "$fm" tier)"
 
-  facts_json="$(extract_section_bullets "$f" "Facts" | jq -R . | jq -s -c 'map(select(length > 0))')"
-  open_threads_text="$(extract_section_bullets "$f" "Open threads" | paste -sd';' - | sed 's/;/; /g')"
+  # [stale] facts (inferred-* provenance the derived writer has flagged,
+  # per specs/currency.md) never surface as talking points.
+  facts_json="$(extract_section_bullets "$f" "Facts" | grep -v '\[stale\]' | jq -R . | jq -s -c 'map(select(length > 0))')"
   personal_text="$(extract_section_prose "$f" "Personal details" | paste -sd' ' -)"
 
   index_entry="$(jq -c --arg slug "$slug" '.[$slug]' "$INDEX_JSON")"
   stats_entry="$(jq -c --arg slug "$slug" '.people[$slug] // {}' "$STATS_JSON")"
+  # stats.json's interactions[] is sorted most-recent-first (build-stats.sh);
+  # index 1 is the second-most-recent interaction date. Fewer than two
+  # interactions on file -> threshold_date is empty, so nothing is dropped.
+  threshold_date="$(printf '%s' "$stats_entry" | jq -r '(.interactions[1].date // empty)')"
+  open_threads_text="$(filter_open_threads "$f" "Open threads" "$threshold_date" | paste -sd';' - | sed 's/;/; /g')"
 
   jq -n -c \
     --arg slug "$slug" \

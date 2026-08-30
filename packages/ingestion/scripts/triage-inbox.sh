@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # triage-inbox.sh — deterministic pre-judgment triage pass over inbox/,
-# implementing packages/ingestion/specs/import-triage.md's five rule
+# implementing packages/ingestion/specs/import-triage.md's seven rule
 # classes (first-match-wins, precision-first: any doubt falls through to
 # normal debrief judgment, never held).
 #
@@ -32,6 +32,8 @@
 # arrays, no mapfile, no ${var,,}.
 
 set -eu
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 usage() {
   echo "usage: triage-inbox.sh <store-dir> [--data-dir <dir>] [--dry-run]" >&2
@@ -114,6 +116,79 @@ fi
 if [ -d "$PEOPLE_DIR" ]; then
   find "$PEOPLE_DIR" -type f -exec cat {} + >> "$SENDER_HAYSTACK" 2>/dev/null || true
   find "$PEOPLE_DIR" -type f -exec cat {} + >> "$SENDER_HAYSTACK_PEOPLE" 2>/dev/null || true
+fi
+
+# ---------------------------------------------------------------------------
+# Rule 6 (noise-sender) pattern table: the shipped
+# packages/ingestion/config/noise-senders.tsv rows, then
+# <data-dir>/noise-senders.local.tsv rows (optional). A local row sharing
+# a shipped row's `name` overrides that shipped row entirely — the
+# override is resolved once here, up front, not per event.
+# ---------------------------------------------------------------------------
+
+NOISE_TSV="${SCRIPT_DIR}/../config/noise-senders.tsv"
+NOISE_LOCAL_TSV="${DATA_DIR}/noise-senders.local.tsv"
+NOISE_RULES="${WORKTMP}/noise-rules"
+: > "$NOISE_RULES"
+
+# clean_tsv_rows <file> — strips comments/blank lines, keeps well-formed
+# 3-field tab-separated rows only.
+clean_tsv_rows() {
+  awk -F'\t' '
+    /^#/ { next }
+    /^[[:space:]]*$/ { next }
+    NF >= 3 { print $1 "\t" $2 "\t" $3 }
+  ' "$1" 2>/dev/null
+}
+
+NOISE_SHIPPED="${WORKTMP}/noise-shipped"
+: > "$NOISE_SHIPPED"
+if [ -f "$NOISE_TSV" ]; then
+  clean_tsv_rows "$NOISE_TSV" > "$NOISE_SHIPPED"
+fi
+
+NOISE_LOCAL="${WORKTMP}/noise-local"
+: > "$NOISE_LOCAL"
+if [ -f "$NOISE_LOCAL_TSV" ]; then
+  clean_tsv_rows "$NOISE_LOCAL_TSV" > "$NOISE_LOCAL"
+fi
+
+NOISE_LOCAL_NAMES="${WORKTMP}/noise-local-names"
+cut -f1 "$NOISE_LOCAL" > "$NOISE_LOCAL_NAMES" 2>/dev/null || : > "$NOISE_LOCAL_NAMES"
+
+if [ -s "$NOISE_LOCAL_NAMES" ]; then
+  awk -F'\t' 'NR==FNR { skip[$1] = 1; next } !($1 in skip)' \
+    "$NOISE_LOCAL_NAMES" "$NOISE_SHIPPED" > "$NOISE_RULES" 2>/dev/null \
+    || cat "$NOISE_SHIPPED" > "$NOISE_RULES"
+else
+  cat "$NOISE_SHIPPED" > "$NOISE_RULES"
+fi
+cat "$NOISE_LOCAL" >> "$NOISE_RULES"
+
+# ---------------------------------------------------------------------------
+# Rule 7 (calendar-ignore) config: calendar-max-attendees, from
+# <data-dir>/config/onboarding-backfill.tsv. This script's own --data-dir
+# names the ingestion dir directly (see the onboarding-seed SKILL.md note),
+# so the config file — same as file-structured.sh reads — lives one level
+# up: ${DATA_DIR}/../config/onboarding-backfill.tsv. Default 12 when the
+# file, or the calendar-max-attendees row, is absent or non-numeric.
+# ---------------------------------------------------------------------------
+
+CAL_MAX_ATTENDEES=12
+# dirname (pure string manipulation) rather than a literal "${DATA_DIR}/.."
+# path: DATA_DIR (the ingestion dir) may not exist yet as a real directory
+# on a fresh --data-dir (this script only mkdir -p's it lazily, on the
+# first held write) — a literal ".." path component requires every
+# preceding component to already exist on-disk to resolve, which would
+# make a not-yet-created ingestion dir silently hide a real config file
+# one level up. dirname has no such requirement.
+CAL_CONFIG_TSV="$(dirname "$DATA_DIR")/config/onboarding-backfill.tsv"
+if [ -f "$CAL_CONFIG_TSV" ]; then
+  cal_configured="$(awk -F'\t' '$1 == "calendar-max-attendees" { print $2; exit }' "$CAL_CONFIG_TSV" 2>/dev/null || true)"
+  case "$cal_configured" in
+    '' | *[!0-9]*) : ;;
+    *) CAL_MAX_ATTENDEES="$cal_configured" ;;
+  esac
 fi
 
 # ---------------------------------------------------------------------------
@@ -257,7 +332,10 @@ cold_pitch_match() {
 # verbatim (shell-safe form) from packages/ingestion/specs/import-triage.md
 # "The five rule classes" (and its "Pattern source of truth" note). That
 # spec section is authoritative — any pattern content change MUST land in
-# the spec and here in the same commit.
+# the spec and here in the same commit. Rule 6 (noise-sender) is
+# table-driven instead — its pattern source of truth is
+# packages/ingestion/config/noise-senders.tsv (plus an optional local
+# override table), not a regex embedded in this script.
 # ---------------------------------------------------------------------------
 
 held=0
@@ -266,6 +344,8 @@ rule_selfcal=0
 rule_otp=0
 rule_li=0
 rule_cold=0
+rule_noise=0
+rule_calignore=0
 
 # --- one-pass ledger partition (D4a): candidate ids are listed once, the
 # already-filed/already-held skip sets are built once from the ledgers, and
@@ -392,6 +472,55 @@ while IFS= read -r id; do
     fi
   fi
 
+  # 6. noise-sender (type: email only) — table-driven from/subject match
+  # against $NOISE_RULES (see setup above). First matching row wins.
+  if [ -z "$rule" ] && [ "$type" = "email" ]; then
+    subject="$(extract_subject "$body")"
+    from_header="$(printf '%s\n' "$body" | grep -m1 -Ei '^From:' || true)"
+    while IFS="$(printf '\t')" read -r ns_name ns_regex ns_scope; do
+      [ -z "$ns_name" ] && continue
+      ns_matched=0
+      if [ "$ns_scope" = "from" ]; then
+        if printf '%s\n' "$hints" | grep -Eqi -- "$ns_regex"; then
+          ns_matched=1
+        elif [ -n "$from_header" ] && printf '%s' "$from_header" | grep -Eqi -- "$ns_regex"; then
+          ns_matched=1
+        fi
+      elif [ "$ns_scope" = "subject" ]; then
+        if printf '%s' "$subject" | grep -Eqi -- "$ns_regex"; then
+          ns_matched=1
+        fi
+      fi
+      if [ "$ns_matched" -eq 1 ]; then
+        rule="noise-sender:${ns_name}"
+        break
+      fi
+    done < "$NOISE_RULES"
+  fi
+
+  # 7. calendar-ignore (type: calendar-event only) — declined-self, or
+  # non-self attendee count over calendar-max-attendees. Checked last;
+  # rule 2 (self-only-calendar) already claims solo blocks (empty/absent
+  # attendees, or self-only) before this ever runs, so a missing
+  # attendees array never reaches here. Precision-first (D4): an event
+  # whose attendees carry no responseStatus at all is indeterminate on
+  # the declined check (jq yields "" for a missing field, never
+  # "declined") and never falls through to a hold on that basis alone.
+  if [ -z "$rule" ] && [ "$type" = "calendar-event" ]; then
+    cal_declined="$(printf '%s' "$body" | jq -r '
+      ((.attendees // []) | map(select((.self // false))) | .[0].responseStatus) // ""
+    ' 2>/dev/null || echo "")"
+    if [ "$cal_declined" = "declined" ]; then
+      rule="calendar-ignore:skipped-declined"
+    else
+      cal_has_attendees="$(printf '%s' "$body" | jq -r 'if has("attendees") then "1" else "0" end' 2>/dev/null || echo "0")"
+      cal_other_count="$(printf '%s' "$body" | jq -r '(.attendees // []) | map(select((.self // false) | not)) | length' 2>/dev/null || echo "")"
+      if [ "$cal_has_attendees" = "1" ] && [ -n "$cal_other_count" ] && [ "$cal_other_count" -gt "$CAL_MAX_ATTENDEES" ] 2>/dev/null; then
+        rule="calendar-ignore:skipped-large:${cal_other_count}"
+      fi
+    fi
+  fi
+
   if [ -n "$rule" ]; then
     held=$((held + 1))
     case "$rule" in
@@ -400,6 +529,8 @@ while IFS= read -r id; do
       otp-security) rule_otp=$((rule_otp + 1)) ;;
       linkedin-invitation) rule_li=$((rule_li + 1)) ;;
       cold-pitch) rule_cold=$((rule_cold + 1)) ;;
+      noise-sender:*) rule_noise=$((rule_noise + 1)) ;;
+      calendar-ignore:*) rule_calignore=$((rule_calignore + 1)) ;;
     esac
 
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -414,8 +545,8 @@ while IFS= read -r id; do
   fi
 done < "$ELIGIBLE_IDS"
 
-printf 'triage: scanned=%d held=%d already-filed=%d already-held=%d per-rule=noreply-marketing:%d,self-only-calendar:%d,otp-security:%d,linkedin-invitation:%d,cold-pitch:%d\n' \
+printf 'triage: scanned=%d held=%d already-filed=%d already-held=%d per-rule=noreply-marketing:%d,self-only-calendar:%d,otp-security:%d,linkedin-invitation:%d,cold-pitch:%d,noise-sender:%d,calendar-ignore:%d\n' \
   "$scanned" "$held" "$already_filed" "$already_held" \
-  "$rule_noreply" "$rule_selfcal" "$rule_otp" "$rule_li" "$rule_cold"
+  "$rule_noreply" "$rule_selfcal" "$rule_otp" "$rule_li" "$rule_cold" "$rule_noise" "$rule_calignore"
 
 exit 0

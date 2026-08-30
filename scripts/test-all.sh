@@ -21,6 +21,7 @@ SKIP_NODE=0
 SUITES="
 packages/core/tests/run-store-tests.sh
 packages/core/tests/run-render-tests.sh
+packages/core/tests/run-merge-tests.sh
 packages/connectors/tests/run-capture-tests.sh
 packages/connectors/tests/run-beeper-capture-tests.sh
 packages/connectors/tests/run-beeper-out-tests.sh
@@ -33,6 +34,8 @@ packages/ingestion/tests/run-structured-tests.sh
 packages/ingestion/tests/run-scoring-tests.sh
 packages/ingestion/tests/run-feedback-tests.sh
 packages/ingestion/tests/run-thread-tests.sh
+packages/ingestion/tests/run-refresh-tests.sh
+packages/ingestion/tests/run-merge-candidates-tests.sh
 packages/ingestion/tests/run-embeddings-tests.sh
 packages/attention/tests/run-attention-tests.sh
 packages/attention/tests/run-capacity-tests.sh

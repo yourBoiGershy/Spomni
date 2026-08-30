@@ -66,18 +66,25 @@ Exact templates, per step (elapsed seconds and counts illustrative):
   one `✓ Ns —` line per lane as each finishes (beeper, gmail, calendar),
   each citing that lane's own sweep summary line.
 - **2(a):** `▶ Triaging held-out events…` /
-  `✓ 8s — triage held 122 events: 120 calendar blocks with only you, 2 marketing.`
+  `✓ 8s — triage held 122 events: 120 calendar blocks with only you, 2 marketing, 31 noise senders.`
 - **2(b):** `▶ Filing calendar/email touchpoints deterministically…` /
   `✓ 17s — filed 190 calendar/email touchpoints for 80 people without a model call; 10 held for judgment.`
 - **2(c):** `▶ Reading 46 chat threads (one model call each, 6 in parallel)…` /
   `✓ 111s — 43 threads summarized, 3 skipped (2 security notices, 1 broadcast); kinds: 9 friend, 8 unsolicited, 13 group…` then
   `✓ 2s — 146 conversation-days filed for 62 people.`
-- **2(d):** `▶ Judging 52 remaining emails/events with the model…` /
-  `✓ 468s — 15 real touchpoints filed (12 new people); 37 were bots/newsletters/notices and are marked done.`
+- **2(d):** `▶ Filing 15 remaining emails (one model call each, 6 in parallel)…` /
+  `✓ 1m 40s — 15 filed, 0 skipped.`
+- **2(e):** `▶ Refreshing 4 people touched by more than one thread…` /
+  `✓ 22s — 4 people refreshed (inferred facts + open/resolved threads only).` or, if skipped:
+  `✓ 0s — skipped: 46 people touched by >1 thread exceeds the 40-person budget cap.`
 - **Step 3/4:** `▶ Building stats and deriving participation…` /
   `✓ Ns — stats built for <people>/<interactions>; participation derived for N self identities.` Then hand off to
   `/review-tiers --all`, which prints its own step-by-step narration and
   correction digest — do not restate or duplicate it here.
+- **4(b):** `▶ Checking for duplicate people…` /
+  `✓ 3s — 2 merge candidates found.` then, after the user's reply,
+  `✓ 12s — 1 of 2 merged (#1); #2 skipped.` or, if none found:
+  `✓ 3s — 0 merge candidates found.`
 - **Close:** one total-elapsed line (`✓ total <M>m<S>s`) followed by the
   pointer to the digest for corrections — nothing here restates it.
 
@@ -170,13 +177,16 @@ backfilled and what didn't in the eventual summary.
 
 ## Step 2 — file the backfilled history
 
-Four sub-steps, in order, over whatever new `inbox/` capture events the
+Five sub-steps, in order, over whatever new `inbox/` capture events the
 three backfill sweeps just landed. Expect hundreds of structured
 (calendar/metadata-only-email) events to file deterministically in under
 30 seconds; chat-message events go through sub-step (c)'s one-call-per-
-thread path (plan 32), never the debrief skill's per-day model pass; the
-debrief path (sub-step d) only ever sees non-chat free text — email
-bodies, voice notes, and whatever structured events (a)/(b) held.
+thread path (plan 32) and the remaining emails go through sub-step (d)'s
+same one-call-per-thread path with `--kind email` (plan 36 A2) — neither
+goes through the debrief skill's per-day model pass. The debrief skill
+itself is invoked by this run only for voice-note / `type: other` free
+text and whatever structured events (a)/(b) held — never for email or
+chat threads.
 
 **(a) Triage.**
 
@@ -193,7 +203,10 @@ sub-step (b)'s form.
 Deterministic, no-model pre-judgment hold pass (`specs/import-triage.md`);
 populates `data/ingestion/triage-held.log` so neither (b) nor (c) spends
 judgment re-deciding a class of event this pass already, conservatively,
-held out.
+held out. Rule 6 (`noise-sender:<name>`) now also holds pattern-matched
+system/notification senders — `packages/ingestion/config/noise-senders.tsv`
+shipped rows plus `<data-dir>/ingestion/noise-senders.local.tsv` local
+overrides, per `specs/import-triage.md` — before (d) ever sees them.
 
 **(b) Deterministic structured filing.**
 
@@ -249,14 +262,46 @@ Spec of record: `packages/ingestion/specs/thread-summary.md` (the model
 call's contract); `file-thread.sh`'s own header comment (episodes, person
 upsert, ledger) for the deterministic writer's rules.
 
-**(d) Debrief the remainder** — the old (c): only non-chat free text (email
-bodies, voice notes, linkedin-notification, `other`) plus
-`structured-held.log` ids remain for the normal filing/debrief path
-(`packages/ingestion/skills/debrief/SKILL.md`); shard mode per
-`specs/parallel-filing.md` only if more than ~40 events remain. This
-produces `people/<slug>.md` (new people as needed) and `interactions/*.md`
-files. No `tier` is set by this step — filing carries no tier opinion, per
-the spec.
+**(d) File the remaining emails in one call each.** Plan 36 A2: every
+remaining `type: email` capture (not in `debrief-filed.log` /
+`triage-held.log` / already structured-filed) gets the same one-call-per-
+thread treatment as (c), reusing `summarize-thread.sh`/`file-thread.sh`
+with `--kind email` instead of a per-day agentic debrief pass — a running-
+cost cut for the same reason as (c).
+
+```sh
+# every remaining type: email capture not in debrief-filed.log / triage-held.log / structured-filed
+for f in $(<eligible email capture files>); do
+  bash packages/ingestion/scripts/summarize-thread.sh "$f" --kind email \
+    --out <data-dir>/ingestion/thread-summaries/$(basename "$f" .md).json
+done   # run with xargs -P 6, exactly like (c)
+for j in <data-dir>/ingestion/thread-summaries/*.json; do
+  bash packages/ingestion/scripts/file-thread.sh <store-dir> \
+    <store-dir>/inbox/$(basename "$j" .json).md "$j" --data-dir <data-dir>
+done
+```
+
+The debrief skill (`packages/ingestion/skills/debrief/SKILL.md`) is used by
+this run ONLY for voice-note / `type: other` free text now — never for
+email; shard mode per `specs/parallel-filing.md` only if more than ~40 of
+those remain. This produces `people/<slug>.md` (new people as needed) and
+`interactions/*.md` files. No `tier` is set by this step — filing carries
+no tier opinion, per the spec.
+
+**(e) Refresh people touched by more than one thread.** Plan 36 A3: for
+every person slug appearing in the `people` list of ≥ 2 thread-summary
+JSONs written by (c)/(d), run
+
+```sh
+bash packages/ingestion/scripts/refresh-person.sh <store-dir> <slug> --data-dir <data-dir>
+```
+
+once per such slug (one model call each). It rewrites only that person's
+inferred facts and open/resolved threads — a told-by-user fact or a stated
+tier/kind is never touched. This step counts against the 8-minute session
+budget; if more than 40 people qualify, skip it and say why in the
+progress line (`✓ 0s — skipped: N people touched by >1 thread exceeds the
+40-person budget cap.`) rather than running it and blowing the budget.
 
 ## Step 3 — build stats
 
@@ -313,6 +358,34 @@ State the channel once: `bash packages/ingestion/scripts/profile-set-notify.sh
 (default beeper-self when the beeper lane is configured, else gmail-self
 with `--gmail-address`).
 
+**(b) Merge duplicate people (confirm-first).** Plan 36 B1: after
+review-tiers' digest, check for people the earlier filing passes likely
+split into more than one `people/<slug>.md`:
+
+```sh
+bash packages/ingestion/scripts/find-merge-candidates.sh <store-dir> --data-dir <data-dir>
+```
+
+If it reports `candidates=0`, say so and move on — nothing further to do.
+Otherwise present each candidate as a numbered row, e.g.
+`1. keep dhruv-mehta ← drop dhruv (slug-prefix+org)`, and ask the user to
+reply with the numbers to merge. **Never merge without a confirmed
+number** — this is the one filing-adjacent write in this skill that is
+not silently derived. Progress lines carry numbers only, never names, per
+the narration hard rule above. For each confirmed pair:
+
+```sh
+bash packages/core/scripts/person-merge.sh <store-dir> <keep-slug> <drop-slug> --data-dir <data-dir>
+```
+
+It ledgers a `merge` feedback event and rebuilds the index itself — no
+separate `build-index.sh` call needed after it. A case where one slug
+actually covers three distinct people (a `josh`-style collision) is a
+**re-file, not a merge** — point the user at `file-thread.sh`/the debrief
+path to move the wrongly-attributed interactions to their own new person,
+and note it in the summary as a manual follow-up; `person-merge.sh` only
+ever combines two slugs that are the same person under different names.
+
 ## Summary
 
 The progress lines already printed (Progress narration section above) are
@@ -327,11 +400,25 @@ them, kept as a short recap:
 - Thread filing (c): count of chat-message events summarized + filed via
   `summarize-thread.sh`/`file-thread.sh`, and count left pending on a
   retried model/schema failure, if any.
-- Debrief filing (d): count of events debrief filed.
+- Email filing (d): count of remaining emails summarized + filed via the
+  same `summarize-thread.sh --kind email`/`file-thread.sh` path, and
+  count left pending on a retried model/schema failure, if any.
+- People refresh (e): count of people refreshed, or the skip reason if
+  the 40-person budget cap was hit.
 - Totals: people/interactions counts in the store after Step 2.
 - `/review-tiers --all`'s own summary: derived tiers/kinds written,
   provisional user-model adopted (yes/no, revision), corrections applied
   this session.
+- Merge (4b): candidate count found, count confirmed and merged, count
+  left unconfirmed, any noted manual re-file case.
 
 Do not summarize or enumerate the untiered/excluded/skipped set beyond a
 bare count — no per-person callout, per the no-guilt rule above.
+
+**Bench.** Close the summary with a step table — `Step | events | elapsed`,
+one row per sub-step that ran (0, 1 per lane, 2a–2e, 3, 4, 4b) — built
+entirely from the `✓` lines' own elapsed seconds and counts (never
+re-timed or estimated). When this run is against a real store (not a
+fixture/test run), append that table verbatim, counts only and no names,
+under a "Bench" heading in
+`docs/plans/2026-08-30-36-store-currency-dedup-remainder-speed-preference-loop.md`.

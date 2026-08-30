@@ -10,7 +10,7 @@
 > sync-tick target) — it never writes `user-model.md`; rules/proposals are plan 34
 > U31/U32. Plan 37 (which restated D) is deleted.
 
-**Status:** proposed 2026-08-30 · **Branch:** chunk-36-store-currency
+**Status:** Built 2026-08-30 (waves 0–2 + C3 in PR #41; wave 3 live owed) · **Branch:** chunk-36-store-currency
 **Mission test (§1):** every unit cuts a running cost (remembering-to, re-reading
 old context, cleaning duplicates, re-stating preferences). Nothing here drafts,
 sends, scores engagement, or performs the relationship.

@@ -1,6 +1,6 @@
 # Contract: person
 
-`schema_version: 1.3.0`
+`schema_version: 1.4.0`
 
 ## Store location
 
@@ -18,7 +18,8 @@ wiki-links (see `docs/PROJECT-CONTEXT.md`'s store shape).
 
 ## Shape
 
-Markdown file with YAML frontmatter plus three fixed prose sections.
+Markdown file with YAML frontmatter plus three fixed prose sections, and one
+optional fourth section (`## Resolved`, 1.4.0).
 
 ### Frontmatter fields
 
@@ -52,7 +53,10 @@ direction only. Unkinded and untiered remain valid end states. The writer of
 kind fields is `packages/core/scripts/person-set-kind.sh`; the writer of
 tier + tier_source is `packages/core/scripts/person-set-tier.sh` (plan 31).
 
-Versioning: `1.3.0` = additive third Facts provenance label
+Versioning: `1.4.0` = additive currency model per plan 36 — Open threads
+`(as-of YYYY-MM-DD)` / `(as-of YYYY-MM-DD, unverified since YYYY-MM-DD)`
+suffixes, the optional `## Resolved` section, and the Facts `[stale]` marker
+(inferred facts only); `1.3.0` = additive third Facts provenance label
 `inferred-from-thread` per plan 32 (a fact the model inferred from a
 conversation the user is party to — never the same as told-by-user or
 inferred-from-public-web); `1.2.0` = additive `tier_source` field per plan 31 (a derived
@@ -62,7 +66,9 @@ valid. A `1.1.0`-or-earlier file with `tier` set and no `tier_source` is
 read as `tier_source: stated-by-user` (legacy default — every pre-1.2.0
 tier write required user confirmation, so this reading is safe).
 
-### Body sections (fixed, in this order)
+### Body sections (fixed order: Facts, Open threads, [Resolved], Personal
+details — `## Resolved` is optional and, when present, sits between Open
+threads and Personal details)
 
 #### `## Facts`
 
@@ -87,11 +93,69 @@ All three tags may carry an optional trailing date in parens, `(2026-08-29)`,
 noting when the fact was captured/inferred — useful for staleness checks.
 Facts with no tag are a validator error (see `validate-store.sh`).
 
+`[stale]` (1.4.0, plan 36) marks a fact the signal engine believes may no
+longer be current — it sits immediately after the provenance tag:
+
+```
+- **[inferred-public-web]** [stale] <fact text>
+- **[inferred-from-thread]** [stale] <fact text>
+```
+
+Only `inferred-public-web` and `inferred-from-thread` facts may carry
+`[stale]` — a `told-by-user` fact marked `[stale]` is a validator error, since
+machinery never second-guesses what the user directly told it. `[stale]`
+appearing before the provenance tag is caught by the existing
+missing-provenance check.
+
 #### `## Open threads`
 
 A bullet list of things to follow up on next time — questions asked, topics
 promised, loose ends. No provenance tag required (these are prospective, not
 factual claims).
+
+Each bullet may carry an optional trailing `(as-of YYYY-MM-DD)` suffix
+(1.4.0, plan 36), noting the date the thread was last known current:
+
+```
+- Said she'd send over the partnerships deck once it's done (as-of 2026-08-29)
+```
+
+Once a later interaction passes without the thread being explicitly resolved,
+the suffix grows a second clause — `(as-of YYYY-MM-DD, unverified since
+YYYY-MM-DD)` — added by the writer, never by hand:
+
+```
+- Said she'd send over the partnerships deck once it's done (as-of 2026-08-29, unverified since 2026-09-15)
+```
+
+Bullets with no trailing paren are legal (pre-1.4.0 threads) and read as
+as-of = the person's `last-touch`.
+
+**Latest-interaction-wins.** When the filing engine files an interaction
+dated D for this slug, every open thread whose as-of predates D and that was
+not explicitly resolved by that interaction gets `unverified since D`
+appended (idempotent — a thread that already carries an `unverified since`
+keeps its first such date; it is never bumped forward). Consumers (attention,
+query) drop unverified threads whose as-of predates the person's
+second-most-recent interaction — a thread survives exactly one missed
+interaction as a nudge candidate before it's treated as stale and dropped
+from view rather than resurfaced indefinitely. Writers: the filing engine's
+`packages/ingestion/scripts/file-thread.sh` and `refresh-person.sh`.
+
+#### `## Resolved` (optional, 1.4.0)
+
+An optional section, present only once a thread has been explicitly closed.
+When present it sits between `## Open threads` and `## Personal details`.
+Bullets carry a trailing `(resolved YYYY-MM-DD)`:
+
+```
+- Sent over the partnerships deck (resolved 2026-09-02)
+```
+
+No provenance tag required — same as Open threads, these describe the
+resolution of a prospective thread, not a factual claim about the person.
+Writers: the filing engine's `packages/ingestion/scripts/file-thread.sh` and
+`refresh-person.sh`.
 
 #### `## Personal details`
 

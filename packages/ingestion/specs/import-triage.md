@@ -12,9 +12,10 @@ script itself.
 
 Backfill and steady-state sweeps land junk in `inbox/` alongside real person
 events — marketing email, self-only calendar holds, OTP/security mail,
-LinkedIn "wants to connect" pings, cold sales pitches. Every one of these
+LinkedIn "wants to connect" pings, cold sales pitches, calendar noise
+(declined-by-self events, oversized all-hands). Every one of these
 currently costs a full model judgment call during debrief. This spec adds a
-cheap, deterministic, pre-judgment triage pass: five conservative rule
+cheap, deterministic, pre-judgment triage pass: seven conservative rule
 classes that can hold an event out of the debrief batch *without* a model in
 the loop, for the classes of junk narrow enough to detect with certainty
 from the event file alone.
@@ -76,11 +77,12 @@ Tab-separated, exactly three fields. Example:
 
 Every rule below must be verifiable by a checker reading the event file
 alone (frontmatter + body), plus `index.json`/`people/` for `cold-pitch`
+only, plus `<data-dir>/config/onboarding-backfill.tsv` for `calendar-ignore`
 only — no judgment calls, no free-text interpretation beyond fixed pattern
 matching. Rules apply **in the order listed below; first match wins** (an
 event matching more than one rule's pattern is held under whichever rule
 appears first in this list, and only one ledger line is written). An event
-matching none of the five rules is **not** held — it falls through to
+matching none of the seven rules is **not** held — it falls through to
 normal debrief judgment, per the precision-first doctrine.
 
 Fields referenced below are from capture-event 1.2.0
@@ -91,14 +93,22 @@ Fields referenced below are from capture-event 1.2.0
 
 ## Pattern source of truth
 
-This spec is authoritative for the five rule regexes below. The checker
-script (`packages/ingestion/scripts/triage-inbox.sh`) duplicates them
+This spec is authoritative for the five rule regexes below (rules 1-5). The
+checker script (`packages/ingestion/scripts/triage-inbox.sh`) duplicates them
 verbatim (BSD/POSIX-shell-safe form) rather than sourcing this file — there
 is no sync mechanism between the two copies. Any change to a pattern's
 content MUST land in this spec section and the script's rules section in the
-same commit; a change to only one side is a spec/script drift bug.
+same commit; a change to only one side is a spec/script drift bug. Rule 6
+(`noise-sender`) is table-driven instead — see its own section below, where
+`packages/ingestion/config/noise-senders.tsv` is the single, non-duplicated
+source of truth. Rule 7 (`calendar-ignore`) is neither a duplicated regex
+nor a pattern table — it is a structured-field check (`self`/
+`responseStatus` on `attendees[]`) plus one config-file lookup
+(`calendar-max-attendees`); its source of truth is its own section below
+and the checker script's rule 7 block directly, with the default value (12)
+required to match between the two.
 
-## The five rule classes
+## The seven rule classes
 
 ### 1. `noreply-marketing`
 
@@ -208,6 +218,99 @@ condition are required together; either alone is not sufficient to hold —
 a known sender using pitch-like phrasing (e.g. a colleague joking "quick
 question") is common and must not be held, and an unknown sender with a
 plain, non-pitch subject must not be held either.
+
+### 6. `noise-sender`
+
+Added by plan 36 unit C1, after live-corpus calibration surfaced a large
+remainder-time class the first five rules miss entirely: CI notices,
+security notices, newsletters, and GitHub/Vercel/Slack/Google-Workspace
+system notifications — none of them `noreply@`-shaped, so rule 1 never
+catches them. Applies only to `type: email`, checked last (after rule 5).
+
+Unlike rules 1–5, this rule is **table-driven**, not an embedded regex:
+its pattern source of truth is `packages/ingestion/config/noise-senders.tsv`,
+a tab-separated `name<TAB>regex<TAB>scope` table (`#`-prefixed and blank
+lines ignored; `regex` is `grep -E -i`; `scope` is `from` — matched against
+`participant-hints` plus a connector-written `From:` body header, same
+extraction as rule 1 — or `subject` — matched against the `Subject:`
+line only). Rows are checked in file order; the first matching row wins.
+
+An optional **local override table** lives at
+`<data-dir>/noise-senders.local.tsv` (same columns), read after the
+shipped table. A local row whose `name` matches a shipped row's `name`
+**replaces** that shipped row entirely (the shipped pattern is dropped,
+not additionally applied) — this is the escape hatch for a user's private
+corpus turning up a false-positive or a new noise class the shipped table
+doesn't cover, without editing `packages/` at all.
+
+Held reason is written to the D3 ledger as `noise-sender:<name>`
+(e.g. `noise-sender:ci-sender`), not a bare rule name — the ledger's
+`per-rule=` summary counter aggregates all names under one
+`noise-sender:<n>` total.
+
+Precision-first (D4) applies here as strictly as the other five rules:
+every shipped pattern is scoped to a specific system/notification
+local-part or domain, never a bare personal domain, and a pattern that
+would otherwise collide with an already-covered class (e.g. a bare
+`notifications@`/`noreply@` local part, already owned by rule 1's
+domain-agnostic match) is deliberately narrowed or dropped rather than
+duplicated as dead code. Two shipped subject-scope rows
+(`verification-code-subject`, `security-alert-subject`) are present in
+the table for documentation/future-proofing even though, for `type: email`,
+rule 3 (`otp-security`) always matches the identical subject phrasing
+first — first-match-wins means they are currently unreachable in practice
+for `type: email`, which is expected and not a bug.
+
+### 7. `calendar-ignore`
+
+Added by plan 36 unit C3, absorbed from plan 04's D5 — the calendar-side
+counterpart to rule 2: two conservative, structured-field ignore classes
+that are real, filed-worthy events by content but low-value as touchpoints.
+Applies only to `type: calendar-event`, checked last (after rule 6). Rule 2
+(`self-only-calendar`) already claims any event whose `attendees[]` is
+empty/absent or self-only before this rule ever runs — this rule only sees
+events with at least one non-self attendee.
+
+**Declined-self.** Holds when the attendee entry with `self: true` carries
+`responseStatus: "declined"` (the Google Calendar API attendee shape,
+per `capture-event.md`'s calendar example). Held reason:
+`calendar-ignore:skipped-declined`.
+
+```jq
+(.type == "calendar-event") and
+((.attendees // []) | map(select((.self // false))) | .[0].responseStatus == "declined")
+```
+
+**Large event.** Holds when the non-self attendee count exceeds
+`calendar-max-attendees`, a row (`calendar-max-attendees<TAB><n>`) in
+`<data-dir>/config/onboarding-backfill.tsv` — the same file
+`resolve-backfill-window.sh` reads `window_months` from and
+`file-structured.sh` reads `self`/`ignore` identities from. Default **12**
+when the file, or the row, is absent. Held reason:
+`calendar-ignore:skipped-large:<n>` where `<n>` is the non-self attendee
+count.
+
+```jq
+(.type == "calendar-event") and
+((.attendees // []) | map(select((.self // false) | not)) | length) as $n |
+($n > $calendar_max_attendees)
+```
+
+Precision-first (D4) applies as strictly as the other six rules: an event
+whose body carries no `attendees` field at all, or whose self-attendee
+entry carries no `responseStatus` field, is indeterminate on the
+declined-self check and never held on that basis — the checker's jq query
+yields an empty string for a missing field, not a false match on
+`"declined"`. Similarly, the large-event check only fires when an
+`attendees` field is actually present in the body; its absence means "no
+data", not "zero attendees, therefore fine to compare against the cap" —
+that ambiguity falls through to judgment rather than risk a miscount.
+
+Held reason is written to the D3 ledger as the full
+`calendar-ignore:skipped-declined` or `calendar-ignore:skipped-large:<n>`
+string (mirroring rule 6's `noise-sender:<name>` convention) — the ledger's
+`per-rule=` summary counter aggregates both sub-reasons under one
+`calendar-ignore:<n>` total.
 
 ## Group-noise deferral (future work)
 

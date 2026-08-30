@@ -16,11 +16,17 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   user confirmation, style notes); `user-model.md` (single writer at runtime — the
   draft/confirmed investment-mix singleton, plan 30); `index/embeddings.jsonl`
   (single writer at runtime — `scripts/embed-people.sh`, plan 30)
-- `thread-summary 1.0.0` (contract in `specs/thread-summary.md`; produced by
+- `thread-summary 1.1.0` (contract in `specs/thread-summary.md`; produced by
   `scripts/summarize-thread.sh`, consumed by `scripts/file-thread.sh` — one
   model call's strict-JSON output per chat thread, replacing the debrief
   skill's per-day episode-split model pass for `chat-message` captures
-  during onboarding/backfill, plan 32)
+  during onboarding/backfill, plan 32; 1.1.0 adds `resolved_threads[]` +
+  `kind: chat|email` and the `--kind email` non-chat variant, plan 36)
+- `currency 1.0.0` (spec in `specs/currency.md` — `## Open threads`/
+  `## Resolved` bullet shapes, the `[stale]` inferred-fact marker, and the
+  latest-interaction-wins demotion rule `file-thread.sh`/`refresh-person.sh`
+  implement and `who-next-direct.sh`/`derive-evidence.sh`/brief render
+  consume, plan 36)
 - Skills: `skills/debrief/` (filing engine), `skills/calendar-reconcile/`
   (attendee↔person matching, event links, un-debriefed + upcoming-briefworthy
   artifacts), `skills/onboarding-seed/` (session-driven, one-shot fresh-install
@@ -96,16 +102,38 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   `scripts/file-thread.sh` (deterministic writer consuming that JSON —
   timestamp-derived episode split, chatID dedup union (D3), person upsert,
   `debrief-filed.log` append, no model call and no `tier`/`kind` opinion,
-  plan 32)
+  plan 32), `scripts/refresh-person.sh` (one-shot, hermetic model call over
+  a person's full interaction timeline — re-derives `## Facts`'
+  `inferred-*` bullets (told-by-user untouched) plus the `## Open threads`/
+  `## Resolved` bullet set per `specs/currency.md`'s currency model; sole
+  writer of `data/ingestion/refresh.log`, plan 36),
+  `scripts/find-merge-candidates.sh` (read-only over
+  `<store-dir>/people/`, `<store-dir>/interactions/`, `<store-dir>/index.json`,
+  and `<data-dir>/ingestion/identities.tsv` — deterministic scan for likely
+  duplicate person.md pairs via shared identity, normalized-name, or
+  slug-prefix+org/domain matching (highest-precedence reason wins when a
+  pair matches more than one rule: shared-identity > same-name >
+  slug-prefix+org > slug-prefix+domain), keep/drop ordered by
+  interaction-link count then slug specificity; emits `candidates=<n>` then
+  exactly one TSV `keep\tdrop\treason` row per pair; never merges, never
+  writes — pairs are handed to `packages/core/scripts/person-merge.sh` for
+  a human-confirmed merge, plan 36 B2)
+- Config: `config/noise-senders.tsv` — the rule 6 (`noise-sender`) name/regex/
+  scope pattern table `scripts/triage-inbox.sh` reads (plus an optional
+  `<data-dir>/noise-senders.local.tsv` override, same columns, local-row-wins
+  by name), per `specs/import-triage.md` rule 6 (plan 36)
 - Specs: `specs/stated-preference-filing.md` — how tier utterances, signal opt-outs,
   priorities, and cadence wishes file into `person.md`/`profile.md`, including the
   tier-change confirmation path (amends plan 03's filing-engine brief; plan 03 is
   unbuilt); `specs/onboarding-tiering-seed.md` — the cold-start tier-suggestion
   sequence, scoring model, and no-guilt presentation rules `skills/onboarding-seed/`
   runs (plan 11 unit 13, amended by plan 24 for the 6-month configurable window +
-  participation-signal scoring); `specs/import-triage.md` — the five
-  deterministic, precision-first junk-hold rule classes and the D3
-  held-by-rule ledger convention (plan 26); `specs/parallel-filing.md` —
+  participation-signal scoring); `specs/import-triage.md` — the seven
+  deterministic, precision-first junk-hold rule classes (rule 7,
+  `calendar-ignore` — declined-self/oversized-event calendar holds via the
+  `calendar-max-attendees` config row, absorbed from plan 04 D5 — added by
+  plan 36) and the D3 held-by-rule ledger convention (plan 26);
+  `specs/parallel-filing.md` —
   the shard pre-pass's connected-components semantics, `skills/debrief/`'s
   shard mode deviations, and the wave protocol a parallel filing run
   follows end to end (plan 27); `specs/user-model-derive.md` — the
@@ -191,18 +219,23 @@ provenance labeling. Ingestion is the sole writer of the people-store.
 
 ## Consumes
 
-- `person@^1`, `interaction@^1`, `capture-event@^1`, `wakeup@^1`, `profile@^1`,
-  `onboarding-backfill@^1.0`, `import-pipeline@^1` (core; wake-up creation only via core's
+- `person@^1.4`, `interaction@^1`, `capture-event@^1`, `wakeup@^1`, `profile@^1`,
+  `onboarding-backfill@^1.0`, `import-pipeline@^1`, `feedback-event@^1.2` (core; wake-up creation only via core's
   `wakeup-add.sh`; `profile@^1` and `person@^1` tier writes per
   `specs/stated-preference-filing.md`; `person@^1` now read/written at 1.1.0 for
   the plan-30 `kind`/`kind_note`/`kind_source`/`kind_expires`/`kind_updated`
-  fields, sole write path `packages/core/scripts/person-set-kind.sh`;
-  `onboarding-backfill@^1.0` read by `skills/onboarding-seed/` and
-  `scripts/derive-participation.sh` for the configured window and `self`
-  identities, per plan 24; `import-pipeline@^1` is the five-stage
-  fetch→normalize→triage→judgment→file contract that `scripts/triage-inbox.sh`
-  and `skills/debrief/`'s triage-held exclusion implement the triage/judgment
-  stages of, per plan 26)
+  fields, sole write path `packages/core/scripts/person-set-kind.sh`, and at
+  1.4.0 for the currency-bearing `## Open threads`/`## Resolved` bullet
+  shapes `specs/currency.md` implements (plan 36); `onboarding-backfill@^1.0`
+  read by `skills/onboarding-seed/` and `scripts/derive-participation.sh` for
+  the configured window and `self` identities, per plan 24; `import-pipeline@^1`
+  is the five-stage fetch→normalize→triage→judgment→file contract that
+  `scripts/triage-inbox.sh` and `skills/debrief/`'s triage-held exclusion
+  implement the triage/judgment stages of, per plan 26; `feedback-event@^1.2`
+  is `scripts/feedback-file.sh`'s own contract — ingestion is the contract's
+  sole writer per `contracts/feedback-event.md`, consumed here at 1.2.0 for
+  the `merge`/`noise-sender`/`stale-marked` types and the `sender:<pattern>`
+  target shape, plan 36)
 - `user-model@^1` (core; `contracts/user-model.md` — `scripts/derive-user-model.sh`
   is the sole writer of both the draft and, via `skills/review-tiers/`'s confirm
   dialogue, the confirmed state), `relationship-scoring@^1` (core;

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# file-thread.sh — deterministic writer that turns a chat-message capture
-# event + its thread-summary JSON (packages/ingestion/specs/thread-summary.md
-# 1.0.0, produced by scripts/summarize-thread.sh) into person/interaction
-# files, no model call in the loop (plan 32 D2/D3).
+# file-thread.sh — deterministic writer that turns a chat-message (or,
+# kind: email, an email) capture event + its thread-summary JSON
+# (packages/ingestion/specs/thread-summary.md 1.1.0, produced by
+# scripts/summarize-thread.sh) into person/interaction files, no model call
+# in the loop (plan 32 D2/D3, plan 36 A3 currency + email kind).
 #
 # Usage:
 #   file-thread.sh <store-dir> <event-file> <summary.json>
@@ -49,11 +50,28 @@
 # that enum is amended for chat-derived provenance (out of scope here,
 # flagged as collateral).
 #
+# kind: email (thread-summary.md 1.1.0): the chatID dedup union above is
+# skipped entirely — one interaction per capture, dated from the capture's
+# `captured_at` frontmatter field, `people` = the summary's own non-self
+# `people[]` (email `sender_ids` may be email addresses).
+#
+# Currency (specs/currency.md, plan 36 A3): every touched person's
+# `## Open threads` bullets get latest-interaction-wins applied — a new
+# bullet from `summary.open_threads` is stamped `(as-of D)`; a bullet whose
+# verbatim text appears in `summary.resolved_threads` moves into
+# `## Resolved` as `(resolved D)`; every remaining bullet whose as-of
+# predates D (bare pre-1.4.0 bullets read their as-of as the person's prior
+# `last-touch`) is demoted to `(..., unverified since D)`, idempotently (an
+# existing unverified-since date is never overwritten). `open_threads`/
+# `resolved_threads` only apply to the people linked on the thread's LAST
+# active day (same scope as commitments/gist below); every touched person
+# still gets the demotion pass using their own last-linked day as D.
+#
 # Never writes tier/tier_source/kind* — filing carries no tier opinion.
 # Never runs build-index.sh/validate-store.sh (the caller does).
 #
 # Prints exactly one summary line:
-#   file-thread: <id> people_new=<n> people_touched=<n> interactions=<n> days=<n> dedup_ids=<n>
+#   file-thread: <id> people_new=<n> people_touched=<n> interactions=<n> days=<n> dedup_ids=<n> resolved=<n> unverified=<n>
 # or, for a skip:
 #   file-thread: <id> skipped=<reason>
 #
@@ -227,48 +245,66 @@ if skip is not None:
 chat_id = summary.get("chat_id") or (primary_body or {}).get("chatID")
 chat_type = summary.get("chat_type") or (primary_body or {}).get("chatType") or "single"
 
+# kind (thread-summary.md 1.1.0, plan 36 A3): "email" captures carry no
+# chatID/messages body at all -- they skip the whole chatID dedup union
+# (D3) below and get exactly one interaction per capture instead.
+is_email = summary.get("kind") == "email"
+
 # ---------------------------------------------------------------------------
 # 2. Dedup — every inbox/*.md chat-message capture sharing chat_id, messages
-#    unioned by message id.
+#    unioned by message id. Skipped entirely for kind: email (one interaction
+#    per capture, no chatID union).
 # ---------------------------------------------------------------------------
 
-contributing = {}  # capture_id -> messages list
-for path in sorted(glob.glob(os.path.join(inbox_dir, "*.md"))):
-    fm, body = read_capture(path)
-    if not is_chat_body(body):
-        continue
-    if body.get("chatID") != chat_id:
-        continue
-    cap_id = fm.get("id") or os.path.splitext(os.path.basename(path))[0]
-    contributing[cap_id] = body.get("messages") or []
-
-if primary_id not in contributing and is_chat_body(primary_body):
-    contributing[primary_id] = (primary_body or {}).get("messages") or []
-
-contributing_ids = sorted(contributing.keys())
-
-existing_ledger = ledger_ids()
-new_ids = [cid for cid in contributing_ids if cid not in existing_ledger]
-
-if not new_ids:
-    # Already filed in a prior run — true no-op (idempotent rerun).
-    print(
-        "file-thread: %s people_new=0 people_touched=0 interactions=0 days=0 dedup_ids=0"
-        % primary_id
-    )
-    sys.exit(0)
-
-union_by_id = {}
-for cid in contributing_ids:
-    for msg in contributing[cid]:
-        if not isinstance(msg, dict):
+if is_email:
+    existing_ledger = ledger_ids()
+    if primary_id in existing_ledger:
+        # Already filed in a prior run — true no-op (idempotent rerun).
+        print(
+            "file-thread: %s people_new=0 people_touched=0 interactions=0 days=0 dedup_ids=0 resolved=0 unverified=0"
+            % primary_id
+        )
+        sys.exit(0)
+    new_ids = [primary_id]
+    messages = []
+else:
+    contributing = {}  # capture_id -> messages list
+    for path in sorted(glob.glob(os.path.join(inbox_dir, "*.md"))):
+        fm, body = read_capture(path)
+        if not is_chat_body(body):
             continue
-        mid = msg.get("id")
-        key = mid if mid is not None else id(msg)
-        if key not in union_by_id:
-            union_by_id[key] = msg
+        if body.get("chatID") != chat_id:
+            continue
+        cap_id = fm.get("id") or os.path.splitext(os.path.basename(path))[0]
+        contributing[cap_id] = body.get("messages") or []
 
-messages = list(union_by_id.values())
+    if primary_id not in contributing and is_chat_body(primary_body):
+        contributing[primary_id] = (primary_body or {}).get("messages") or []
+
+    contributing_ids = sorted(contributing.keys())
+
+    existing_ledger = ledger_ids()
+    new_ids = [cid for cid in contributing_ids if cid not in existing_ledger]
+
+    if not new_ids:
+        # Already filed in a prior run — true no-op (idempotent rerun).
+        print(
+            "file-thread: %s people_new=0 people_touched=0 interactions=0 days=0 dedup_ids=0 resolved=0 unverified=0"
+            % primary_id
+        )
+        sys.exit(0)
+
+    union_by_id = {}
+    for cid in contributing_ids:
+        for msg in contributing[cid]:
+            if not isinstance(msg, dict):
+                continue
+            mid = msg.get("id")
+            key = mid if mid is not None else id(msg)
+            if key not in union_by_id:
+                union_by_id[key] = msg
+
+    messages = list(union_by_id.values())
 
 
 def msg_date(msg):
@@ -378,60 +414,75 @@ def get_thread_fallback_person():
 
 
 days = {}  # date -> {"messages": [...], "senders": set(), "sender_names": {sid: name}, "people": [...]}
-for msg in messages:
-    if not is_active(msg):
-        continue
-    d = msg_date(msg)
-    if not d:
-        continue
-    days.setdefault(d, {"messages": [], "senders": set(), "sender_names": {}})
-    days[d]["messages"].append(msg)
-    sid = msg.get("senderID")
-    days[d]["senders"].add(sid)
-    sname = msg.get("senderName")
-    if sname:
-        days[d]["sender_names"][sid] = sname
 
-sorted_days = sorted(days.keys())
+if is_email:
+    # kind: email — no messages/days union at all (D3 skipped above); one
+    # synthetic "day" dated from the capture's captured_at, its people the
+    # summary's own non-self people[] (falling back to the one per-thread
+    # fallback person if the summary listed nobody, mirroring tier 4 below).
+    email_date = (primary_fm.get("captured_at") or "")[:10]
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", email_date):
+        import datetime
 
-for d in sorted_days:
-    matched = []
-    seen_names = set()
-    for sid in days[d]["senders"]:
-        p = sender_to_person.get(sid)
-        if p and p.get("display_name") not in seen_names:
-            seen_names.add(p["display_name"])
-            matched.append(p)
+        email_date = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    days[email_date] = {"messages": [], "senders": set(), "sender_names": {}}
+    days[email_date]["people"] = list(people_entries) if people_entries else [get_thread_fallback_person()]
+    sorted_days = [email_date]
+else:
+    for msg in messages:
+        if not is_active(msg):
+            continue
+        d = msg_date(msg)
+        if not d:
+            continue
+        days.setdefault(d, {"messages": [], "senders": set(), "sender_names": {}})
+        days[d]["messages"].append(msg)
+        sid = msg.get("senderID")
+        days[d]["senders"].add(sid)
+        sname = msg.get("senderName")
+        if sname:
+            days[d]["sender_names"][sid] = sname
 
-    if not matched:
-        # Tier 2: every non-self summary person (was single-chat-only;
-        # now applies to every chat type).
-        matched = list(people_entries)
+    sorted_days = sorted(days.keys())
 
-    if not matched:
-        # Tier 3: the summary listed nobody non-self at all — resolve this
-        # day's senders by senderName against an existing person's name.
+    for d in sorted_days:
+        matched = []
         seen_names = set()
         for sid in days[d]["senders"]:
-            sname = days[d]["sender_names"].get(sid)
-            norm = normalize_name(sname) if sname else ""
-            if norm and norm in name_to_slug and name_to_display[norm] not in seen_names:
-                seen_names.add(name_to_display[norm])
-                matched.append(
-                    {
-                        "display_name": name_to_display[norm],
-                        "sender_ids": [sid],
-                        "is_self": False,
-                        "role_guess": "unknown",
-                    }
-                )
+            p = sender_to_person.get(sid)
+            if p and p.get("display_name") not in seen_names:
+                seen_names.add(p["display_name"])
+                matched.append(p)
 
-    if not matched:
-        # Tier 4: last resort — the one per-thread fallback person, so the
-        # day is never dropped.
-        matched = [get_thread_fallback_person()]
+        if not matched:
+            # Tier 2: every non-self summary person (was single-chat-only;
+            # now applies to every chat type).
+            matched = list(people_entries)
 
-    days[d]["people"] = matched
+        if not matched:
+            # Tier 3: the summary listed nobody non-self at all — resolve this
+            # day's senders by senderName against an existing person's name.
+            seen_names = set()
+            for sid in days[d]["senders"]:
+                sname = days[d]["sender_names"].get(sid)
+                norm = normalize_name(sname) if sname else ""
+                if norm and norm in name_to_slug and name_to_display[norm] not in seen_names:
+                    seen_names.add(name_to_display[norm])
+                    matched.append(
+                        {
+                            "display_name": name_to_display[norm],
+                            "sender_ids": [sid],
+                            "is_self": False,
+                            "role_guess": "unknown",
+                        }
+                    )
+
+        if not matched:
+            # Tier 4: last resort — the one per-thread fallback person, so the
+            # day is never dropped.
+            matched = [get_thread_fallback_person()]
+
+        days[d]["people"] = matched
 
 # ---------------------------------------------------------------------------
 # 5. Per-person aggregate: which days they're linked to.
@@ -543,6 +594,124 @@ def append_facts(slug, facts_for_person):
         f.write(content)
 
 
+# person.md's '## Open threads' bullet, minus its leading "- ", parsed for
+# its optional trailing (as-of ...) / (as-of ..., unverified since ...)
+# suffix (specs/currency.md, plan 36). No suffix (pre-1.4.0 bare bullet) ->
+# (None, None).
+def parse_open_thread_bullet(raw):
+    m = re.match(
+        r"^(.*?)\s*\(as-of (\d{4}-\d{2}-\d{2})(?:, unverified since (\d{4}-\d{2}-\d{2}))?\)\s*$",
+        raw,
+    )
+    if m:
+        return m.group(1), m.group(2), m.group(3)
+    return raw.strip(), None, None
+
+
+def render_open_thread_bullet(text, as_of, unverified_since):
+    if not as_of:
+        return "- %s" % text
+    if unverified_since:
+        return "- %s (as-of %s, unverified since %s)" % (text, as_of, unverified_since)
+    return "- %s (as-of %s)" % (text, as_of)
+
+
+def apply_currency(slug, filed_date, prior_last_touch, new_open_threads, resolved_texts):
+    """specs/currency.md (plan 36): stamps new open threads with (as-of
+    filed_date), moves any bullet listed verbatim in resolved_texts into
+    '## Resolved' as (resolved filed_date), and demotes every remaining
+    bullet whose as-of predates filed_date to '(..., unverified since
+    filed_date)' (idempotent -- an existing unverified-since date is never
+    overwritten). Returns (resolved_count, unverified_count). No-op (0, 0)
+    on a missing file, DRY_RUN, or a file with no '## Open threads' section
+    in the expected fixed-order shape."""
+    path = os.path.join(people_dir, "%s.md" % slug)
+    if DRY_RUN or not os.path.isfile(path):
+        return 0, 0
+    with open(path) as f:
+        content = f.read()
+
+    m = re.search(
+        r"## Open threads\n\n(.*?)\n\n(?:## Resolved\n\n(.*?)\n\n)?## Personal details",
+        content,
+        re.DOTALL,
+    )
+    if not m:
+        return 0, 0
+
+    open_body, resolved_body = m.group(1), m.group(2)
+
+    open_lines = [l for l in open_body.splitlines() if l.strip()]
+    if open_lines == ["_none_"]:
+        open_lines = []
+    bullets = []
+    for line in open_lines:
+        if not line.startswith("- "):
+            continue
+        text, as_of, unverified_since = parse_open_thread_bullet(line[2:])
+        bullets.append({"text": text, "as_of": as_of, "unverified_since": unverified_since})
+
+    resolved_lines = [] if resolved_body is None else [l for l in resolved_body.splitlines() if l.strip()]
+
+    resolved_set = set(resolved_texts)
+    existing_texts = set(b["text"] for b in bullets)
+
+    # 1. Resolve — verbatim matches move out of Open threads into Resolved.
+    resolved_count = 0
+    remaining = []
+    for b in bullets:
+        if b["text"] in resolved_set:
+            resolved_lines.append("- %s (resolved %s)" % (b["text"], filed_date))
+            resolved_count += 1
+        else:
+            remaining.append(b)
+    bullets = remaining
+
+    # 2. Stamp new open threads (dedup verbatim on text; a text this same
+    # pass just resolved never re-enters Open threads).
+    for text in new_open_threads or []:
+        if text in existing_texts or text in resolved_set:
+            continue
+        bullets.append({"text": text, "as_of": filed_date, "unverified_since": None})
+        existing_texts.add(text)
+
+    # 3. Latest-interaction-wins — demote anything with as-of < filed_date
+    # that isn't already unverified (first-unverified date is sticky).
+    unverified_count = 0
+    for b in bullets:
+        as_of = b["as_of"]
+        if as_of is None:
+            # Bare (pre-1.4.0) bullet: implicit as-of = the person's
+            # last-touch before this write; no prior last-touch at all ->
+            # "treat as older" per specs/currency.md.
+            as_of = prior_last_touch or None
+            is_stale = as_of is None or as_of < filed_date
+        else:
+            is_stale = as_of < filed_date
+        if is_stale and not b["unverified_since"]:
+            b["as_of"] = as_of if as_of else filed_date
+            b["unverified_since"] = filed_date
+            unverified_count += 1
+
+    new_open_block = "\n".join(
+        render_open_thread_bullet(b["text"], b["as_of"], b["unverified_since"]) for b in bullets
+    )
+    if not new_open_block:
+        new_open_block = "_none_"
+
+    if resolved_lines:
+        resolved_block = "## Resolved\n\n" + "\n".join(resolved_lines) + "\n\n"
+    else:
+        resolved_block = ""
+
+    replacement = "## Open threads\n\n%s\n\n%s## Personal details" % (new_open_block, resolved_block)
+    content = content[: m.start()] + replacement + content[m.end() :]
+    with open(path, "w") as f:
+        f.write(content)
+
+    return resolved_count, unverified_count
+
+
 # ---------------------------------------------------------------------------
 # 7. Resolve/create a slug for every person with at least one active day.
 # ---------------------------------------------------------------------------
@@ -554,9 +723,14 @@ for fact in summary.get("facts") or []:
         continue
     facts_by_display_name.setdefault(about, []).append(fact)
 
+summary_open_threads = summary.get("open_threads") or []
+summary_resolved_threads = summary.get("resolved_threads") or []
+
 people_new = 0
 people_touched = set()
 slug_by_display_name = {}
+resolved_total = 0
+unverified_total = 0
 
 for display_name, date_set in person_days.items():
     dates = sorted(date_set)
@@ -584,10 +758,39 @@ for display_name, date_set in person_days.items():
         created = True
         people_new += 1
 
+    # Capture last-touch BEFORE update_last_touch_forward moves it, so
+    # apply_currency's bare-bullet fallback reads the pre-write value
+    # (specs/currency.md: "as-of = the person's last-touch before this
+    # write"). A freshly created person has no bare Open threads bullets
+    # to demote (template starts _none_), so this value is moot there.
+    prior_last_touch = ""
+    person_path = os.path.join(people_dir, "%s.md" % slug)
+    if os.path.isfile(person_path):
+        with open(person_path) as pf:
+            prior_content = pf.read()
+        prior_last_touch = read_frontmatter_field(prior_content, "last-touch")
+
     slug_by_display_name[display_name] = slug
     people_touched.add(slug)
     update_last_touch_forward(slug, last_touch)
     append_facts(slug, facts_by_display_name.get(display_name, []))
+
+    # Thread-level open_threads/resolved_threads only apply to the people
+    # linked on this thread's LAST active day (matching the existing
+    # gist/commitments placement in section 8) — for those people,
+    # last_touch (their own most recent linked day) equals the overall
+    # last active day, so per-person D and thread D agree. Every touched
+    # person still gets latest-interaction-wins demotion using their own D.
+    is_last_day_person = sorted_days and last_touch == sorted_days[-1]
+    resolved_n, unverified_n = apply_currency(
+        slug,
+        last_touch,
+        prior_last_touch,
+        summary_open_threads if is_last_day_person else [],
+        summary_resolved_threads if is_last_day_person else [],
+    )
+    resolved_total += resolved_n
+    unverified_total += unverified_n
 
 # ---------------------------------------------------------------------------
 # 8. Write one interaction per active day.
@@ -641,7 +844,10 @@ for i, d in enumerate(sorted_days):
     who = ", ".join(p["display_name"] for p in day_people if p["display_name"] in slug_by_display_name)
     n_msgs = len(days[d]["messages"])
 
-    summary_lines = [gist, "", "%d messages this day (%s)." % (n_msgs, who)]
+    if is_email:
+        summary_lines = [gist]
+    else:
+        summary_lines = [gist, "", "%d messages this day (%s)." % (n_msgs, who)]
     if is_last and open_threads:
         summary_lines.append("")
         summary_lines.append("Open: " + "; ".join(open_threads))
@@ -686,8 +892,17 @@ for cid in new_ids:
     ledger_append(cid)
 
 print(
-    "file-thread: %s people_new=%d people_touched=%d interactions=%d days=%d dedup_ids=%d"
-    % (primary_id, people_new, len(people_touched), interactions_written, len(sorted_days), len(new_ids))
+    "file-thread: %s people_new=%d people_touched=%d interactions=%d days=%d dedup_ids=%d resolved=%d unverified=%d"
+    % (
+        primary_id,
+        people_new,
+        len(people_touched),
+        interactions_written,
+        len(sorted_days),
+        len(new_ids),
+        resolved_total,
+        unverified_total,
+    )
 )
 
 # Internal assertion: every active day should have produced exactly one

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # feedback-file.sh — the sole writer of the append-only feedback ledger
 # `<store-dir>/signals/feedback.jsonl` (packages/core/contracts/feedback-event.md
-# 1.1.0, plan 34 D1/U8b).
+# 1.2.0, plan 34 D1/U8b, plan 36).
 #
 # Usage:
 #   feedback-file.sh <store-dir> --type <enum> --target <target> \
@@ -11,9 +11,15 @@
 # Rules:
 #   - `type` must be one of: dismiss, snooze, acted-on, done, opt-out,
 #     tier-correction, kind-correction, draft-edit, model-confirm, freeform,
-#     draft-request.
-#   - `target` must match ^(wakeup:.+|person:[a-z0-9-]+|signal:[a-z0-9-]+|model)$.
+#     draft-request, merge, noise-sender, stale-marked.
+#   - `target` must match
+#     ^(wakeup:.+|person:[a-z0-9-]+|signal:[a-z0-9-]+|model|sender:.+)$.
+#     `sender:<pattern>` is reserved for `--type noise-sender` (1.2.0, plan 36).
 #   - `source` must be one of: reply, session, auto.
+#   - `--from <slug>` is required when `--type merge` (the dropped slug,
+#     bare, no `person:` prefix) — written to the JSON `from` field like any
+#     other `--from` value; missing `--from` with `--type merge` exits 2
+#     with nothing written.
 #   - `--text` is the user's verbatim words — never rewritten, never
 #     summarized. It is JSON-escaped as-is (quotes, newlines, unicode all
 #     survive intact) via `jq -cn --arg`.
@@ -30,9 +36,9 @@
 
 set -u
 
-TYPE_VOCAB="dismiss|snooze|acted-on|done|opt-out|tier-correction|kind-correction|draft-edit|model-confirm|freeform|draft-request"
+TYPE_VOCAB="dismiss|snooze|acted-on|done|opt-out|tier-correction|kind-correction|draft-edit|model-confirm|freeform|draft-request|merge|noise-sender|stale-marked"
 SOURCE_VOCAB="reply|session|auto"
-TARGET_RE="^(wakeup:.+|person:[a-z0-9-]+|signal:[a-z0-9-]+|model)\$"
+TARGET_RE="^(wakeup:.+|person:[a-z0-9-]+|signal:[a-z0-9-]+|model|sender:.+)\$"
 
 die() {
     printf 'feedback-file.sh: %s\n' "$1" >&2
@@ -73,15 +79,19 @@ done
 [ -n "$store_dir" ] || die "missing <store-dir>" 2
 
 if ! printf '%s' "$type" | grep -qE "^(${TYPE_VOCAB})\$"; then
-    die "invalid --type: '${type}' (expected one of: dismiss, snooze, acted-on, done, opt-out, tier-correction, kind-correction, draft-edit, model-confirm, freeform, draft-request)" 2
+    die "invalid --type: '${type}' (expected one of: dismiss, snooze, acted-on, done, opt-out, tier-correction, kind-correction, draft-edit, model-confirm, freeform, draft-request, merge, noise-sender, stale-marked)" 2
 fi
 
 if ! printf '%s' "$target" | grep -qE "$TARGET_RE"; then
-    die "invalid --target: '${target}' (expected wakeup:<id>, person:<slug>, signal:<type>, or model)" 2
+    die "invalid --target: '${target}' (expected wakeup:<id>, person:<slug>, signal:<type>, model, or sender:<pattern>)" 2
 fi
 
 if ! printf '%s' "$source" | grep -qE "^(${SOURCE_VOCAB})\$"; then
     die "invalid --source: '${source}' (expected one of: reply, session, auto)" 2
+fi
+
+if [ "$type" = "merge" ] && [ -z "$from" ]; then
+    die "--type merge requires --from <dropped-slug>" 2
 fi
 
 if [ -z "$ts" ]; then
