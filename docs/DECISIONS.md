@@ -295,3 +295,18 @@ code/data separation — registration is machinery and belongs in the public rep
 store location is a per-user convention, not config (plan 18).
 Revisit if: Claude Code project-scope `.mcp.json` semantics change (cwd or approval
 model), or the cloud runtime (plan 09) needs a second registration surface.
+
+**mission-ingredients-vs-running-cost** · 2026-08-29
+The product's mission is fixed as: *what a friendship is made of, without what it costs
+to keep.* A relationship's ingredients are trust, care, intent, and time; its running
+cost is remembering-to, noticing, timing, deciding-who, starting, and following-through.
+The two are separable — the running cost is friction the other person never sees — and
+Spomni only ever cuts the cost. The **mission test** ("does this cut a running cost, or
+substitute for an ingredient?") is mandatory in every ROADMAP chunk block, plan, and
+worker brief §1. Why: earlier framings ("external memory", "attention allocator",
+"outreach assistant") each named a mechanism, not the value, and invited CRM/notes-app
+drift; this framing also makes draft-never-send a consequence rather than a rule, and
+answers the "outsourcing your friendships" objection (you outsource the part that was
+never the friendship). Supersedes the "external memory plus attention allocator"
+self-description in PROJECT-CONTEXT. Companion: docs/USE-CASES.md.
+Revisit if: never for the ingredient boundary; the running-cost list may grow.

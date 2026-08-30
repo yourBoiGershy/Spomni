@@ -12,6 +12,12 @@ One paragraph: the single work unit, stated as the outcome ("add X to Y so
 that Z"), not a task list. If you cannot state it without bullets, it is more
 than one unit — split before spawning.
 
+End the paragraph with the **mission test** (CLAUDE.md): which running cost
+this unit cuts (remembering-to / noticing / timing / deciding-who / starting
+/ following-through — or "infrastructure for <cost>") and, if it is near an
+ingredient (trust / care / intent / time), the one line that keeps it clear
+— e.g. "drafts only, user's voice from profile; never sends".
+
 ## §2 Contract
 
 - **Inputs:** what the worker starts from — carried **inline**, not as bare
