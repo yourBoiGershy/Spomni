@@ -42,6 +42,13 @@ wrapping them is mechanical.
   fallback) and serves from there; the store itself
   is never written to (single-writer holds). Smoke test: `tests/smoke-live.sh`.
 
+- `tests/bench-retrieval.sh <store-dir> [--json] [--scale N] [--runs K]` —
+  read-only retrieval-speed benchmark (docs/plans/2026-08-30-38-retrieval-speed.md
+  §1/§2 rows: `build-index.sh`/`build-stats.sh`/`validate-store.sh` full,
+  `who-next-direct.sh` fresh/missing, MCP cold start fresh/stale, warm
+  per-tool latency) on a scratch copy of the given store, never writing to
+  it; `tests/bench-mcp-client.mjs` is its JSON-RPC-over-stdio timing helper.
+  Smoke test: `tests/run-bench-smoke-tests.sh`.
 - Eval suite: `evals/` — `eval-case@1` cases (`packages/core/contracts/
   eval-case.md`) under `evals/cases/`, manifest at `evals/suite.txt`. T2
   (`tier: agent`) cases against `packages/core/scripts/eval-run.sh`:

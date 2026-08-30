@@ -149,87 +149,131 @@ INDEX_JSON="${READ_DIR}/index.json"
 STATS_JSON="${READ_DIR}/stats.json"
 PEOPLE_DIR="${STORE_DIR}/people"
 
-# --- per-person frontmatter/body extraction -----------------------------
-
-extract_frontmatter() {
-  awk '
-    /^---$/ { c++; if (c == 2) exit; next }
-    c == 1 { print }
-  ' "$1"
-}
-
-extract_field() {
-  fm="$1"
-  key="$2"
-  printf '%s\n' "$fm" | sed -n "s/^${key}: *//p" | head -1
-}
-
-# Section bullets (lines "- ...") between "## <heading>" and the next "## ".
-extract_section_bullets() {
-  file="$1"
-  heading="$2"
-  awk -v h="$heading" '
-    $0 == "## " h { insec=1; next }
-    /^## / { insec=0 }
-    insec && /^- / { sub(/^- /, ""); print }
-  ' "$file"
-}
-
-# Prose lines (non-empty, non-bullet) between "## <heading>" and the next "## ".
-extract_section_prose() {
-  file="$1"
-  heading="$2"
-  awk -v h="$heading" '
-    $0 == "## " h { insec=1; next }
-    /^## / { insec=0 }
-    insec && NF { print }
-  ' "$file"
-}
+# --- per-person frontmatter/body extraction ------------------------------
+#
+# One awk pass over every people/*.md file (instead of the old ~5 process
+# spawns per person: two awk/sed calls for frontmatter fields, two more for
+# the Facts/Open threads/Personal details sections, and two jq calls to
+# pull the index/stats entries) emits one JSONL line per slug with the
+# raw per-file fields (name, frontmatter tier, facts[], open_threads_text,
+# personal). A single follow-up jq call then joins those lines against
+# index.json and stats.json (via --slurpfile) to build the same per-person
+# object shape the unchanged filter/rank jq program below consumes. Files
+# are fed to awk in ascending slug order so tie-breaking in the final
+# stable sort matches the old behaviour byte-for-byte; only slugs present
+# in index.json as an object survive the join (mirrors the old loop, which
+# iterated index.json's keys and skipped missing files).
 
 TMP_RAW="$(mktemp)"
-trap 'rm -f "$TMP_RAW"' EXIT
+TMP_AWK="$(mktemp)"
+trap 'rm -f "$TMP_RAW" "$TMP_AWK"' EXIT
 
-for slug in $(jq -r 'to_entries[] | select(.value | type == "object") | .key' "$INDEX_JSON" | sort); do
-  f="${PEOPLE_DIR}/${slug}.md"
-  [ -f "$f" ] || continue
+PEOPLE_FILE_NAMES="$(cd "$PEOPLE_DIR" && ls -1 *.md 2>/dev/null | sort)"
 
-  fm="$(extract_frontmatter "$f")"
-  name="$(extract_field "$fm" name)"
-  fm_tier="$(extract_field "$fm" tier)"
+PEOPLE_FILES=()
+if [ -n "$PEOPLE_FILE_NAMES" ]; then
+  while IFS= read -r fn; do
+    [ -n "$fn" ] || continue
+    PEOPLE_FILES+=("${PEOPLE_DIR}/${fn}")
+  done <<PEOPLE_FILE_LIST
+$PEOPLE_FILE_NAMES
+PEOPLE_FILE_LIST
+fi
 
-  facts_json="$(extract_section_bullets "$f" "Facts" | jq -R . | jq -s -c 'map(select(length > 0))')"
-  open_threads_text="$(extract_section_bullets "$f" "Open threads" | paste -sd';' - | sed 's/;/; /g')"
-  personal_text="$(extract_section_prose "$f" "Personal details" | paste -sd' ' -)"
+if [ "${#PEOPLE_FILES[@]}" -gt 0 ]; then
+  awk '
+    function esc(s) {
+      gsub(/\\/, "\\\\", s)
+      gsub(/"/, "\\\"", s)
+      gsub(/\r/, "", s)
+      gsub(/\t/, "\\t", s)
+      return s
+    }
+    function flush(   i, out, ot, pers) {
+      if (started != 1) return
+      out = "{\"slug\":\"" esc(slug) "\",\"name\":\"" esc(name) "\",\"tier\":\"" esc(fmtier) "\",\"facts\":["
+      for (i = 1; i <= nfacts; i++) {
+        if (i > 1) out = out ","
+        out = out "\"" esc(facts[i]) "\""
+      }
+      out = out "]"
+      ot = ""
+      for (i = 1; i <= nopen; i++) {
+        if (i > 1) ot = ot "; "
+        ot = ot openarr[i]
+      }
+      pers = ""
+      for (i = 1; i <= npers; i++) {
+        if (i > 1) pers = pers " "
+        pers = pers persarr[i]
+      }
+      out = out ",\"open_threads_text\":\"" esc(ot) "\",\"personal\":\"" esc(pers) "\"}"
+      print out
+    }
+    FNR == 1 {
+      flush()
+      started = 1
+      slug = FILENAME
+      sub(/^.*\//, "", slug)
+      sub(/\.md$/, "", slug)
+      fm_c = 0; name = ""; fmtier = ""; name_found = 0; tier_found = 0
+      nfacts = 0; nopen = 0; npers = 0; insec = ""
+    }
+    /^---$/ { fm_c++; next }
+    fm_c == 1 {
+      if (!name_found && $0 ~ /^name: */) { v = $0; sub(/^name: */, "", v); name = v; name_found = 1 }
+      if (!tier_found && $0 ~ /^tier: */) { v = $0; sub(/^tier: */, "", v); fmtier = v; tier_found = 1 }
+    }
+    $0 == "## Facts" { insec = "facts"; next }
+    $0 == "## Open threads" { insec = "open"; next }
+    $0 == "## Personal details" { insec = "personal"; next }
+    /^## / { insec = ""; next }
+    insec == "facts" && /^- / {
+      v = $0; sub(/^- /, "", v)
+      if (length(v) > 0) { nfacts++; facts[nfacts] = v }
+    }
+    insec == "open" && /^- / {
+      v = $0; sub(/^- /, "", v)
+      nopen++; openarr[nopen] = v
+    }
+    insec == "personal" && NF > 0 { npers++; persarr[npers] = $0 }
+    END { flush() }
+  ' "${PEOPLE_FILES[@]}" > "$TMP_AWK"
+else
+  : > "$TMP_AWK"
+fi
 
-  index_entry="$(jq -c --arg slug "$slug" '.[$slug]' "$INDEX_JSON")"
-  stats_entry="$(jq -c --arg slug "$slug" '.people[$slug] // {}' "$STATS_JSON")"
-
-  jq -n -c \
-    --arg slug "$slug" \
-    --arg name "$name" \
-    --arg fm_tier "$fm_tier" \
+if [ -s "$TMP_AWK" ]; then
+  jq -c -s \
+    --slurpfile idx "$INDEX_JSON" \
+    --slurpfile st "$STATS_JSON" \
     --arg today "$TODAY" \
-    --arg open_threads_text "$open_threads_text" \
-    --arg personal "$personal_text" \
-    --argjson facts "$facts_json" \
-    --argjson idx "$index_entry" \
-    --argjson st "$stats_entry" \
-    '{
-      slug: $slug,
-      name: (if $name == "" then $slug else $name end),
-      tags: ($idx.tags // []),
-      kind: ($idx.kind // null),
-      last_interaction: ($st.last_interaction // $idx["last-touch"] // null),
-      touchpoints: ($st.touchpoints // 0),
-      open_threads: ($st.open_threads // 0),
-      commitments_user: ($st.commitments.user // 0),
-      tier: ($st.tier // (if $fm_tier == "" then null else $fm_tier end)),
-      facts: $facts,
-      personal: $personal,
-      open_threads_text: $open_threads_text,
-      today: $today
-    }' >> "$TMP_RAW"
-done
+    '
+    ($idx[0]) as $idxmap
+    | (($st[0].people) // {}) as $stmap
+    | .[]
+    | ($idxmap[.slug]) as $ie
+    | select($ie != null and ($ie | type) == "object")
+    | ($stmap[.slug] // {}) as $se
+    | {
+        slug: .slug,
+        name: (if .name == "" then .slug else .name end),
+        tags: ($ie.tags // []),
+        kind: ($ie.kind // null),
+        last_interaction: ($se.last_interaction // $ie["last-touch"] // null),
+        touchpoints: ($se.touchpoints // 0),
+        open_threads: ($se.open_threads // 0),
+        commitments_user: ($se.commitments.user // 0),
+        tier: ($se.tier // (if .tier == "" then null else .tier end)),
+        facts: .facts,
+        personal: .personal,
+        open_threads_text: .open_threads_text,
+        today: $today
+      }
+    ' "$TMP_AWK" > "$TMP_RAW"
+else
+  : > "$TMP_RAW"
+fi
 
 # --- filter, rank, limit -------------------------------------------------
 

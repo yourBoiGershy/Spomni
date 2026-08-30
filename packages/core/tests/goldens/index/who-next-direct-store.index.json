@@ -1,0 +1,98 @@
+{
+  "alice-quinn": {
+    "kind": "friend",
+    "kind_expires": null,
+    "kind_source": "stated-by-user",
+    "last-touch": "2026-07-01",
+    "location": "Austin, TX",
+    "org": "Independent",
+    "role": "Baker",
+    "tags": [
+      "friend"
+    ]
+  },
+  "bennett-osei": {
+    "kind": "professional",
+    "kind_expires": null,
+    "kind_source": "stated-by-user",
+    "last-touch": "2026-07-21",
+    "location": "Chicago, IL",
+    "org": "Fenwick Partners",
+    "role": "Account Manager",
+    "tags": [
+      "work"
+    ]
+  },
+  "harlan-voss": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-06-15",
+    "location": null,
+    "org": "Cedarline Studio",
+    "role": "Designer",
+    "tags": [
+      "misc"
+    ]
+  },
+  "jordan-fielding": {
+    "kind": "friend",
+    "kind_expires": null,
+    "kind_source": "stated-by-user",
+    "last-touch": "2026-08-27",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": [
+      "friend"
+    ]
+  },
+  "milo": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-05-15",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": [
+      "work"
+    ]
+  },
+  "morris-vance": {
+    "kind": "transactional",
+    "kind_expires": null,
+    "kind_source": "derived",
+    "last-touch": "2026-07-11",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": [
+      "landlord"
+    ]
+  },
+  "priya": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-05-01",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": [
+      "name-from-email"
+    ]
+  },
+  "taylor-reyes": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-06-01",
+    "location": "New York, NY",
+    "org": "Skyline Ventures",
+    "role": "Investor",
+    "tags": [
+      "linkedin-outreach"
+    ]
+  }
+}

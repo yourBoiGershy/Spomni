@@ -1074,6 +1074,22 @@ else
   STORE_TESTS_STATUS=1
 fi
 
+# --- delegate to the build-index.sh golden test, tallying its exit status
+#     alongside this script's own ---
+BUILD_INDEX_TEST="$SCRIPT_DIR/test-build-index.sh"
+echo ""
+echo "--- test-build-index.sh ---"
+if [ -x "$BUILD_INDEX_TEST" ]; then
+  "$BUILD_INDEX_TEST"
+  build_index_status=$?
+  if [ "$build_index_status" -ne 0 ]; then
+    STORE_TESTS_STATUS=1
+  fi
+else
+  echo "FAIL: $BUILD_INDEX_TEST not found or not executable"
+  STORE_TESTS_STATUS=1
+fi
+
 # --- delegate to the wakeup-add.sh golden test, tallying its exit status
 #     alongside this script's own ---
 WAKEUP_ADD_TEST="$SCRIPT_DIR/test-wakeup-add.sh"
