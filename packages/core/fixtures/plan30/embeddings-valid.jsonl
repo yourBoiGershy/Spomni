@@ -1,0 +1,1 @@
+{"slug": "sample-person", "model": "nomic-embed-text", "dims": 4, "vector": [0.1, -0.2, 0.3, 0.4], "embedded_at": "2026-08-29T12:00:00Z", "content_hash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"}
