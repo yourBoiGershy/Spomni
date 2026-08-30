@@ -94,83 +94,149 @@ kebab_map_file="$work_dir/kebab_map.txt"
 
 # ---------------------------------------------------------------------------
 # Frontmatter helpers
+#
+# Perf note (chunk 38 / plan 2026-08-30-38): the original implementation
+# spawned an awk and/or sed subprocess per field per file (O(files x fields)
+# process spawns). Every helper below instead reads each file ONCE into the
+# global FILE_LINES array (ensure_file_lines, memoized per file) and does all
+# field/line extraction with bash builtins (parameter expansion, [[ =~ ]],
+# case) — no per-field process spawn. Output/verdicts are unchanged; only the
+# mechanism moved from external tools to bash. A few genuinely O(1)-per-file
+# operations (all_links_in_file's grep+sort -u) are left as-is.
 # ---------------------------------------------------------------------------
 
-# Prints the 1-based line number of the closing "---", or nothing if not
-# found / opening marker missing. Sets frontmatter_ok=1/0.
+FILE_LINES=()
+FILE_LINE_COUNT=0
+CURRENT_FILE_LINES_PATH=""
+
+# Loads $1 into the global FILE_LINES array (1-based) unless it's already
+# the currently-cached file. Every helper below calls this first, so callers
+# never need to worry about staleness even when they interleave files (e.g.
+# the duplicate-slug pass, which revisits already-processed people files).
+ensure_file_lines() {
+    local file="$1"
+    if [ "$file" = "$CURRENT_FILE_LINES_PATH" ]; then
+        return 0
+    fi
+    FILE_LINES=()
+    local n=0
+    local line
+    while IFS= read -r line || [ -n "$line" ]; do
+        n=$((n + 1))
+        FILE_LINES[$n]="$line"
+    done < "$file"
+    FILE_LINE_COUNT=$n
+    CURRENT_FILE_LINES_PATH="$file"
+}
+
+# Sets global FM_END to the 1-based line number of the closing "---" (empty
+# on failure). Every call site reads $FM_END directly instead of capturing
+# via command substitution, to avoid a subshell fork per file.
 find_frontmatter_end() {
     local file="$1"
-    local first_line
-    first_line=$(head -n1 "$file")
-    if [ "$first_line" != "---" ]; then
+    ensure_file_lines "$file"
+    FM_END=""
+    if [ "${FILE_LINES[1]-}" != "---" ]; then
         return 1
     fi
-    local close_line
-    close_line=$(awk 'NR>1 && $0=="---"{print NR; exit}' "$file")
-    if [ -z "$close_line" ]; then
-        return 1
-    fi
-    printf '%s\n' "$close_line"
-    return 0
+    local i
+    for ((i = 2; i <= FILE_LINE_COUNT; i++)); do
+        if [ "${FILE_LINES[$i]}" = "---" ]; then
+            FM_END="$i"
+            return 0
+        fi
+    done
+    return 1
 }
 
 # Reports malformed key:value / list lines inside the frontmatter block.
 check_frontmatter_lines_parseable() {
     local file="$1" s="$2" e="$3"
-    local bad_lines
-    bad_lines=$(awk -v s="$s" -v e="$e" '
-        NR>=s && NR<=e {
-            line=$0
-            if (line ~ /^[A-Za-z0-9_-]+:/) next
-            if (line ~ /^[[:space:]]/) next
-            if (line ~ /^-/) next
-            if (line ~ /^[[:space:]]*$/) next
-            print NR
-        }
-    ' "$file")
-    if [ -n "$bad_lines" ]; then
-        local ln
-        while IFS= read -r ln; do
-            [ -n "$ln" ] || continue
-            report "$file" "$ln" "malformed frontmatter line (not a key: value or list line)"
-        done <<EOF
-$bad_lines
-EOF
-    fi
+    ensure_file_lines "$file"
+    local i line
+    for ((i = s; i <= e; i++)); do
+        line="${FILE_LINES[$i]}"
+        if [[ "$line" =~ ^[A-Za-z0-9_-]+: ]]; then continue; fi
+        if [[ "$line" =~ ^[[:space:]] ]]; then continue; fi
+        if [[ "$line" =~ ^- ]]; then continue; fi
+        if [[ "$line" =~ ^[[:space:]]*$ ]]; then continue; fi
+        report "$file" "$i" "malformed frontmatter line (not a key: value or list line)"
+    done
 }
 
-# Prints the line number of a "key:" line inside [s,e], or nothing.
+# Sets global FOUND_LINE to the line number of a "key:" line inside [s,e]
+# (empty on failure). Call sites read $FOUND_LINE directly instead of
+# capturing via command substitution, to avoid a subshell fork per field.
 find_field_line() {
     local file="$1" s="$2" e="$3" key="$4"
-    awk -v s="$s" -v e="$e" -v k="^${key}:" 'NR>=s && NR<=e && $0 ~ k {print NR; exit}' "$file"
+    ensure_file_lines "$file"
+    FOUND_LINE=""
+    local i
+    for ((i = s; i <= e; i++)); do
+        if [[ "${FILE_LINES[$i]}" == "${key}:"* ]]; then
+            FOUND_LINE="$i"
+            return 0
+        fi
+    done
+    return 1
 }
 
 require_field() {
-    # $1 file $2 s $3 e $4 key -> prints line number on success (field found)
+    # $1 file $2 s $3 e $4 key -> sets global FOUND_FIELD_LINE to the line
+    # number on success (field found). Call sites read $FOUND_FIELD_LINE
+    # directly instead of capturing via command substitution — this function
+    # is invoked several times per file, so that's one fewer subshell fork
+    # per call. (Also inlines find_field_line's scan rather than calling it,
+    # to avoid a second fork.)
     local file="$1" s="$2" e="$3" key="$4"
-    local line
-    line=$(find_field_line "$file" "$s" "$e" "$key")
-    if [ -z "$line" ]; then
-        report "$file" "$s" "missing required field: $key"
-        return 1
-    fi
-    printf '%s\n' "$line"
-    return 0
+    ensure_file_lines "$file"
+    FOUND_FIELD_LINE=""
+    local i
+    for ((i = s; i <= e; i++)); do
+        if [[ "${FILE_LINES[$i]}" == "${key}:"* ]]; then
+            FOUND_FIELD_LINE="$i"
+            return 0
+        fi
+    done
+    report "$file" "$s" "missing required field: $key"
+    return 1
 }
 
-# Scalar value of a "key: value" line, quotes stripped.
+# Scalar value of a "key: value" line, quotes stripped. Sets global
+# SCALAR_VAL — call sites read it directly instead of capturing via command
+# substitution, to avoid a subshell fork per field.
 scalar_value() {
     local file="$1" line="$2" key="$3"
-    sed -n "${line}p" "$file" \
-        | sed -E "s/^${key}:[[:space:]]*//" \
-        | sed -E 's/[[:space:]]+$//' \
-        | sed -E 's/^"(.*)"$/\1/'
+    ensure_file_lines "$file"
+    local raw="${FILE_LINES[$line]}"
+    raw="${raw#${key}:}"
+    while [[ "$raw" == [[:space:]]* ]]; do raw="${raw#[[:space:]]}"; done
+    while [[ "$raw" == *[[:space:]] ]]; do raw="${raw%[[:space:]]}"; done
+    if [[ "$raw" == \"*\" ]] && [ "${#raw}" -ge 2 ]; then
+        raw="${raw:1:${#raw}-2}"
+    fi
+    SCALAR_VAL="$raw"
 }
 
 check_enum() {
     # $1 file $2 line $3 key $4 value $5 pipe-separated allowed values
+    # (alternatives may carry regex-style backslash-escaped dots, e.g.
+    # "1\.0\.0|1\.1\.0" — stripped for the plain-string comparison below;
+    # the error message keeps them verbatim, matching the original grep -E
+    # implementation's output byte-for-byte.)
     local file="$1" line="$2" key="$3" value="$4" allowed="$5"
-    if ! printf '%s' "$value" | grep -qE "^(${allowed})\$"; then
+    local plain="${allowed//\\/}"
+    local -a alts
+    IFS='|' read -ra alts <<< "$plain"
+    local matched=0
+    local alt
+    for alt in "${alts[@]}"; do
+        if [ "$value" = "$alt" ]; then
+            matched=1
+            break
+        fi
+    done
+    if [ "$matched" -eq 0 ]; then
         local pretty
         pretty=$(printf '%s' "$allowed" | tr '|' ',')
         report "$file" "$line" "invalid ${key}: '${value}' (expected one of: ${pretty})"
@@ -180,16 +246,24 @@ check_enum() {
 # Lines (with continuation list items) belonging to a key's value block.
 extract_field_block() {
     local file="$1" s="$2" e="$3" key="$4"
-    awk -v s="$s" -v e="$e" -v k="^${key}:" '
-        BEGIN{inblock=0}
-        NR>=s && NR<=e {
-            if ($0 ~ k) { print; inblock=1; next }
-            if (inblock) {
-                if ($0 ~ /^[[:space:]]+-/) { print; next }
-                else { inblock=0 }
-            }
-        }
-    ' "$file"
+    ensure_file_lines "$file"
+    local i line inblock=0
+    for ((i = s; i <= e; i++)); do
+        line="${FILE_LINES[$i]}"
+        if [[ "$line" == "${key}:"* ]]; then
+            printf '%s\n' "$line"
+            inblock=1
+            continue
+        fi
+        if [ "$inblock" -eq 1 ]; then
+            if [[ "$line" =~ ^[[:space:]]+- ]]; then
+                printf '%s\n' "$line"
+                continue
+            else
+                inblock=0
+            fi
+        fi
+    done
 }
 
 # Lines belonging to a mapping-valued key's block (indented "subkey: value"
@@ -197,73 +271,171 @@ extract_field_block() {
 # by indented `title:`/`start:`/... lines.
 extract_mapping_block() {
     local file="$1" s="$2" e="$3" key="$4"
-    awk -v s="$s" -v e="$e" -v k="^${key}:" '
-        BEGIN{inblock=0}
-        NR>=s && NR<=e {
-            if ($0 ~ k) { print; inblock=1; next }
-            if (inblock) {
-                if ($0 ~ /^[[:space:]]+[A-Za-z0-9_-]+:/) { print; next }
-                else { inblock=0 }
-            }
-        }
-    ' "$file"
+    ensure_file_lines "$file"
+    local i line inblock=0
+    for ((i = s; i <= e; i++)); do
+        line="${FILE_LINES[$i]}"
+        if [[ "$line" == "${key}:"* ]]; then
+            printf '%s\n' "$line"
+            inblock=1
+            continue
+        fi
+        if [ "$inblock" -eq 1 ]; then
+            if [[ "$line" =~ ^[[:space:]]+[A-Za-z0-9_-]+: ]]; then
+                printf '%s\n' "$line"
+                continue
+            else
+                inblock=0
+            fi
+        fi
+    done
 }
 
 # Prints the line number of an indented "subkey:" line inside a mapping
 # key's block, or nothing.
 find_mapping_field_line() {
     local file="$1" s="$2" e="$3" mapkey="$4" subkey="$5"
-    awk -v s="$s" -v e="$e" -v mk="^${mapkey}:" -v sk="^[[:space:]]+${subkey}:" '
-        BEGIN{inblock=0}
-        NR>=s && NR<=e {
-            if ($0 ~ mk) { inblock=1; next }
-            if (inblock) {
-                if ($0 ~ /^[[:space:]]+[A-Za-z0-9_-]+:/) {
-                    if ($0 ~ sk) { print NR; exit }
-                    next
-                } else { inblock=0 }
-            }
-        }
-    ' "$file"
+    ensure_file_lines "$file"
+    local i line inblock=0
+    for ((i = s; i <= e; i++)); do
+        line="${FILE_LINES[$i]}"
+        if [[ "$line" == "${mapkey}:"* ]]; then
+            inblock=1
+            continue
+        fi
+        if [ "$inblock" -eq 1 ]; then
+            if [[ "$line" =~ ^[[:space:]]+[A-Za-z0-9_-]+: ]]; then
+                if [[ "$line" =~ ^[[:space:]]+${subkey}: ]]; then
+                    printf '%s\n' "$i"
+                    return 0
+                fi
+                continue
+            else
+                inblock=0
+            fi
+        fi
+    done
+    return 1
 }
 
 # Scalar value of an indented "  key: value" mapping-block line, quotes
 # stripped.
 mapping_scalar_value() {
     local file="$1" line="$2" key="$3"
-    sed -n "${line}p" "$file" \
-        | sed -E "s/^[[:space:]]*${key}:[[:space:]]*//" \
-        | sed -E 's/[[:space:]]+$//' \
-        | sed -E 's/^"(.*)"$/\1/'
+    ensure_file_lines "$file"
+    local raw="${FILE_LINES[$line]}"
+    while [[ "$raw" == [[:space:]]* ]]; do raw="${raw#[[:space:]]}"; done
+    raw="${raw#${key}:}"
+    while [[ "$raw" == [[:space:]]* ]]; do raw="${raw#[[:space:]]}"; done
+    while [[ "$raw" == *[[:space:]] ]]; do raw="${raw%[[:space:]]}"; done
+    if [[ "$raw" == \"*\" ]] && [ "${#raw}" -ge 2 ]; then
+        raw="${raw:1:${#raw}-2}"
+    fi
+    printf '%s\n' "$raw"
+}
+
+# Extracts every [[slug]] occurrence from a (possibly multi-line) text blob,
+# one per output line, in order of appearance. Pure-bash replacement for
+# `grep -oE '\[\[...\]\]' | sed 's/^\[\[//; s/\]\]$//'`.
+extract_slugs_from_text() {
+    local text="$1"
+    local rest="$text"
+    while [[ "$rest" =~ \[\[([A-Za-z0-9_-]+)\]\] ]]; do
+        printf '%s\n' "${BASH_REMATCH[1]}"
+        rest="${rest#*"${BASH_REMATCH[0]}"}"
+    done
 }
 
 # All [[slug]] links inside a field's value block.
+# (inlines extract_field_block's scan + extract_slugs_from_text's regex loop
+# rather than calling them via command substitution, to avoid two subshell
+# forks on every call.)
+# Sets global FIELD_LINKS to a newline-separated list of [[slug]] links
+# inside a field's value block (empty if none). Call sites read it directly
+# instead of capturing via command substitution, to avoid a subshell fork.
 field_links() {
     local file="$1" s="$2" e="$3" key="$4"
-    extract_field_block "$file" "$s" "$e" "$key" | grep -oE '\[\[[A-Za-z0-9_-]+\]\]' \
-        | sed -E 's/^\[\[//; s/\]\]$//'
+    ensure_file_lines "$file"
+    local i line inblock=0 block=""
+    for ((i = s; i <= e; i++)); do
+        line="${FILE_LINES[$i]}"
+        if [[ "$line" == "${key}:"* ]]; then
+            block="${block}${line}"$'\n'
+            inblock=1
+            continue
+        fi
+        if [ "$inblock" -eq 1 ]; then
+            if [[ "$line" =~ ^[[:space:]]+- ]]; then
+                block="${block}${line}"$'\n'
+                continue
+            else
+                inblock=0
+            fi
+        fi
+    done
+    local rest="$block"
+    FIELD_LINKS=""
+    while [[ "$rest" =~ \[\[([A-Za-z0-9_-]+)\]\] ]]; do
+        FIELD_LINKS="${FIELD_LINKS}${BASH_REMATCH[1]}"$'\n'
+        rest="${rest#*"${BASH_REMATCH[0]}"}"
+    done
 }
 
-# All [[slug]] links anywhere in the whole file (frontmatter + body).
+# All [[slug]] links anywhere in the whole file (frontmatter + body),
+# de-duplicated, one per output line, in order of first appearance.
+# (inlines extract_slugs_from_text's regex loop for the same reason.)
+# All [[slug]] links anywhere in the whole file (frontmatter + body),
+# de-duplicated, one per output line, in order of first appearance. Kept as
+# a standalone function (unused internally now — see check_links_resolve,
+# which inlines the same scan to stay fork-free) in case other callers want
+# it later.
 all_links_in_file() {
     local file="$1"
-    grep -oE '\[\[[A-Za-z0-9_-]+\]\]' "$file" | sed -E 's/^\[\[//; s/\]\]$//' | sort -u
+    ensure_file_lines "$file"
+    local i whole=""
+    for ((i = 1; i <= FILE_LINE_COUNT; i++)); do
+        whole="${whole}${FILE_LINES[$i]}"$'\n'
+    done
+    local seen_pipe="|" slug rest="$whole"
+    while [[ "$rest" =~ \[\[([A-Za-z0-9_-]+)\]\] ]]; do
+        slug="${BASH_REMATCH[1]}"
+        rest="${rest#*"${BASH_REMATCH[0]}"}"
+        if [[ "$seen_pipe" != *"|${slug}|"* ]]; then
+            seen_pipe="${seen_pipe}${slug}|"
+            printf '%s\n' "$slug"
+        fi
+    done
 }
 
 check_links_resolve() {
-    # $1 file -> reports any [[slug]] link that doesn't resolve to people/<slug>.md
+    # $1 file -> reports any [[slug]] link that doesn't resolve to
+    # people/<slug>.md. Inlines all_links_in_file's whole-file scan and
+    # iterates matches directly (no command substitution / here-string),
+    # so this whole check runs with zero subshell forks per file.
     local file="$1"
-    local slug link_line
-    while IFS= read -r slug; do
-        [ -n "$slug" ] || continue
-        if ! grep -qxF "$slug" "$people_slugs_file"; then
-            link_line=$(grep -nF "[[${slug}]]" "$file" | head -n1 | cut -d: -f1)
+    ensure_file_lines "$file"
+    local i whole=""
+    for ((i = 1; i <= FILE_LINE_COUNT; i++)); do
+        whole="${whole}${FILE_LINES[$i]}"$'\n'
+    done
+    local seen_pipe="|" slug rest="$whole" link_line
+    while [[ "$rest" =~ \[\[([A-Za-z0-9_-]+)\]\] ]]; do
+        slug="${BASH_REMATCH[1]}"
+        rest="${rest#*"${BASH_REMATCH[0]}"}"
+        [[ "$seen_pipe" != *"|${slug}|"* ]] || continue
+        seen_pipe="${seen_pipe}${slug}|"
+        if [[ "$people_slugs_pipe" != *"|${slug}|"* ]]; then
+            link_line=""
+            for ((i = 1; i <= FILE_LINE_COUNT; i++)); do
+                if [[ "${FILE_LINES[$i]}" == *"[[${slug}]]"* ]]; then
+                    link_line="$i"
+                    break
+                fi
+            done
             [ -n "$link_line" ] || link_line=1
             report "$file" "$link_line" "broken link: [[${slug}]] does not resolve to people/${slug}.md"
         fi
-    done <<EOF
-$(all_links_in_file "$file")
-EOF
+    done
 }
 
 # ---------------------------------------------------------------------------
@@ -281,20 +453,109 @@ done
 # validate each file.
 # ---------------------------------------------------------------------------
 
+people_slugs_pipe="|"
+people_files=()
 if [ -d "$store_dir/people" ]; then
     for f in "$store_dir/people"/*.md; do
         [ -e "$f" ] || continue
-        base=$(basename "$f" .md)
+        base="${f##*/}"
+        base="${base%.md}"
         printf '%s\n' "$base" >> "$people_slugs_file"
+        people_slugs_pipe="${people_slugs_pipe}${base}|"
+        people_files+=("$f")
     done
 fi
+
+# ---------------------------------------------------------------------------
+# One-shot precomputation over every people/*.md file (chunk 38 retry round):
+# both the kebab-slug map (for duplicate-slug detection) and the Facts
+# provenance-tag findings are computed with a SINGLE awk invocation each
+# across all files, instead of one awk/sed/grep spawn per file. Output is
+# consumed below at the same points the old per-file checks ran, so ordering
+# and message text stay byte-identical.
+# ---------------------------------------------------------------------------
+
+if [ "${#people_files[@]}" -gt 0 ]; then
+    # kebab-slug map: replicates kebab()'s tr+sed pipeline plus scalar_value's
+    # quote/whitespace stripping, restricted to the first "name:" line inside
+    # a well-formed frontmatter block (opening "---" on line 1, a later
+    # closing "---") — mirrors find_frontmatter_end + require_field "name" +
+    # scalar_value's value extraction + kebab()'s casing exactly.
+    awk '
+        FNR==1 {
+            if (fname != "") { finish() }
+            fname = FILENAME
+            firstline = 1
+            infm = 0
+            fmend = 0
+            namefound = 0
+            name = ""
+        }
+        {
+            if (firstline) {
+                firstline = 0
+                if ($0 == "---") { infm = 1 } else { infm = 0 }
+                next
+            }
+            if (infm && fmend == 0) {
+                if ($0 == "---") { fmend = 1; next }
+                if (!namefound && $0 ~ /^name:/) {
+                    val = $0
+                    sub(/^name:/, "", val)
+                    gsub(/^[ \t]+/, "", val)
+                    gsub(/[ \t]+$/, "", val)
+                    if (val ~ /^".*"$/ && length(val) >= 2) {
+                        val = substr(val, 2, length(val) - 2)
+                    }
+                    name = val
+                    namefound = 1
+                }
+            }
+        }
+        function finish() {
+            if (infm && fmend && namefound) {
+                k = tolower(name)
+                gsub(/[^a-z0-9]+/, "-", k)
+                gsub(/^-+/, "", k)
+                gsub(/-+$/, "", k)
+                print k "\t" fname
+            }
+        }
+        END { finish() }
+    ' "${people_files[@]}" >> "$kebab_map_file"
+
+    # Facts provenance-tag findings: replicates the per-file
+    # "## Facts" bullet scan + tag-regex check, emitting the exact report()
+    # arguments (file, line, message) instead of raw bullet text — the
+    # per-file loop below just replays these.
+    facts_findings_file="$work_dir/facts_findings.txt"
+    awk '
+        FNR==1 { infacts = 0 }
+        /^## Facts$/ { infacts = 1; next }
+        /^## / { infacts = 0 }
+        infacts && /^- / {
+            if ($0 !~ /^- \*\*\[(told-by-user|inferred-public-web|inferred-from-thread)\]\*\*/) {
+                print FILENAME "\t" FNR "\tFacts bullet missing provenance tag ([told-by-user], [inferred-public-web], or [inferred-from-thread])"
+            }
+        }
+    ' "${people_files[@]}" > "$facts_findings_file"
+
+    FACTS_FINDINGS=()
+    if [ -s "$facts_findings_file" ]; then
+        while IFS= read -r ff_line || [ -n "$ff_line" ]; do
+            FACTS_FINDINGS+=("$ff_line")
+        done < "$facts_findings_file"
+    fi
+fi
+facts_idx=0
 
 if [ -d "$store_dir/people" ]; then
     for f in "$store_dir/people"/*.md; do
         [ -e "$f" ] || continue
         files_checked=$((files_checked + 1))
 
-        fm_end=$(find_frontmatter_end "$f")
+        find_frontmatter_end "$f"
+        fm_end="$FM_END"
         if [ -z "$fm_end" ]; then
             report "$f" 1 "malformed frontmatter: missing opening/closing ---"
             continue
@@ -303,72 +564,86 @@ if [ -d "$store_dir/people" ]; then
         fm_body_end=$((fm_end - 1))
         check_frontmatter_lines_parseable "$f" "$fm_start" "$fm_body_end"
 
-        person_sv_line=$(require_field "$f" "$fm_start" "$fm_body_end" "schema_version")
+        require_field "$f" "$fm_start" "$fm_body_end" "schema_version"
+        person_sv_line="$FOUND_FIELD_LINE"
         if [ -n "$person_sv_line" ]; then
-            person_sv_val=$(scalar_value "$f" "$person_sv_line" "schema_version")
+            scalar_value "$f" "$person_sv_line" "schema_version"
+            person_sv_val="$SCALAR_VAL"
             check_enum "$f" "$person_sv_line" "schema_version" "$person_sv_val" "1\.0\.0|1\.1\.0|1\.2\.0|1\.3\.0"
         fi
-        name_line=$(require_field "$f" "$fm_start" "$fm_body_end" "name")
+        require_field "$f" "$fm_start" "$fm_body_end" "name"
+        name_line="$FOUND_FIELD_LINE"
+        # (the kebab-slug map entry for this file, if any, was already
+        # written by the one-shot awk precomputation above — see
+        # "One-shot precomputation" — so there is nothing left to do here.)
 
-        if [ -n "$name_line" ]; then
-            name_val=$(scalar_value "$f" "$name_line" "name")
-            slug=$(kebab "$name_val")
-            printf '%s\t%s\n' "$slug" "$f" >> "$kebab_map_file"
-        fi
-
-        tier_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "tier")
+        find_field_line "$f" "$fm_start" "$fm_body_end" "tier"
+        tier_line="$FOUND_LINE"
         if [ -n "$tier_line" ]; then
-            tier_val=$(scalar_value "$f" "$tier_line" "tier")
+            scalar_value "$f" "$tier_line" "tier"
+            tier_val="$SCALAR_VAL"
             check_enum "$f" "$tier_line" "tier" "$tier_val" "inner-circle|close|active|dormant"
         fi
 
         # --- person.md 1.2.0 tier_source (optional, plan 31 D4) ---
-        tier_source_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "tier_source")
+        find_field_line "$f" "$fm_start" "$fm_body_end" "tier_source"
+        tier_source_line="$FOUND_LINE"
         if [ -n "$tier_source_line" ]; then
             if [ -z "$tier_line" ]; then
                 report "$f" "$tier_source_line" "tier_source is set without tier"
             else
-                tier_source_val=$(scalar_value "$f" "$tier_source_line" "tier_source")
+                scalar_value "$f" "$tier_source_line" "tier_source"
+                tier_source_val="$SCALAR_VAL"
                 check_enum "$f" "$tier_source_line" "tier_source" "$tier_source_val" "derived|stated-by-user"
             fi
         fi
 
         # --- person.md 1.1.0 kind fields (optional, plan 30) ---
-        kind_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "kind")
-        kind_note_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "kind_note")
-        kind_source_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "kind_source")
-        kind_expires_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "kind_expires")
-        kind_updated_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "kind_updated")
+        find_field_line "$f" "$fm_start" "$fm_body_end" "kind"
+        kind_line="$FOUND_LINE"
+        find_field_line "$f" "$fm_start" "$fm_body_end" "kind_note"
+        kind_note_line="$FOUND_LINE"
+        find_field_line "$f" "$fm_start" "$fm_body_end" "kind_source"
+        kind_source_line="$FOUND_LINE"
+        find_field_line "$f" "$fm_start" "$fm_body_end" "kind_expires"
+        kind_expires_line="$FOUND_LINE"
+        find_field_line "$f" "$fm_start" "$fm_body_end" "kind_updated"
+        kind_updated_line="$FOUND_LINE"
 
         if [ -n "$kind_line" ]; then
-            kind_val=$(scalar_value "$f" "$kind_line" "kind")
+            scalar_value "$f" "$kind_line" "kind"
+            kind_val="$SCALAR_VAL"
             check_enum "$f" "$kind_line" "kind" "$kind_val" "friend|family|collaborator|professional|community|scheduling|transactional|unsolicited|unknown"
 
             if [ -z "$kind_note_line" ]; then
                 report "$f" "$kind_line" "kind is set but missing required field: kind_note"
             else
-                kind_note_val=$(scalar_value "$f" "$kind_note_line" "kind_note")
+                scalar_value "$f" "$kind_note_line" "kind_note"
+                kind_note_val="$SCALAR_VAL"
                 [ -n "$kind_note_val" ] || report "$f" "$kind_note_line" "kind_note must not be empty"
             fi
 
             if [ -z "$kind_source_line" ]; then
                 report "$f" "$kind_line" "kind is set but missing required field: kind_source"
             else
-                kind_source_val=$(scalar_value "$f" "$kind_source_line" "kind_source")
+                scalar_value "$f" "$kind_source_line" "kind_source"
+                kind_source_val="$SCALAR_VAL"
                 check_enum "$f" "$kind_source_line" "kind_source" "$kind_source_val" "stated-by-user|derived"
             fi
 
             if [ -z "$kind_updated_line" ]; then
                 report "$f" "$kind_line" "kind is set but missing required field: kind_updated"
             else
-                kind_updated_val=$(scalar_value "$f" "$kind_updated_line" "kind_updated")
+                scalar_value "$f" "$kind_updated_line" "kind_updated"
+                kind_updated_val="$SCALAR_VAL"
                 if [ -z "$kind_updated_val" ] || ! printf '%s' "$kind_updated_val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
                     report "$f" "$kind_updated_line" "invalid kind_updated: '${kind_updated_val}' (expected ISO 8601 date YYYY-MM-DD)"
                 fi
             fi
 
             if [ -n "$kind_expires_line" ]; then
-                kind_expires_val=$(scalar_value "$f" "$kind_expires_line" "kind_expires")
+                scalar_value "$f" "$kind_expires_line" "kind_expires"
+                kind_expires_val="$SCALAR_VAL"
                 if [ -n "$kind_expires_val" ] && ! printf '%s' "$kind_expires_val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
                     report "$f" "$kind_expires_line" "invalid kind_expires: '${kind_expires_val}' (expected ISO 8601 date YYYY-MM-DD)"
                 fi
@@ -387,24 +662,21 @@ if [ -d "$store_dir/people" ]; then
             done
         fi
 
-        # Facts section: every bullet must carry a provenance tag.
-        untagged=$(awk '
-            /^## Facts$/{infacts=1; next}
-            /^## /{infacts=0}
-            infacts && /^- / { print NR":"$0 }
-        ' "$f")
-        if [ -n "$untagged" ]; then
-            while IFS= read -r entry; do
-                [ -n "$entry" ] || continue
-                ln="${entry%%:*}"
-                txt="${entry#*:}"
-                if ! printf '%s' "$txt" | grep -qE '^- \*\*\[(told-by-user|inferred-public-web|inferred-from-thread)\]\*\*'; then
-                    report "$f" "$ln" "Facts bullet missing provenance tag ([told-by-user], [inferred-public-web], or [inferred-from-thread])"
-                fi
-            done <<EOF
-$untagged
-EOF
-        fi
+        # Facts section: every bullet must carry a provenance tag. Findings
+        # were precomputed once for all people/*.md files above (see
+        # "One-shot precomputation"); replay this file's share of them here,
+        # in the same file-grouped, line-ordered form the old per-file
+        # awk+grep scan produced.
+        while [ "$facts_idx" -lt "${#FACTS_FINDINGS[@]}" ]; do
+            ff_entry="${FACTS_FINDINGS[$facts_idx]}"
+            ff_path="${ff_entry%%$'\t'*}"
+            [ "$ff_path" = "$f" ] || break
+            ff_rest="${ff_entry#*$'\t'}"
+            ff_line="${ff_rest%%$'\t'*}"
+            ff_message="${ff_rest#*$'\t'}"
+            report "$f" "$ff_line" "$ff_message"
+            facts_idx=$((facts_idx + 1))
+        done
 
         check_links_resolve "$f"
     done
@@ -418,7 +690,9 @@ if [ -s "$kebab_map_file" ]; then
     while IFS=$'\t' read -r slug file; do
         [ -n "$slug" ] || continue
         if [ "$slug" = "$prev_slug" ]; then
-            name_line=$(find_field_line "$file" 2 "$(($(find_frontmatter_end "$file") - 1))" "name")
+            find_frontmatter_end "$file"
+            find_field_line "$file" 2 "$((FM_END - 1))" "name"
+            name_line="$FOUND_LINE"
             [ -n "$name_line" ] || name_line=1
             report "$file" "$name_line" "duplicate person slug '${slug}' also used by ${prev_file}"
         fi
@@ -437,7 +711,8 @@ if [ -f "$store_dir/profile.md" ]; then
     f="$store_dir/profile.md"
     files_checked=$((files_checked + 1))
 
-    fm_end=$(find_frontmatter_end "$f")
+    find_frontmatter_end "$f"
+    fm_end="$FM_END"
     if [ -z "$fm_end" ]; then
         report "$f" 1 "malformed frontmatter: missing opening/closing ---"
     else
@@ -528,7 +803,8 @@ if [ -f "$store_dir/user-model.md" ]; then
     f="$store_dir/user-model.md"
     files_checked=$((files_checked + 1))
 
-    fm_end=$(find_frontmatter_end "$f")
+    find_frontmatter_end "$f"
+    fm_end="$FM_END"
     if [ -z "$fm_end" ]; then
         report "$f" 1 "malformed frontmatter: missing opening/closing ---"
     else
@@ -538,24 +814,30 @@ if [ -f "$store_dir/user-model.md" ]; then
 
         require_field "$f" "$fm_start" "$fm_body_end" "schema_version" > /dev/null
 
-        status_line=$(require_field "$f" "$fm_start" "$fm_body_end" "status")
+        require_field "$f" "$fm_start" "$fm_body_end" "status"
+        status_line="$FOUND_FIELD_LINE"
         status_val=""
         if [ -n "$status_line" ]; then
-            status_val=$(scalar_value "$f" "$status_line" "status")
+            scalar_value "$f" "$status_line" "status"
+            status_val="$SCALAR_VAL"
             check_enum "$f" "$status_line" "status" "$status_val" "draft|provisional|confirmed"
         fi
 
-        provenance_line=$(require_field "$f" "$fm_start" "$fm_body_end" "provenance")
+        require_field "$f" "$fm_start" "$fm_body_end" "provenance"
+        provenance_line="$FOUND_FIELD_LINE"
         provenance_val=""
         if [ -n "$provenance_line" ]; then
-            provenance_val=$(scalar_value "$f" "$provenance_line" "provenance")
+            scalar_value "$f" "$provenance_line" "provenance"
+            provenance_val="$SCALAR_VAL"
             check_enum "$f" "$provenance_line" "provenance" "$provenance_val" "observed-from-behavior|stated-by-user"
         fi
 
-        confirmed_at_line=$(require_field "$f" "$fm_start" "$fm_body_end" "confirmed_at")
+        require_field "$f" "$fm_start" "$fm_body_end" "confirmed_at"
+        confirmed_at_line="$FOUND_FIELD_LINE"
         confirmed_at_val=""
         if [ -n "$confirmed_at_line" ]; then
-            confirmed_at_val=$(scalar_value "$f" "$confirmed_at_line" "confirmed_at")
+            scalar_value "$f" "$confirmed_at_line" "confirmed_at"
+            confirmed_at_val="$SCALAR_VAL"
         fi
 
         if [ -n "$status_line" ] && [ -n "$provenance_line" ] && [ -n "$confirmed_at_line" ]; then
@@ -576,17 +858,21 @@ if [ -f "$store_dir/user-model.md" ]; then
             fi
         fi
 
-        revision_line=$(require_field "$f" "$fm_start" "$fm_body_end" "revision")
+        require_field "$f" "$fm_start" "$fm_body_end" "revision"
+        revision_line="$FOUND_FIELD_LINE"
         if [ -n "$revision_line" ]; then
-            revision_val=$(scalar_value "$f" "$revision_line" "revision")
+            scalar_value "$f" "$revision_line" "revision"
+            revision_val="$SCALAR_VAL"
             if ! printf '%s' "$revision_val" | grep -qE '^[0-9]+$'; then
                 report "$f" "$revision_line" "invalid revision: '${revision_val}' (expected non-negative integer)"
             fi
         fi
 
-        derived_at_line=$(require_field "$f" "$fm_start" "$fm_body_end" "derived_at")
+        require_field "$f" "$fm_start" "$fm_body_end" "derived_at"
+        derived_at_line="$FOUND_FIELD_LINE"
         if [ -n "$derived_at_line" ]; then
-            derived_at_val=$(scalar_value "$f" "$derived_at_line" "derived_at")
+            scalar_value "$f" "$derived_at_line" "derived_at"
+            derived_at_val="$SCALAR_VAL"
             if [ -z "$derived_at_val" ] || ! printf '%s' "$derived_at_val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
                 report "$f" "$derived_at_line" "invalid derived_at: '${derived_at_val}' (expected ISO 8601 date YYYY-MM-DD)"
             fi
@@ -751,7 +1037,8 @@ if [ -d "$store_dir/interactions" ]; then
         [ -e "$f" ] || continue
         files_checked=$((files_checked + 1))
 
-        fm_end=$(find_frontmatter_end "$f")
+        find_frontmatter_end "$f"
+        fm_end="$FM_END"
         if [ -z "$fm_end" ]; then
             report "$f" 1 "malformed frontmatter: missing opening/closing ---"
             continue
@@ -764,9 +1051,11 @@ if [ -d "$store_dir/interactions" ]; then
         require_field "$f" "$fm_start" "$fm_body_end" "date" > /dev/null
         require_field "$f" "$fm_start" "$fm_body_end" "source-capture" > /dev/null
 
-        people_line=$(require_field "$f" "$fm_start" "$fm_body_end" "people")
+        require_field "$f" "$fm_start" "$fm_body_end" "people"
+        people_line="$FOUND_FIELD_LINE"
         if [ -n "$people_line" ]; then
-            people_links=$(field_links "$f" "$fm_start" "$fm_body_end" "people")
+            field_links "$f" "$fm_start" "$fm_body_end" "people"
+            people_links="$FIELD_LINKS"
             if [ -z "$people_links" ]; then
                 report "$f" "$people_line" "orphan interaction: no people linked"
             fi
@@ -785,7 +1074,8 @@ if [ -d "$store_dir/wakeups" ]; then
         [ -e "$f" ] || continue
         files_checked=$((files_checked + 1))
 
-        fm_end=$(find_frontmatter_end "$f")
+        find_frontmatter_end "$f"
+        fm_end="$FM_END"
         if [ -z "$fm_end" ]; then
             report "$f" 1 "malformed frontmatter: missing opening/closing ---"
             continue
@@ -794,44 +1084,54 @@ if [ -d "$store_dir/wakeups" ]; then
         fm_body_end=$((fm_end - 1))
         check_frontmatter_lines_parseable "$f" "$fm_start" "$fm_body_end"
 
-        sv_line=$(require_field "$f" "$fm_start" "$fm_body_end" "schema_version")
+        require_field "$f" "$fm_start" "$fm_body_end" "schema_version"
+        sv_line="$FOUND_FIELD_LINE"
         sv_val=""
         if [ -n "$sv_line" ]; then
-            sv_val=$(scalar_value "$f" "$sv_line" "schema_version")
+            scalar_value "$f" "$sv_line" "schema_version"
+            sv_val="$SCALAR_VAL"
             check_enum "$f" "$sv_line" "schema_version" "$sv_val" "1\.0\.0|1\.1\.0|1\.2\.0"
         fi
         require_field "$f" "$fm_start" "$fm_body_end" "id" > /dev/null
         require_field "$f" "$fm_start" "$fm_body_end" "due" > /dev/null
         require_field "$f" "$fm_start" "$fm_body_end" "why" > /dev/null
 
-        people_line=$(require_field "$f" "$fm_start" "$fm_body_end" "people")
+        require_field "$f" "$fm_start" "$fm_body_end" "people"
+        people_line="$FOUND_FIELD_LINE"
         if [ -n "$people_line" ]; then
-            people_links=$(field_links "$f" "$fm_start" "$fm_body_end" "people")
+            field_links "$f" "$fm_start" "$fm_body_end" "people"
+            people_links="$FIELD_LINKS"
             if [ -z "$people_links" ]; then
                 report "$f" "$people_line" "wakeup has no people linked"
             fi
         fi
 
-        status_line=$(require_field "$f" "$fm_start" "$fm_body_end" "status")
+        require_field "$f" "$fm_start" "$fm_body_end" "status"
+        status_line="$FOUND_FIELD_LINE"
         status_val=""
         if [ -n "$status_line" ]; then
-            status_val=$(scalar_value "$f" "$status_line" "status")
+            scalar_value "$f" "$status_line" "status"
+            status_val="$SCALAR_VAL"
             check_enum "$f" "$status_line" "status" "$status_val" "pending|fired|snoozed|dismissed"
         fi
 
-        origin_line=$(require_field "$f" "$fm_start" "$fm_body_end" "origin")
+        require_field "$f" "$fm_start" "$fm_body_end" "origin"
+        origin_line="$FOUND_FIELD_LINE"
         origin_val=""
         if [ -n "$origin_line" ]; then
-            origin_val=$(scalar_value "$f" "$origin_line" "origin")
+            scalar_value "$f" "$origin_line" "origin"
+            origin_val="$SCALAR_VAL"
             check_enum "$f" "$origin_line" "origin" "$origin_val" "user-ask|signal|standing"
         fi
 
         if [ "$origin_val" = "signal" ]; then
-            src_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "source-signal")
+            find_field_line "$f" "$fm_start" "$fm_body_end" "source-signal"
+            src_line="$FOUND_LINE"
             if [ -z "$src_line" ]; then
                 report "$f" "$origin_line" "origin: signal requires a non-null source-signal"
             else
-                src_val=$(scalar_value "$f" "$src_line" "source-signal")
+                scalar_value "$f" "$src_line" "source-signal"
+                src_val="$SCALAR_VAL"
                 if [ -z "$src_val" ] || [ "$src_val" = "null" ]; then
                     report "$f" "$src_line" "origin: signal requires a non-null source-signal"
                 fi
@@ -839,9 +1139,11 @@ if [ -d "$store_dir/wakeups" ]; then
         fi
 
         # --- schema_version 1.1.0 fields (validated only when present) ---
-        fired_on_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "fired-on")
+        find_field_line "$f" "$fm_start" "$fm_body_end" "fired-on"
+        fired_on_line="$FOUND_LINE"
         if [ -n "$fired_on_line" ]; then
-            fired_on_val=$(scalar_value "$f" "$fired_on_line" "fired-on")
+            scalar_value "$f" "$fired_on_line" "fired-on"
+            fired_on_val="$SCALAR_VAL"
             if [ -n "$fired_on_val" ] && [ "$fired_on_val" != "null" ]; then
                 if ! printf '%s' "$fired_on_val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
                     report "$f" "$fired_on_line" "invalid fired-on: '${fired_on_val}' (expected ISO 8601 date YYYY-MM-DD)"
@@ -849,26 +1151,32 @@ if [ -d "$store_dir/wakeups" ]; then
             fi
         fi
 
-        dismiss_reason_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "dismiss-reason")
+        find_field_line "$f" "$fm_start" "$fm_body_end" "dismiss-reason"
+        dismiss_reason_line="$FOUND_LINE"
         dismiss_reason_val=""
         if [ -n "$dismiss_reason_line" ]; then
-            dismiss_reason_val=$(scalar_value "$f" "$dismiss_reason_line" "dismiss-reason")
+            scalar_value "$f" "$dismiss_reason_line" "dismiss-reason"
+            dismiss_reason_val="$SCALAR_VAL"
             if [ -n "$dismiss_reason_val" ] && [ "$dismiss_reason_val" != "null" ]; then
                 check_enum "$f" "$dismiss_reason_line" "dismiss-reason" "$dismiss_reason_val" "not-now|not-this-person|not-this-signal-type|already-handled"
             fi
         fi
 
-        acted_on_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "acted-on")
+        find_field_line "$f" "$fm_start" "$fm_body_end" "acted-on"
+        acted_on_line="$FOUND_LINE"
         if [ -n "$acted_on_line" ]; then
-            acted_on_val=$(scalar_value "$f" "$acted_on_line" "acted-on")
+            scalar_value "$f" "$acted_on_line" "acted-on"
+            acted_on_val="$SCALAR_VAL"
             if [ -n "$acted_on_val" ] && [ "$acted_on_val" != "null" ]; then
                 check_enum "$f" "$acted_on_line" "acted-on" "$acted_on_val" "true|false"
             fi
         fi
 
-        snooze_count_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "snooze-count")
+        find_field_line "$f" "$fm_start" "$fm_body_end" "snooze-count"
+        snooze_count_line="$FOUND_LINE"
         if [ -n "$snooze_count_line" ]; then
-            snooze_count_val=$(scalar_value "$f" "$snooze_count_line" "snooze-count")
+            scalar_value "$f" "$snooze_count_line" "snooze-count"
+            snooze_count_val="$SCALAR_VAL"
             if [ -n "$snooze_count_val" ] && [ "$snooze_count_val" != "null" ]; then
                 if ! printf '%s' "$snooze_count_val" | grep -qE '^[0-9]+$'; then
                     report "$f" "$snooze_count_line" "invalid snooze-count: '${snooze_count_val}' (expected non-negative integer)"
@@ -876,9 +1184,11 @@ if [ -d "$store_dir/wakeups" ]; then
             fi
         fi
 
-        signal_type_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "signal-type")
+        find_field_line "$f" "$fm_start" "$fm_body_end" "signal-type"
+        signal_type_line="$FOUND_LINE"
         if [ -n "$signal_type_line" ]; then
-            signal_type_val=$(scalar_value "$f" "$signal_type_line" "signal-type")
+            scalar_value "$f" "$signal_type_line" "signal-type"
+            signal_type_val="$SCALAR_VAL"
             if [ -n "$signal_type_val" ] && [ "$signal_type_val" != "null" ]; then
                 if ! printf '%s' "$signal_type_val" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$'; then
                     report "$f" "$signal_type_line" "invalid signal-type: '${signal_type_val}' (expected non-empty kebab-case)"
@@ -893,19 +1203,23 @@ if [ -d "$store_dir/wakeups" ]; then
         fi
 
         # --- schema_version 1.2.0 fields (validated only when present) ---
-        kind_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "kind")
+        find_field_line "$f" "$fm_start" "$fm_body_end" "kind"
+        kind_line="$FOUND_LINE"
         kind_val=""
         if [ -n "$kind_line" ]; then
-            kind_val=$(scalar_value "$f" "$kind_line" "kind")
+            scalar_value "$f" "$kind_line" "kind"
+            kind_val="$SCALAR_VAL"
             if [ -n "$kind_val" ] && [ "$kind_val" != "null" ]; then
                 check_enum "$f" "$kind_line" "kind" "$kind_val" "nudge|event-proposal"
             fi
         fi
 
-        proposed_event_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "proposed-event")
+        find_field_line "$f" "$fm_start" "$fm_body_end" "proposed-event"
+        proposed_event_line="$FOUND_LINE"
         pe_present=0
         if [ -n "$proposed_event_line" ]; then
-            pe_val=$(scalar_value "$f" "$proposed_event_line" "proposed-event")
+            scalar_value "$f" "$proposed_event_line" "proposed-event"
+            pe_val="$SCALAR_VAL"
             if [ -n "$pe_val" ] && [ "$pe_val" != "null" ]; then
                 pe_present=1
             else
@@ -966,10 +1280,12 @@ if [ -d "$store_dir/wakeups" ]; then
             report "$f" "$fm_start" "kind: event-proposal requires a proposed-event mapping"
         fi
 
-        confirmed_on_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "confirmed-on")
+        find_field_line "$f" "$fm_start" "$fm_body_end" "confirmed-on"
+        confirmed_on_line="$FOUND_LINE"
         confirmed_on_val=""
         if [ -n "$confirmed_on_line" ]; then
-            confirmed_on_val=$(scalar_value "$f" "$confirmed_on_line" "confirmed-on")
+            scalar_value "$f" "$confirmed_on_line" "confirmed-on"
+            confirmed_on_val="$SCALAR_VAL"
             if [ -n "$confirmed_on_val" ] && [ "$confirmed_on_val" != "null" ]; then
                 if ! printf '%s' "$confirmed_on_val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
                     report "$f" "$confirmed_on_line" "invalid confirmed-on: '${confirmed_on_val}' (expected ISO 8601 date YYYY-MM-DD)"
@@ -977,10 +1293,12 @@ if [ -d "$store_dir/wakeups" ]; then
             fi
         fi
 
-        created_event_id_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "created-event-id")
+        find_field_line "$f" "$fm_start" "$fm_body_end" "created-event-id"
+        created_event_id_line="$FOUND_LINE"
         created_event_id_val=""
         if [ -n "$created_event_id_line" ]; then
-            created_event_id_val=$(scalar_value "$f" "$created_event_id_line" "created-event-id")
+            scalar_value "$f" "$created_event_id_line" "created-event-id"
+            created_event_id_val="$SCALAR_VAL"
         fi
 
         if [ -n "$created_event_id_val" ] && [ "$created_event_id_val" != "null" ]; then
@@ -1005,7 +1323,8 @@ if [ -d "$store_dir/wakeups/signals" ]; then
         [ -e "$f" ] || continue
         files_checked=$((files_checked + 1))
 
-        fm_end=$(find_frontmatter_end "$f")
+        find_frontmatter_end "$f"
+        fm_end="$FM_END"
         if [ -z "$fm_end" ]; then
             report "$f" 1 "malformed frontmatter: missing opening/closing ---"
             continue
@@ -1020,17 +1339,21 @@ if [ -d "$store_dir/wakeups/signals" ]; then
         require_field "$f" "$fm_start" "$fm_body_end" "evidence" > /dev/null
         require_field "$f" "$fm_start" "$fm_body_end" "detected_at" > /dev/null
 
-        person_line=$(require_field "$f" "$fm_start" "$fm_body_end" "person")
+        require_field "$f" "$fm_start" "$fm_body_end" "person"
+        person_line="$FOUND_FIELD_LINE"
         if [ -n "$person_line" ]; then
-            person_links=$(field_links "$f" "$fm_start" "$fm_body_end" "person")
+            field_links "$f" "$fm_start" "$fm_body_end" "person"
+            person_links="$FIELD_LINKS"
             if [ -z "$person_links" ]; then
                 report "$f" "$person_line" "signal event has no person linked"
             fi
         fi
 
-        conf_line=$(require_field "$f" "$fm_start" "$fm_body_end" "confidence")
+        require_field "$f" "$fm_start" "$fm_body_end" "confidence"
+        conf_line="$FOUND_FIELD_LINE"
         if [ -n "$conf_line" ]; then
-            conf_val=$(scalar_value "$f" "$conf_line" "confidence")
+            scalar_value "$f" "$conf_line" "confidence"
+            conf_val="$SCALAR_VAL"
             check_enum "$f" "$conf_line" "confidence" "$conf_val" "low|medium|high"
         fi
 

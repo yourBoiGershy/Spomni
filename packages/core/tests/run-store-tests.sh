@@ -1090,6 +1090,22 @@ else
   STORE_TESTS_STATUS=1
 fi
 
+# --- delegate to the reindex.sh golden test, tallying its exit status
+#     alongside this script's own ---
+REINDEX_TEST="$SCRIPT_DIR/test-reindex.sh"
+echo ""
+echo "--- test-reindex.sh ---"
+if [ -x "$REINDEX_TEST" ]; then
+  "$REINDEX_TEST"
+  reindex_status=$?
+  if [ "$reindex_status" -ne 0 ]; then
+    STORE_TESTS_STATUS=1
+  fi
+else
+  echo "FAIL: $REINDEX_TEST not found or not executable"
+  STORE_TESTS_STATUS=1
+fi
+
 # --- delegate to the wakeup-add.sh golden test, tallying its exit status
 #     alongside this script's own ---
 WAKEUP_ADD_TEST="$SCRIPT_DIR/test-wakeup-add.sh"
