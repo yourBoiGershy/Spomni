@@ -158,7 +158,14 @@ Full protocol, end to end:
 8. Run a serial leftover pass — a normal (non-sharded) debrief session over
    `leftover.ids` plus any ids individual shard workers reported as
    skipped — batch-ish, single session, single-writer by default (no
-   sharding needed at this reduced scale).
+   sharding needed at this reduced scale). This pass runs on an
+   **already-warm shard worker** (the orchestrator continues one finished
+   shard worker via SendMessage into plain batch mode over the merged
+   store), **after** steps 5–7 (ledger merge + the single rebuild/
+   validate) — never a fresh session. Rationale: the harness's context-
+   economy rule (reuse warm workers for serial follow-on units in the same
+   package) — a fresh session's cold skill/context re-read dominates a
+   small leftover-scale pass, exactly the cost this step exists to avoid.
 9. Done — the wave orchestrator's own completion report records the D1
    summary line, per-worker filed/skipped counts, and the leftover pass's
    result.
@@ -173,7 +180,10 @@ fall out naturally into a future eligible set (either a re-run of the wave,
 or the leftover pass, at the orchestrator's discretion) rather than needing
 any special-cased recovery step. Per the harness's fix-policy doctrine, a
 failing shard gets at most 2 fix-dispatch rounds before the orchestrator
-escalates rather than looping.
+escalates rather than looping. If no shard worker is available warm for
+step 8 (e.g. all failed or none remain reachable), a fresh session is the
+fallback for the leftover pass — its cold-start cost should then be
+expected in the wave's wall-clock, not treated as a regression.
 
 ## Single-writer rule (restated for this spec)
 

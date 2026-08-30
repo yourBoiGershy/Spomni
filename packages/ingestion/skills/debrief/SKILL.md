@@ -46,7 +46,7 @@ mkdir -p data/ingestion
 
 ## 1. Input selection
 
-This skill runs in one of two modes.
+This skill runs in one of three modes: single-event, batch, or shard.
 
 ### Single-event mode
 
@@ -80,6 +80,36 @@ Run `bash packages/ingestion/scripts/triage-inbox.sh <store-dir>` before a
 batch pass to populate `triage-held.log` with the current inbox's
 deterministic junk holds — batch mode itself must not spend judgment
 re-deciding a class of event triage has already, conservatively, held out.
+
+### Shard mode
+
+Given a shard file path (one `inbox/` capture-id per line, as emitted by
+`packages/ingestion/scripts/shard-filing-batch.sh`) and a shard index `k`,
+process **only** the ids listed in that shard file — skip any listed id
+already in `data/ingestion/debrief-filed.log` or `data/ingestion/
+triage-held.log` (log it, make no writes, same skip semantics as the other
+two modes). The shard file is already oldest-first by `captured_at`, so
+process it top to bottom without re-sorting. The per-event flow below
+(§§2-5) runs exactly as in batch mode, with two deviations, detailed in
+§5c: steps 1-2 of "After filing" are deferred to the wave orchestrator
+instead of running per event, and step 3's ledger append targets a
+per-shard log instead of the main one.
+
+**Person-write confinement (the single-writer guarantee).** In shard mode
+a worker may create or update person files ONLY for participants of its
+own assigned events — by the shard pre-pass's construction, every such
+person is necessarily in-shard. If filing a given event would require
+writing any person file outside that set (for example, a body-mentioned
+third party who wasn't in the event's hints), the worker SKIPS that event
+entirely: no store writes, no ledger line, reported as skipped in its
+completion report — the skipped event joins the leftover pass rather than
+being filed cross-shard.
+
+See `packages/ingestion/specs/parallel-filing.md` for the full wave
+protocol this mode is one part of (the shard pre-pass, the parallel spawn
+of shard-mode workers, the ledger merge, and the single index rebuild that
+follow around this mode from the outside — none of it is this skill's own
+concern beyond the two §5c deviations and the confinement rule above).
 
 ## 2. Parse the envelope
 
@@ -373,9 +403,21 @@ written:
 3. Append the capture event's `id` to `data/ingestion/debrief-filed.log`.
 
 Steps 1-2 run once per event in single-event mode, or once after each
-event (not batched to the end) in batch mode, so a mid-batch failure
-leaves the index/validation state consistent with whatever was actually
-filed so far.
+event (not batched to the end) in batch mode, outside shard mode, so a
+mid-batch failure leaves the index/validation state consistent with
+whatever was actually filed so far.
+
+**Shard mode deviation.** Steps 1-2 (`build-index.sh` + `validate-store.sh`)
+are skipped per event in shard mode — the wave orchestrator runs both
+exactly once, after all shard workers finish, per `packages/ingestion/
+specs/parallel-filing.md` D2/D3. Step 3 appends the capture event's `id` to
+`data/ingestion/debrief-filed.shard-<k>.log` instead of the main
+`debrief-filed.log`, one such file per active shard worker. The wave
+orchestrator merges every shard's log into `debrief-filed.log` — whether or
+not that shard's worker otherwise succeeded — before running the single
+post-wave index rebuild and validation pass; this skill's shard-mode
+invocation never touches `debrief-filed.log` or the index/validation
+scripts directly.
 
 ## Not in this core
 
@@ -617,10 +659,11 @@ the event — the fragment can still ride along in `## Summary`/
      given, e.g. "Priya Nair").
    - `org`, `role`, `location`, `tags`, `birthday`, `how-met`, `tier` —
      fill only the fields the debrief actually states; omit the rest
-     (never invent — same rule as any other person file, per the
-     contract's Notes section). `how-met` is a good candidate whenever the
-     debrief says how they met (golden 06 could carry `how-met: Fintech
-     founders Slack community`, though the golden also expresses this as
+     (omit = no line at all, not a blank value; never invent — same rule as
+     any other person file, per the contract's Notes section). `how-met`
+     is a good candidate whenever the debrief says how they met (golden 06
+     could carry `how-met: Fintech founders Slack community`, though the
+     golden also expresses this as
      a `## Personal details` bullet — either placement is acceptable as
      long as it isn't duplicated as a contradictory pair).
    - `last-touch` — the interaction's date from §2 (golden 06:
@@ -629,6 +672,9 @@ the event — the fragment can still ride along in `## Summary`/
      not default to `active` just because the person is new (golden 06's
      `tier: active` reflects a judgment call from the debrief's own
      enthusiasm/"want to keep in touch" framing, not a blanket default).
+     Unset means the `tier:` line is **omitted from the frontmatter
+     entirely** — never written empty; an empty value fails
+     `validate-store.sh` (the enum accepts only the four tiers).
 3. **Every seeded fact is `**[told-by-user]**`, dated** — everything the
    debrief states about this brand-new person becomes a `## Facts` bullet
    in exactly the same tagged, dated shape as §5a uses for existing
