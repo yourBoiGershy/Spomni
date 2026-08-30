@@ -42,7 +42,7 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 27 | Import speed & scaling (parallel deterministic stages; person-sharded parallel filing; onboarding wall-clock target) | ingestion (filing waves) + connectors (parallel fetch) | 26 | Planned |
 | 28 | Sync timing & autonomous runtime (scheduled headless/cloud sessions run the MCP lanes; gmail/calendar join sync-lanes; per-lane intervals deliberate; catch-up on wake) | connectors/scripts + core (sync-lanes) + infrastructure docs | 19, 26; extends 09 | Planned |
 | 29 | Connector fleet (lane roster: enable/disable by config; simultaneous-run isolation; new-lane playbook = fetch impl + normalizer mapping) | connectors + core (sync-lanes/roster) + docs | 26, 28 | Planned |
-| 30 | Scoring accuracy, judgment & weights (episode-aware tier bands; participation-weight sanity on the live store; judgment-stage accuracy; stated-over-derived preserved) | ingestion (seed/scoring specs) + attention specs | 15, 25, 26 | Planned |
+| 30 | Semantic scoring: user model × relationship kind × judged warrant (priors, local embeddings, rescale — reframed 2026-08-29 from band-tuning; was "scoring accuracy, judgment & weights") | core (user-model, relationship-scoring, embeddings-index, person kind fields, ranking-weights 1.1.0) + ingestion (evidence, embeddings, derive-and-confirm, classify+judge, rescale, review-tiers, evals) + attention (minimal: drift prefilter+judgment, seed/rescale — after 05) | 15, 25, 26 | Planned (plan `docs/plans/2026-08-29-30-semantic-scoring-user-model.md` rev 2, 2026-08-29) |
 
 Plans 05 and 06 are two plans within one package (`attention`) — see DECISIONS.md:
 attention-merge. Historical plan-number collisions (11/12 renumbered to 13–16 at merge)
@@ -317,24 +317,53 @@ window with check-sync clean; disabling/enabling a lane is a config act
 with no code edit; the playbook validated by scaffolding one new lane (a
 dry-run fixture lane is sufficient).
 
-### 30 — Scoring accuracy, judgment & weights
+### 30 — Semantic scoring: user model × relationship kind × evidence
 
-**Context (from the 2026-08-29 live run).** All 20 tier suggestions
-saturated to inner-circle: episode-split density gives chat contacts
-median gaps of 1–7 days against bands designed for meeting cadence.
-Accuracy is a consumer of the import pipeline, independent of
-speed/timing/fleet — "what we look for and how we weigh it" changes
-without touching how data arrives.
-**Work.** Episode-aware tier bands or channel-weighted frequency (decide
-in-plan); a sanity pass of the participation-signal weights against the
-real live store; a judgment-stage accuracy pass (prompts/graders); plan
-15's provenance rule preserved — stated preferences always outrank
-derived scores.
-**Deliverables / proof of done.** The chunk-24/25 live corpus ranks
-without saturation (unanswered pitch = very low, non-participating group
-= low, active thread = boosted, inner-circle no longer the default);
-every suggestion carries a score breakdown naming its signals;
-eval-guarded; zero tier writes without confirmation (unchanged invariant).
+**Context (from the 2026-08-29 live run; reframed the same day).** All 20
+tier suggestions saturated to inner-circle: 20 of the 23 gated people have
+`median_gap_days ≤ 21` because episode-split files one interaction per
+chat-day. The root cause is structural, not thresholds — frequency cannot
+tell a two-week scheduling contact from a monthly real friend; what
+separates them is what the relationship *is*, and who the user is.
+Accuracy stays a consumer of the import pipeline, independent of
+speed/timing/fleet.
+**Work.** Replaces the one-formula tier score with a three-layer hybrid.
+**Layer 1** — a stated-provenance `user-model.md` (core contract,
+ingestion-written) describing the user's investment mix, protected time,
+and current season; drafted from revealed behavior, confirmed by the user,
+revisable. **Layer 2** — a per-person relationship `kind` (small vocabulary
++ free-text rationale, derived by a post-file judgment pass from
+deterministic evidence; user-confirmable, stated corrections stick,
+time-boxed kinds expire guilt-free) as a second axis beside the unchanged
+four-tier warmth enum. **Layer 3** — **judgment with priors, not a
+formula**: the model emits an attention warrant (0–100), suggested tier,
+and rationale from evidence + user model + a small interpretable prior set
+(user-model axes; `kinds`/`evidence` dimensions on ranking-weights.json,
+seeded from the user model; nearest confirmed neighbors); rigid numbers
+survive only as rules (data gate, kind caps, zero unconfirmed tier writes).
+**Local optional embeddings** (Ollama via curl+jq, never cloud — Anthropic
+offers no embedding model and Voyage's cloud fails data-locality doctrine)
+supply neighbor priors, clustering, and user-model draft evidence,
+degrading gracefully when absent. A deterministic **rescale** re-centers
+warrant batches and weight dimensions when they drift ("everyone too high /
+too low"), user-invoked. Tier-drift becomes prefilter + judgment; attention
+footprint minimal and sequenced after plan 05. A new user-invoked
+`review-tiers` flow is the confirmation surface (the 2026-08-29 all-skip
+batch is never re-prompted unprompted).
+**Deliverables / proof of done.** Contracts versioned in core (user-model,
+relationship-scoring, embeddings-index, person.md kind fields,
+ranking-weights 1.1.0); evidence extraction, embeddings + nearest/cluster
+scripts, user-model derive-and-confirm, classify+judge pass, rescale, drift
+prefilter+judgment; deterministic byte-compare tests for the scripts and
+judgment evals with set/ordering/property graders (kind sets, warrant
+ordering, neighbor-prior consistency, no-Ollama fallback, user-model
+propagation, de-saturation, rescale skew). The live corpus ranks without
+saturation (scheduling/unsolicited/silent-group land low with neutral
+wording, inner-circle no longer the default); every suggestion and drift
+proposal carries a breakdown naming kind, evidence, priors, and rationale;
+warrants move when the user model moves, and only where it applies;
+identical outcomes with embeddings absent; eval-guarded; zero tier writes
+without confirmation (unchanged invariant).
 
 ### 07 (amendment) — user notification & nudge delivery
 
