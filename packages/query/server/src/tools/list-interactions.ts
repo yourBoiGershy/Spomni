@@ -14,8 +14,10 @@ const PAGE_SIZE = 10;
 const SUMMARY_EXCERPT_CHARS = 300;
 
 /** First ~300 chars of an interaction's `## Summary` section, trimmed on a
- * word boundary where possible and marked with `…` when truncated. */
-function excerptSummary(reader: StoreReader, id: string): string {
+ * word boundary where possible and marked with `…` when truncated. Exported
+ * so other tools (e.g. get_person's `include_interactions`) can excerpt an
+ * interaction without duplicating this scan. */
+export function excerptSummary(reader: StoreReader, id: string): string {
   const interaction = reader.getInteraction(id);
   if (!interaction) return "";
   const summary = interaction.sections.find((s) => s.heading === "Summary");

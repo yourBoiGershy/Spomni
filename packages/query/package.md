@@ -28,10 +28,15 @@ wrapping them is mechanical.
   pool; read-only, never writes to the store (generates `index.json`/
   `stats.json` into a scratch copy if either is missing).
 - The nudge-card render consumed by output adapters
-- `server/` (`packages/query/server/`): an MCP tool surface, seven read-only tools over
-  stdio (streamable HTTP behind `--http`, stubbed): `search_people`, `get_person`,
-  `list_interactions`, `get_interaction`, `get_contact_stats`, `suggest_reachouts`,
-  `upcoming_meetings`. Entry point `server/src/index.ts` (run via `node
+- `server/` (`packages/query/server/`): an MCP tool surface, eight read-only tools over
+  stdio (streamable HTTP behind `--http`, stubbed): `search_people`, `get_person`
+  (optional `include_interactions: N` inlines the person's N most recent filed
+  interactions — id, date, summary excerpt — newest first), `list_interactions`,
+  `get_interaction`, `get_contact_stats`, `suggest_reachouts`, `upcoming_meetings`,
+  `who_next_pool` (the `/who-next` skill's whole candidate pool in one call — same
+  pre-filtered/pre-ranked objects as `scripts/who-next-direct.sh`, facts/open-threads
+  text inline, so the skill costs ≤2 tool round-trips before judging instead of up to
+  22 — plan 38 unit G). Entry point `server/src/index.ts` (run via `node
   --experimental-strip-types`, `--store` flag), transport seam, store-reader, and all
   seven tool handlers are in place and tested (`tests/test-tools.mjs` and
   `tests/test-upcoming-meetings.mjs`). Registered project-wide via the repo root
