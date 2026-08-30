@@ -4,6 +4,13 @@ Working tracker for the build. Each chunk is one plan in `docs/plans/`, sized so
 focused session (with subagent fan-out) can complete it. Update Status here as chunks
 move; the shareable build-plan artifact is the pretty view, this file is the truth.
 
+> **Mission (decision `mission-ingredients-vs-running-cost`, 2026-08-29):** *what a
+> friendship is made of, without what it costs to keep.* Every chunk block below carries
+> a **Mission test.** line — which running cost it cuts (remembering-to / noticing /
+> timing / deciding-who / starting / following-through, or "infrastructure for <cost>")
+> and which ingredient (trust / care / intent / time) it is nearest to and how it stays
+> clear. A chunk that can't answer doesn't get planned. Scenario map: `docs/USE-CASES.md`.
+
 > **2026-08-29 pivot (decision: composio-retired):** Composio is dropped entirely.
 > Gmail/Calendar move to the first-party claude.ai connectors driven by Claude directly.
 > Chunks 17–21 below carry the pivot and the next build phase: live query/chat, scheduled
@@ -52,7 +59,8 @@ package specs/commits are historical.
 ## New chunks — context, agent path, deliverables
 
 Each block is what the plan-architect needs to author the full plan, and what "Done"
-means. Every chunk follows the standing flow: plan-architect writes the plan file →
+means. Every block opens with a **Mission test.** line (see the note at the top); the
+plan-architect copies it into the plan's header. Every chunk follows the standing flow: plan-architect writes the plan file →
 orchestrator dispatches dev-workers per the splitting rule → checkers verify → suites
 run → merge → status logged (see Merge cadence).
 
@@ -273,6 +281,7 @@ its filed events (golden-tested); capture + filing suites green.
 
 ### 27 — Import speed & scaling
 
+**Mission test.** Infrastructure for *remembering-to* (bulk) — onboarding must reach first value in minutes, or the user never gets to a single nudge. Nearest ingredient: none; pure cost.
 **Context.** With 26's stages, everything before `judgment` is
 deterministic — parallel-safe with plain processes, no model cost — and
 `file` writes shard cleanly by person. Speed becomes an execution detail
@@ -287,6 +296,7 @@ rerun beats the plan's wall-clock target; suites green.
 
 ### 28 — Sync timing & autonomous runtime
 
+**Mission test.** Infrastructure for *noticing* — signals only exist if capture runs without the user. Nearest ingredient: time — the runtime must never ping the user around a meeting (principle 3).
 **Context.** The sync-lanes contract (19) already makes "which lane, what
 interval" pure config, but only beeper actually runs — gmail/calendar need
 a live Claude session for the first-party MCP connectors, which launchd
@@ -304,6 +314,7 @@ body transcription); reboot-safe like the rest of 19.
 
 ### 29 — Connector fleet
 
+**Mission test.** Infrastructure for *noticing* (breadth of sources). Nearest ingredient: none; pure cost — but every new lane is first-party only (other-people's-data-stays-local).
 **Context.** With the stage contract, a provider is a fetch implementation
 plus a normalizer mapping — the roster of lanes and their concurrency
 becomes an independent service, decoupled from what any lane imports.
@@ -319,6 +330,7 @@ dry-run fixture lane is sufficient).
 
 ### 30 — Scoring accuracy, judgment & weights
 
+**Mission test.** Cuts *deciding-who* and *timing* — the queue is only as good as its ranking. Nearest ingredient: **intent** — tiers and kinds are derived-and-confirmed, never silently inferred; the user decides who matters.
 **Context (from the 2026-08-29 live run).** All 20 tier suggestions
 saturated to inner-circle: episode-split density gives chat contacts
 median gaps of 1–7 days against bands designed for meeting cadence.
