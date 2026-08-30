@@ -80,19 +80,20 @@ else
     cat "$TMP_ROOT/reversed-err.txt"
   else
     first_line="$(printf '%s\n' "$reversed_out" | head -n1)"
-    if [ "$first_line" = "1. quarterly catch-up is due" ]; then
+    if [ "$first_line" = "1. [[jordan-lee]] — quarterly catch-up is due" ]; then
       pass "numbering follows entries[] order (reversed batch: former 3rd entry is now '1.')"
     else
       fail "numbering did not follow entries[] order on the reversed batch, got first line: $first_line"
     fi
   fi
 
-  # --- assertion 3: 'Draft (unsent):' appears exactly once ---
+  # --- assertion 3: 'Draft (unsent):' is absent from the card (draft is
+  # served only on '<n> draft', never rendered inline) ---
   draft_count="$(printf '%s' "$(cat "$render_out")" | grep -c '^Draft (unsent):$')"
-  if [ "$draft_count" -eq 1 ]; then
-    pass "'Draft (unsent):' appears exactly once in the fixture render"
+  if [ "$draft_count" -eq 0 ]; then
+    pass "'Draft (unsent):' is absent from the card (draft served only on '<n> draft')"
   else
-    fail "'Draft (unsent):' appeared $draft_count times (expected 1)"
+    fail "'Draft (unsent):' appeared $draft_count times (expected 0 — never rendered in the card)"
   fi
 
   # --- assertion 4: no-guilt language never appears ---
@@ -125,7 +126,7 @@ else
   fi
 
   # --- assertion 7: footer is the exact reply-grammar line ---
-  expected_footer='Reply with the number: <n> done | <n> snooze <dur> | <n> skip | <n> never <signal-type> | <n> not-them | <n> wrong-tier <tier>'
+  expected_footer='Reply: <n> draft | <n> done | <n> snooze <dur> | <n> skip | <n> never <signal-type> | <n> not-them | <n> wrong-tier <tier>'
   actual_footer="$(tail -n1 "$render_out")"
   if [ "$actual_footer" = "$expected_footer" ]; then
     pass "last line is the exact reply-grammar footer"
@@ -151,6 +152,81 @@ else
       fail "mixed bare/bracketed people slugs did not render correctly (quad-bracket count: $quad_bracket_count)"
       printf '%s\n' "$mixed_out" | head -n2
     fi
+  fi
+
+  # --- assertion: every card is exactly two lines ---
+  # Cards are separated from each other (and from the mentions block) by a
+  # blank line; count the non-blank run lengths up to (but not including)
+  # the mentions/footer block for the 3-entry fixture batch (3 cards).
+  card_lines_ok=1
+  card_block=1
+  while [ "$card_block" -le 3 ]; do
+    start_line=$(( (card_block - 1) * 3 + 1 ))
+    line1="$(sed -n "${start_line}p" "$render_out")"
+    line2="$(sed -n "$((start_line + 1))p" "$render_out")"
+    if ! printf '%s' "$line1" | grep -qE "^${card_block}\. "; then
+      card_lines_ok=0
+    fi
+    if ! printf '%s' "$line2" | grep -q '^→ '; then
+      card_lines_ok=0
+    fi
+    card_block=$((card_block + 1))
+  done
+  if [ "$card_lines_ok" -eq 1 ]; then
+    pass "every card in the fixture render is exactly two lines (numbered header + → action)"
+  else
+    fail "at least one card in the fixture render was not exactly two lines"
+  fi
+
+  # --- assertion: 7-entry batch renders only the first 5 cards (cap) ---
+  seven_batch="$TMP_ROOT/seven-entry-batch.json"
+  jq '.entries = (.entries + [.entries[0], .entries[1], .entries[2], .entries[0]])' "$BATCH" > "$seven_batch"
+  seven_out="$("$RENDERER" "$seven_batch" 2>"$TMP_ROOT/seven-err.txt")"
+  seven_status=$?
+  if [ "$seven_status" -ne 0 ]; then
+    fail "render-nudge-cards.sh exited $seven_status (expected 0) on the 7-entry batch"
+    cat "$TMP_ROOT/seven-err.txt"
+  else
+    numbered_card_count="$(printf '%s\n' "$seven_out" | grep -cE '^[0-9]+\. ')"
+    has_six="$(printf '%s\n' "$seven_out" | grep -cE '^6\. ')"
+    if [ "$numbered_card_count" -eq 5 ] && [ "$has_six" -eq 0 ]; then
+      pass "7-entry batch renders exactly 5 cards (cap), entries beyond 5th not rendered"
+    else
+      fail "7-entry batch rendered $numbered_card_count numbered cards (expected 5) or had a '6.' card"
+    fi
+    if printf '%s\n' "$seven_out" | grep -qiE 'more|remaining|[0-9]+ (left|cut)'; then
+      fail "7-entry batch render mentions how many cards were cut (no-guilt violation)"
+    else
+      pass "7-entry batch render does not mention how many cards were cut"
+    fi
+  fi
+
+  # --- assertion: action line matches the deterministic table ---
+  action_table_ok=1
+  action_table_msg=""
+
+  check_action() {
+    # $1 = jq filter to build a one-entry batch, $2 = expected action line
+    local filter="$1" expected="$2" batch out actual
+    batch="$TMP_ROOT/action-batch.json"
+    jq "$filter" "$BATCH" > "$batch"
+    out="$("$RENDERER" "$batch" 2>/dev/null)"
+    actual="$(printf '%s\n' "$out" | sed -n '2p')"
+    if [ "$actual" != "$expected" ]; then
+      action_table_ok=0
+      action_table_msg="${action_table_msg}\n  got: $actual\n  want: $expected"
+    fi
+  }
+
+  check_action '.entries = [.entries[0]]' "→ send a birthday note today"
+  check_action '.entries = [.entries[1]]' "→ congratulate them on the new role"
+  check_action '.entries = [.entries[2]]' '→ create "Coffee with Jordan" 2026-09-05T10:00:00-04:00 and reply "1 done"'
+  check_action '.entries = [.entries[0] | .signal_type = null | .origin = "user-ask"]' "→ do what you asked yourself to do"
+
+  if [ "$action_table_ok" -eq 1 ]; then
+    pass "action line matches the deterministic table for birthday/job-change/event-proposal/user-ask"
+  else
+    fail "action line did not match the deterministic table$(printf '%b' "$action_table_msg")"
   fi
 
   # --- assertion bad file: nonexistent/invalid JSON -> exit 2 ---

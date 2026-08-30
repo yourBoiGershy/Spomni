@@ -168,6 +168,18 @@ place_batch() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# place_draft <store> <draft-basename> [text] — writes an on-demand draft
+# file (plan 34 feedback-parse.sh's output shape) into outbox/drafts/.
+# ---------------------------------------------------------------------------
+place_draft() {
+  store="$1"
+  basename="$2"
+  text="${3:-hey, want to grab coffee this week?}"
+  mkdir -p "$store/outbox/drafts"
+  printf 'Draft (unsent):\n%s\n' "$text" > "$store/outbox/drafts/${basename}"
+}
+
 # --- recording stub: dispatches by path suffix, logs "METHOD PATH BODY" ---
 recording_stub="$SANDBOX/recording-stub.sh"
 cat > "$recording_stub" <<'EOF'
@@ -549,6 +561,112 @@ t12_out="$(
 assert_contains "template comment guard: channel=beeper-self" "$t12_out" "deliver: channel=beeper-self"
 assert_eq "template comment guard: exactly one POST" "$(call_count "$t12_log")" "1"
 assert_eq "template comment guard: POST to /v1/chats/1/messages" "$(awk '{print $1, $2}' "$t12_log")" "POST /v1/chats/1/messages"
+
+# =============================================================================
+# 13. Draft file + beeper-self: one POST whose body starts with
+#     "Draft (unsent):", delivered.log gets a draft:beeper-self line, outbox
+#     file contains it. Rerun: nothing new, zero POSTs, log unchanged.
+# =============================================================================
+
+t13_store="$(make_store t13)"
+t13_root="$(cd "$t13_store/../.." && pwd)"
+enable_beeper "$t13_root"
+write_profile "$t13_store" "- **[stated-by-user]** channel: beeper-self (2026-08-30)
+- **[stated-by-user]** beeper_chat_id: 1 (2026-08-30)"
+place_draft "$t13_store" "2026-08-30T130000Z-batch.json-1-draft.txt"
+t13_log="$SANDBOX/t13/stub.log"
+mkdir -p "$SANDBOX/t13"
+
+t13_out="$(
+  export BEEPER_HTTP_STUB="$recording_stub"
+  export STUB_LOG="$t13_log"
+  export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  "$DELIVER_SCRIPT" "$t13_store" --today 2026-08-30 --now 09:00
+)"
+t13_rc=$?
+
+assert_eq "draft first run: exit 0" "$t13_rc" "0"
+assert_contains "draft first run: draft sent line" "$t13_out" "deliver: draft sent 2026-08-30T130000Z-batch.json-1-draft.txt"
+assert_contains "draft first run: summary drafts=1" "$t13_out" "drafts=1"
+assert_eq "draft first run: exactly one POST" "$(call_count "$t13_log")" "1"
+t13_json="$(sed -e 's|^POST /v1/chats/1/messages ||' "$t13_log")"
+t13_text="$(printf '%s' "$t13_json" | jq -r '.text')"
+case "$t13_text" in
+  "Draft (unsent):"*) pass "draft first run: POST body .text starts with Draft (unsent):" ;;
+  *) fail "draft first run: POST body .text starts with Draft (unsent): (got [$t13_text])" ;;
+esac
+
+t13_delivered="$t13_store/outbox/delivered.log"
+assert_eq "draft first run: delivered.log has one line" "$(call_count "$t13_delivered")" "1"
+assert_eq "draft first run: delivered.log line is draft:beeper-self" "$(awk -F'\t' '{print $2}' "$t13_delivered")" "draft:beeper-self"
+
+t13_outbox="$t13_store/outbox/2026-08-30.md"
+assert_eq "draft first run: outbox file has draft section" "$([ -f "$t13_outbox" ] && grep -q '^## 2026-08-30T130000Z-batch.json-1-draft.txt$' "$t13_outbox" && echo yes || echo no)" "yes"
+assert_contains "draft first run: outbox body contains Draft (unsent):" "$(cat "$t13_outbox")" "Draft (unsent):"
+
+t13_delivered_before="$(cat "$t13_delivered")"
+t13b_log="$SANDBOX/t13/stub-b.log"
+t13b_out="$(
+  export BEEPER_HTTP_STUB="$recording_stub"
+  export STUB_LOG="$t13b_log"
+  export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  "$DELIVER_SCRIPT" "$t13_store" --today 2026-08-30 --now 09:00
+)"
+assert_eq "draft rerun: nothing new" "$t13b_out" "deliver: nothing new"
+assert_eq "draft rerun: zero POSTs" "$(call_count "$t13b_log")" "0"
+assert_eq "draft rerun: delivered.log unchanged" "$(cat "$t13_delivered")" "$t13_delivered_before"
+
+# =============================================================================
+# 14. Quiet hours hold applies to drafts too (no batches present).
+# =============================================================================
+
+t14_store="$(make_store t14)"
+t14_root="$(cd "$t14_store/../.." && pwd)"
+enable_beeper "$t14_root"
+write_profile "$t14_store" "- **[stated-by-user]** channel: beeper-self (2026-08-30)
+- **[stated-by-user]** beeper_chat_id: 1 (2026-08-30)
+- **[stated-by-user]** quiet_hours: 22:00-08:00 (2026-08-30)"
+place_draft "$t14_store" "2026-08-30T130000Z-batch.json-1-draft.txt"
+t14_delivered="$t14_store/outbox/delivered.log"
+t14_log="$SANDBOX/t14/stub.log"
+mkdir -p "$SANDBOX/t14"
+
+t14_out="$(
+  export BEEPER_HTTP_STUB="$recording_stub"
+  export STUB_LOG="$t14_log"
+  export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  "$DELIVER_SCRIPT" "$t14_store" --today 2026-08-30 --now 23:30
+)"
+assert_contains "draft quiet hours: hold line" "$t14_out" "deliver: quiet-hours hold n=1"
+assert_eq "draft quiet hours: zero POSTs" "$(call_count "$t14_log")" "0"
+assert_eq "draft quiet hours: no delivered.log written" "$(call_count "$t14_delivered")" "0"
+
+t14b_log="$SANDBOX/t14/stub-b.log"
+t14b_out="$(
+  export BEEPER_HTTP_STUB="$recording_stub"
+  export STUB_LOG="$t14b_log"
+  export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  "$DELIVER_SCRIPT" "$t14_store" --today 2026-08-30 --now 09:00
+)"
+assert_contains "draft quiet hours: 09:00 sends" "$t14b_out" "drafts=1"
+assert_eq "draft quiet hours: 09:00 one POST" "$(call_count "$t14b_log")" "1"
+
+# =============================================================================
+# 15. Draft file + gmail-self: pending file exists, no delivered.log line.
+# =============================================================================
+
+t15_store="$(make_store t15)"
+write_profile "$t15_store"
+place_draft "$t15_store" "2026-08-30T130000Z-batch.json-1-draft.txt"
+
+t15_out="$(
+  "$DELIVER_SCRIPT" "$t15_store" --today 2026-08-30 --now 09:00
+)"
+
+assert_contains "draft gmail-self: pending line" "$t15_out" "deliver: draft pending (session) 2026-08-30T130000Z-batch.json-1-draft.txt"
+assert_eq "draft gmail-self: pending file exists" "$([ -f "$t15_store/outbox/pending-gmail/2026-08-30T130000Z-batch.json-1-draft.txt.txt" ] && echo yes || echo no)" "yes"
+t15_delivered="$t15_store/outbox/delivered.log"
+assert_eq "draft gmail-self: no delivered.log line" "$(call_count "$t15_delivered")" "0"
 
 # =============================================================================
 # summary

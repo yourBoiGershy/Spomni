@@ -1,20 +1,12 @@
-1. birthday coming up (birthday)
-[[dana-whitfield]]
-Dana turns 34 on Sept 20.
+1. [[dana-whitfield]] — birthday coming up (birthday)
+→ send a birthday note today
 
-2. job change: now leading partnerships at Meridian (job-change)
-[[sam-okafor]]
-Sam moved to Meridian as Head of Partnerships last month.
-Draft (unsent):
-Congrats on the new role at Meridian!
-Would love to catch up sometime.
+2. [[sam-okafor]] — job change: now leading partnerships at Meridian (job-change)
+→ congratulate them on the new role
 
-3. quarterly catch-up is due
-[[jordan-lee]]
-It's been a while since you and Jordan connected in person.
-Proposed: Coffee with Jordan — 2026-09-05T10:00:00-04:00 → 2026-09-05T10:30:00-04:00
-Reply "3 done" after you create it.
+3. [[jordan-lee]] — quarterly catch-up is due
+→ create "Coffee with Jordan" 2026-09-05T10:00:00-04:00 and reply "3 done"
 
 You never debriefed "Weekly sync" with [[jordan-lee]] on 2026-08-28.
 
-Reply with the number: <n> done | <n> snooze <dur> | <n> skip | <n> never <signal-type> | <n> not-them | <n> wrong-tier <tier>
+Reply: <n> draft | <n> done | <n> snooze <dur> | <n> skip | <n> never <signal-type> | <n> not-them | <n> wrong-tier <tier>

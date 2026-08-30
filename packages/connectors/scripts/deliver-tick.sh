@@ -69,6 +69,20 @@
 #      delivery is the outbox file (skip/refuse-fallback or channel=outbox);
 #      pending = gmail-self hand-offs; held = channel=none batches (filed to
 #      the outbox audit trail but not actively delivered this run).
+#   6. On-demand drafts (plan 34's `<n> draft` reply, written by ingestion's
+#      feedback-parse.sh to <store-dir>/outbox/drafts/<batch-name>-<n>-
+#      draft.txt — first line `Draft (unsent):`, then the draft text or
+#      `no draft available for <n>`): after the batch loop, subject to the
+#      same quiet-hours hold, every draft file not yet in delivered.log's
+#      column 1 is filed to the outbox audit trail (file-out.sh, always) and
+#      routed through the same channel as a batch (beeper-self send,
+#      gmail-self pending copy, outbox/none log-only). Delivered.log rows
+#      use `draft:<channel>` in column 2. Log lines: "deliver: draft sent
+#      <file>", "deliver: draft pending (session) <file>", "deliver: draft
+#      send-failed <file>" (retried next tick, no log line, sets the final
+#      exit to 1 like a failed batch send). The final summary line gets a
+#      trailing `drafts=<k>` counting every draft that reached a terminal
+#      non-failed state this run.
 #
 # jq resolution: launchd's PATH is the minimal
 # /usr/bin:/bin:/usr/sbin:/sbin, which usually has no jq. Resolve it via
@@ -194,7 +208,29 @@ fi
 comm -23 "$ALL_TMP" "$DELIVERED_NAMES_TMP" > "$NEW_TMP"
 
 NEW_COUNT="$(wc -l < "$NEW_TMP" | tr -d ' ')"
-if [ "$NEW_COUNT" -eq 0 ]; then
+
+# ---------------------------------------------------------------------------
+# Step 1b: list not-yet-delivered on-demand draft files (written by
+# ingestion's feedback-parse.sh on a `<n> draft` reply):
+#   <store-dir>/outbox/drafts/<batch-name>-<n>-draft.txt
+# Same delivered.log (column 1 matches the draft file's basename) covers
+# idempotency for drafts too.
+# ---------------------------------------------------------------------------
+DRAFTS_DIR="${OUTBOX_DIR}/drafts"
+DRAFT_ALL_TMP="$(mktemp)"
+DRAFT_NEW_TMP="$(mktemp)"
+CLEANUP_TMPS="${CLEANUP_TMPS} ${DRAFT_ALL_TMP} ${DRAFT_NEW_TMP}"
+
+if [ -d "$DRAFTS_DIR" ]; then
+  find "$DRAFTS_DIR" -maxdepth 1 -type f -name '*-draft.txt' -exec basename {} \; 2>/dev/null | sort > "$DRAFT_ALL_TMP"
+else
+  : > "$DRAFT_ALL_TMP"
+fi
+
+comm -23 "$DRAFT_ALL_TMP" "$DELIVERED_NAMES_TMP" > "$DRAFT_NEW_TMP"
+DRAFT_COUNT="$(wc -l < "$DRAFT_NEW_TMP" | tr -d ' ')"
+
+if [ "$NEW_COUNT" -eq 0 ] && [ "$DRAFT_COUNT" -eq 0 ]; then
   echo "deliver: nothing new"
   exit 0
 fi
@@ -269,7 +305,7 @@ if [ -n "$QUIET_HOURS" ]; then
   fi
 
   if [ "$IN_QUIET" -eq 1 ]; then
-    echo "deliver: quiet-hours hold n=${NEW_COUNT}"
+    echo "deliver: quiet-hours hold n=$((NEW_COUNT + DRAFT_COUNT))"
     exit 0
   fi
 fi
@@ -378,7 +414,79 @@ while IFS= read -r name; do
   esac
 done < "$NEW_TMP"
 
-echo "deliver: done sent=${SENT_COUNT} outbox=${OUTBOX_COUNT} pending=${PENDING_COUNT} held=${HELD_COUNT}"
+# ---------------------------------------------------------------------------
+# Step 4b: per new draft file, oldest first. Same channel routing as a
+# batch, but only three outcomes: sent, pending (session drains it), or
+# send-failed (retried next tick — no delivered.log line). Always filed to
+# the outbox audit trail via file-out.sh first, regardless of channel.
+# ---------------------------------------------------------------------------
+DRAFT_DONE_COUNT=0
+
+while IFS= read -r dname; do
+  [ -z "$dname" ] && continue
+  draft_path="${DRAFTS_DIR}/${dname}"
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  file_out_args=("$STORE_DIR_ABS" --text-file "$draft_path" --batch "$dname")
+  [ -n "$TODAY" ] && file_out_args=("${file_out_args[@]}" --today "$TODAY")
+
+  file_out_line="$("$FILE_OUT_SCRIPT" "${file_out_args[@]}" 2>"$ERR_TMP")"
+  file_out_rc=$?
+  if [ "$file_out_rc" -ne 0 ]; then
+    echo "deliver: file-out-failed ${dname}: $(cat "$ERR_TMP")" >&2
+    continue
+  fi
+  draft_outbox_path="${file_out_line#outbox: }"
+
+  case "$CHANNEL" in
+    beeper-self)
+      beeper_args=("$STORE_DIR_ABS" --text-file "$draft_path")
+      [ -n "$PRIVATE_DATA_ROOT" ] && beeper_args=("${beeper_args[@]}" --private-data-root "$PRIVATE_DATA_ROOT")
+
+      send_out="$("$BEEPER_SEND_SCRIPT" "${beeper_args[@]}" 2>"$ERR_TMP")"
+      send_rc=$?
+      send_err="$(cat "$ERR_TMP")"
+
+      case "$send_rc" in
+        0)
+          case "$send_out" in
+            sent\ *)
+              message_id="${send_out##*message_id=}"
+              printf '%s\t%s\t%s\t%s\n' "$dname" "draft:beeper-self" "$ts" "$message_id" >> "$DELIVERED_LOG"
+              echo "deliver: draft sent ${dname}"
+              DRAFT_DONE_COUNT=$((DRAFT_DONE_COUNT + 1))
+              ;;
+            *)
+              echo "deliver: draft send-failed ${dname}: ${send_out}"
+              FAILED=1
+              ;;
+          esac
+          ;;
+        *)
+          echo "deliver: draft send-failed ${dname}: ${send_err}"
+          FAILED=1
+          ;;
+      esac
+      ;;
+    gmail-self)
+      PENDING_DIR="${STORE_DIR_ABS}/outbox/pending-gmail"
+      mkdir -p "$PENDING_DIR"
+      cp "$draft_path" "${PENDING_DIR}/${dname}.txt"
+      echo "deliver: draft pending (session) ${dname}"
+      DRAFT_DONE_COUNT=$((DRAFT_DONE_COUNT + 1))
+      ;;
+    outbox)
+      printf '%s\t%s\t%s\t%s\n' "$dname" "draft:outbox" "$ts" "$draft_outbox_path" >> "$DELIVERED_LOG"
+      DRAFT_DONE_COUNT=$((DRAFT_DONE_COUNT + 1))
+      ;;
+    none)
+      printf '%s\t%s\t%s\t%s\n' "$dname" "draft:none" "$ts" "-" >> "$DELIVERED_LOG"
+      DRAFT_DONE_COUNT=$((DRAFT_DONE_COUNT + 1))
+      ;;
+  esac
+done < "$DRAFT_NEW_TMP"
+
+echo "deliver: done sent=${SENT_COUNT} outbox=${OUTBOX_COUNT} pending=${PENDING_COUNT} held=${HELD_COUNT} drafts=${DRAFT_DONE_COUNT}"
 
 if [ "$FAILED" -eq 1 ]; then
   exit 1

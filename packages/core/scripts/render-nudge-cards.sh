@@ -1,7 +1,7 @@
 #!/bin/bash
 # render-nudge-cards.sh — turns one fired wake-up batch into a single
 # plain-text chat message: numbered cards the human can reply to
-# (packages/core/contracts/nudge-card.md 1.0.0).
+# (packages/core/contracts/nudge-card.md 1.1.0).
 #
 # Usage:
 #   render-nudge-cards.sh <batch.json> [--today <YYYY-MM-DD>]
@@ -13,9 +13,13 @@
 # no-guilt list (contract's "never rendered") includes batch age, so this
 # renderer never compares --today against anything in the batch.
 #
-# Output: one plain-text message on stdout. Numbered cards in `entries[]`
-# order, then any `mentions[]` lines, then the fixed reply-grammar footer.
-# See the contract for the exact per-card/footer text.
+# Output: one plain-text message on stdout. Numbered cards (max 5, first 5
+# entries[] only — cards beyond the 5th are silently not rendered), then
+# any `mentions[]` lines, then the fixed reply-grammar footer. Each card is
+# exactly two lines: "<n>. <people> — <why>" and a deterministic "→ <action>"
+# line derived from proposed_event/signal_type/origin — never the free-text
+# draft. context/draft are never rendered here; the draft is served only on
+# a "<n> draft" reply (plan 34 U8b). See the contract for the exact text.
 #
 # Exit codes:
 #   0 — rendered normally
@@ -52,7 +56,7 @@ jq empty "${batch_file}" >/dev/null 2>&1 || die "not valid JSON: ${batch_file}" 
 entry_count="$(jq '(.entries // []) | length' "${batch_file}")"
 [ "${entry_count}" -gt 0 ] 2>/dev/null || exit 3
 
-entries_json="$(jq -c '.entries[]' "${batch_file}")"
+entries_json="$(jq -c '.entries[:5][]' "${batch_file}")"
 
 blocks=()
 i=0
@@ -62,32 +66,40 @@ while IFS= read -r entry; do
 
     why="$(printf '%s' "${entry}" | jq -r '.why // empty')"
     signal_type="$(printf '%s' "${entry}" | jq -r '.signal_type // empty')"
+    origin="$(printf '%s' "${entry}" | jq -r '.origin // empty')"
     people="$(printf '%s' "${entry}" | jq -r '(.people // []) | map(sub("^\\[\\["; "") | sub("\\]\\]$"; "") | "[[" + . + "]]") | join(", ")')"
-    context="$(printf '%s' "${entry}" | jq -r '.context // empty')"
-    draft="$(printf '%s' "${entry}" | jq -r '.draft // empty')"
-    kind="$(printf '%s' "${entry}" | jq -r '.kind // "nudge"')"
     proposed_title="$(printf '%s' "${entry}" | jq -r '.proposed_event.title // empty')"
     proposed_start="$(printf '%s' "${entry}" | jq -r '.proposed_event.start // empty')"
-    proposed_end="$(printf '%s' "${entry}" | jq -r '.proposed_event.end // empty')"
+    has_proposed="$(printf '%s' "${entry}" | jq -r 'if .proposed_event then "1" else "0" end')"
 
     if [ -n "${signal_type}" ]; then
-        header="${i}. ${why} (${signal_type})"
+        header="${i}. ${people} — ${why} (${signal_type})"
     else
-        header="${i}. ${why}"
+        header="${i}. ${people} — ${why}"
     fi
 
-    card="${header}"$'\n'"${people}"
-    if [ -n "${context}" ]; then
-        card="${card}"$'\n'"${context}"
-    fi
-    if [ -n "${draft}" ]; then
-        card="${card}"$'\n'"Draft (unsent):"$'\n'"${draft}"
-    fi
-    if [ "${kind}" = "event-proposal" ]; then
-        card="${card}"$'\n'"Proposed: ${proposed_title} — ${proposed_start} → ${proposed_end}"
-        card="${card}"$'\n'"Reply \"${i} done\" after you create it."
+    if [ "${has_proposed}" = "1" ]; then
+        action="→ create \"${proposed_title}\" ${proposed_start} and reply \"${i} done\""
+    else
+        case "${signal_type}" in
+            birthday) action="→ send a birthday note today" ;;
+            job-change) action="→ congratulate them on the new role" ;;
+            scheduling-intent) action="→ propose a time this week" ;;
+            co-attendance) action="→ follow up on what you discussed" ;;
+            company-news) action="→ send a note about the news" ;;
+            tier-drift) action="→ reach out this week — it's been a while" ;;
+            linkedin-post) action="→ react to their post with a line" ;;
+            *)
+                if [ "${origin}" = "user-ask" ]; then
+                    action="→ do what you asked yourself to do"
+                else
+                    action="→ reach out this week"
+                fi
+                ;;
+        esac
     fi
 
+    card="${header}"$'\n'"${action}"
     blocks+=("${card}")
 done <<EOF
 ${entries_json}
@@ -104,7 +116,7 @@ ${mention_lines}
 EOF
 fi
 
-footer='Reply with the number: <n> done | <n> snooze <dur> | <n> skip | <n> never <signal-type> | <n> not-them | <n> wrong-tier <tier>'
+footer='Reply: <n> draft | <n> done | <n> snooze <dur> | <n> skip | <n> never <signal-type> | <n> not-them | <n> wrong-tier <tier>'
 
 message=""
 for b in "${blocks[@]}"; do

@@ -1,6 +1,6 @@
 # Contract: nudge-card
 
-`schema_version: 1.0.0`
+`schema_version: 1.1.0`
 
 ## Purpose
 
@@ -9,10 +9,16 @@ fire`'s batch artifact, `wakeups/fired/<today>T<HHMMSS>Z-batch.json`) into a
 single plain-text chat message: numbered cards the human can reply to
 inline. This is the last mile of `wakeup-queue-over-digests` — the queue
 decides *what* and *when*; this contract decides how it reads as one message
-a human can act on without opening a UI. Mission test: cuts *remembering-to*
-(the human doesn't have to hold pending follow-ups in their head or dig
-through a dashboard); it never substitutes for the human's own words —
-drafts are always marked unsent, and nothing here scores, shames, or nags.
+a human can act on without opening a UI. Mission test: the card is the push
+to reach out — a concrete next action motivates, never guilt; it never
+substitutes for the human's own words, so the card itself carries no draft
+text. A draft is served only on request (`<n> draft`, plan 34 U8b), keeping
+the human as the one who writes and sends.
+
+**1.1.0 (plan 33 D3/D4 amendment, "nudge first, draft on demand"):** cards
+are two lines max, capped at 5 per message, and never carry `context` or
+`draft` inline — line 2 is a deterministic next action derived from the
+entry, not the free-text draft. See "Cards" below for the full rule.
 
 ## Writer / readers
 
@@ -82,18 +88,35 @@ One plain-text message on stdout, no markdown tables, no HTML.
 ### Cards
 
 One card per `entries[]` element, in array order, numbered `1.`, `2.`, …
-Cards are separated by a blank line. Each card:
+**Cards are capped at 5 per message: only the first 5 `entries[]` elements
+render; anything beyond the 5th is silently not rendered — the card never
+mentions how many were cut (no-guilt: batch size/backlog is never
+surfaced).** Cards are separated by a blank line. Each card is **exactly
+two lines**:
 
-1. Line 1: `<n>. <why>`, with ` (<signal_type>)` appended when `signal_type`
-   is non-null.
-2. Line 2: the entry's `people`, rendered as `[[slug]]` links joined by
-   `, `.
-3. If `context` is non-empty: the context text as its own line(s).
-4. If `draft` is non-empty: a line reading exactly `Draft (unsent):`
-   followed by the draft's text (verbatim, may be multi-line).
-5. If `kind` is `event-proposal`: a line `Proposed: <title> — <start> →
-   <end>` (from `proposed_event`), then a line `Reply "<n> done" after you
-   create it.`
+1. Line 1: `<n>. <people as [[slug]] joined by ", "> — <why>`, with `
+   (<signal_type>)` appended when `signal_type` is non-null. `people` is
+   rendered as `[[slug]]` links joined by `, ` (bare or already-bracketed
+   input slugs both normalize to a single `[[slug]]`, as before).
+2. Line 2: `→ <one concrete action>`, deterministically derived from the
+   entry (never the free-text `draft`):
+   - `proposed_event` present (non-null): `→ create "<title>" <start> and
+     reply "<n> done"`.
+   - else by `signal_type`:
+     - `birthday` → `→ send a birthday note today`
+     - `job-change` → `→ congratulate them on the new role`
+     - `scheduling-intent` → `→ propose a time this week`
+     - `co-attendance` → `→ follow up on what you discussed`
+     - `company-news` → `→ send a note about the news`
+     - `tier-drift` → `→ reach out this week — it's been a while`
+     - `linkedin-post` → `→ react to their post with a line`
+   - else if `origin` is `user-ask` → `→ do what you asked yourself to do`.
+   - else (no `signal_type` match, no `proposed_event`, `origin` not
+     `user-ask`) → `→ reach out this week`.
+
+`context` and `draft` are **never rendered in the card** — `context` is
+ammunition kept for the on-demand draft, and `draft` is served only when the
+human replies `<n> draft` (plan 34 U8b), not printed inline here.
 
 ### Mentions
 
@@ -106,11 +129,13 @@ by a blank line. Omitted entirely when `mentions` is absent or empty.
 The message's last line, verbatim:
 
 ```
-Reply with the number: <n> done | <n> snooze <dur> | <n> skip | <n> never <signal-type> | <n> not-them | <n> wrong-tier <tier>
+Reply: <n> draft | <n> done | <n> snooze <dur> | <n> skip | <n> never <signal-type> | <n> not-them | <n> wrong-tier <tier>
 ```
 
 `<n>` is a literal placeholder token, not filled per-card — it names the
-reply grammar once for the whole message.
+reply grammar once for the whole message. `<n> draft` is new in 1.1.0 —
+serves the entry's `draft` text (headed `Draft (unsent):`) as a follow-up
+message, per plan 34 U8b; it is never printed inline in the card itself.
 
 ### The no-guilt list (never rendered)
 
@@ -130,37 +155,35 @@ turns an unactioned nudge into a guilt signal.
 
 ## Example
 
-Given a batch with a `standing` birthday entry (no draft), a `signal`
-job-change entry (with a draft), and an `event-proposal` entry, plus one
-`mentions` item, the rendered message looks like:
+Given a batch with a `standing` birthday entry, a `signal` job-change entry,
+and an `event-proposal` entry, plus one `mentions` item, the rendered
+message looks like:
 
 ```
-1. birthday coming up (birthday)
-[[dana-whitfield]]
-Dana turns 34 on Sept 20.
+1. [[dana-whitfield]] — birthday coming up (birthday)
+→ send a birthday note today
 
-2. job change: now leading partnerships at Meridian (job-change)
-[[sam-okafor]]
-Sam moved to Meridian as Head of Partnerships last month.
-Draft (unsent):
-Congrats on the new role at Meridian! Would love to catch up sometime.
+2. [[sam-okafor]] — job change: now leading partnerships at Meridian (job-change)
+→ congratulate them on the new role
 
-3. quarterly catch-up is due
-[[jordan-lee]]
-It's been a while since you and Jordan connected in person.
-Proposed: Coffee with Jordan — 2026-09-05T10:00:00-04:00 → 2026-09-05T10:30:00-04:00
-Reply "3 done" after you create it.
+3. [[jordan-lee]] — quarterly catch-up is due
+→ create "Coffee with Jordan" 2026-09-05T10:00:00-04:00 and reply "3 done"
 
 You never debriefed "Weekly sync" with [[jordan-lee]] on 2026-08-28.
 
-Reply with the number: <n> done | <n> snooze <dur> | <n> skip | <n> never <signal-type> | <n> not-them | <n> wrong-tier <tier>
+Reply: <n> draft | <n> done | <n> snooze <dur> | <n> skip | <n> never <signal-type> | <n> not-them | <n> wrong-tier <tier>
 ```
 
 ## Notes
 
 - Draft-never-send holds here too: `Draft (unsent):` is the only presentation
-  of `draft` text — it is never sent on the renderer's own initiative, only
-  handed to the human to copy, edit, or approve.
+  of `draft` text, and even that only appears when the human explicitly
+  replies `<n> draft` (plan 34 U8b) — it is never sent on the renderer's own
+  initiative, only handed to the human to copy, edit, or approve.
 - This contract is read-only over its input; it has no store location of its
   own (it produces a transient message, not a persisted artifact).
+- The two-line card and deterministic action line exist so the card itself
+  is the push to reach out — a concrete next action motivates without
+  guilt — while the draft stays one reply away rather than crowding the
+  card the human is meant to act on.
 </content>
