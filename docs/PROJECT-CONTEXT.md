@@ -83,8 +83,9 @@ packages/
    `package.md` manifest as provides/consumes with versions. Dependency direction:
    core ← everyone; siblings never import siblings' internals.
 
-Product skills live inside their package (`packages/<pkg>/skills/`); `.claude/skills/`
-holds only harness skills (`/explore`, `/implement`). Packages stay `0.x` until the
+Product skills live inside their package (`packages/<pkg>/skills/`) and are symlinked
+into `.claude/skills/` for slash-command discovery; the harness skills (`/explore`,
+`/implement`) are the only real directories there. Packages stay `0.x` until the
 live trial; contracts are semver'd from day one. Each package's plan + contracts +
 golden tests are its durable spec — implementations are regenerable from them.
 

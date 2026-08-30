@@ -20,18 +20,18 @@ fixed in one dispatch round becomes a known-issue and ships.
 ## Binding facts (do not re-derive)
 
 - **Live store (outside this worktree):**
-  `/Users/ericg/Documents/relationship-agent-worktrees/ingestion/data/store`
+  `<worktrees-root>/ingestion/data/store`
   (dirs: `inbox/ interactions/ people/ wakeups/`). Every script below takes
   this absolute path as `<store-dir>`. Call it `$STORE` throughout:
 
   ```sh
-  STORE=/Users/ericg/Documents/relationship-agent-worktrees/ingestion/data/store
+  STORE=<worktrees-root>/ingestion/data/store
   ```
 
 - **Filing ledger:** the debrief skill's dedup ledger lives at
-  `/Users/ericg/Documents/relationship-agent-worktrees/ingestion/data/ingestion/debrief-filed.log`
+  `<worktrees-root>/ingestion/data/ingestion/debrief-filed.log`
   (relative `data/ingestion/` — so every filing agent's **cwd must be the
-  ingestion worktree root**, `/Users/ericg/Documents/relationship-agent-worktrees/ingestion`).
+  ingestion worktree root**, `<worktrees-root>/ingestion`).
 - **Filing skill:** `packages/ingestion/skills/debrief/SKILL.md` — batch mode,
   oldest-first by `captured_at`, never reads `inbox/quarantine/`, never
   mutates `inbox/`, appends to the ledger only after a successful filing.
@@ -63,7 +63,7 @@ written by the orchestrator. **No store PII ever enters it** — reference
 events by capture-event `id` and lane only; never person names, slugs, email
 addresses, or message content. Anything person-identifying goes to a
 companion note inside the private data dir
-(`/Users/ericg/Documents/relationship-agent-worktrees/ingestion/data/ship-notes-private.md`),
+(`<worktrees-root>/ingestion/data/ship-notes-private.md`),
 which never leaves the user's machine.
 
 ## Phases
@@ -86,7 +86,7 @@ which never leaves the user's machine.
    ```sh
    ls "$STORE/inbox/"*.md | wc -l          # expect 45 fileable
    ls "$STORE/inbox/quarantine/" 2>/dev/null   # expect 1 event
-   wc -l /Users/ericg/Documents/relationship-agent-worktrees/ingestion/data/ingestion/debrief-filed.log 2>/dev/null  # ledger baseline (likely absent/0)
+   wc -l <worktrees-root>/ingestion/data/ingestion/debrief-filed.log 2>/dev/null  # ledger baseline (likely absent/0)
    ls "$STORE/interactions/" "$STORE/people/" | sort > /tmp-scratch-or-notes  # pre-filing artifact list
    ```
 
@@ -105,7 +105,7 @@ which never leaves the user's machine.
    Failures here are pre-existing; log them, don't fix yet (they join Phase
    3's single fix round if still present).
 3. Snapshot the private data dir (rollback insurance): if
-   `/Users/ericg/Documents/relationship-agent-worktrees/ingestion/data` is a
+   `<worktrees-root>/ingestion/data` is a
    git repo, commit a `pre-blitz snapshot 2026-08-29` commit; otherwise
    `tar -czf` the whole `data/` tree to
    `.../ingestion/data/backups/pre-blitz-2026-08-29.tar.gz` (stays inside the
@@ -126,7 +126,7 @@ the next batch is dispatched.
 
 **Per-batch filing worker (mutating, ≤3-min brief):**
 
-- cwd: `/Users/ericg/Documents/relationship-agent-worktrees/ingestion`
+- cwd: `<worktrees-root>/ingestion`
 - Brief: "Run the debrief skill
   (`packages/ingestion/skills/debrief/SKILL.md`) in batch mode over
   `$STORE`, filing at most the next 8 unfiled events oldest-first, then

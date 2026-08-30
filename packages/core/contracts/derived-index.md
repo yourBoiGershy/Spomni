@@ -83,7 +83,7 @@ contract codifies existing behavior, it does not extend it.
   store's `stats.json`/`index.json` are stale relative to the newest mtime
   under `people/`/`interactions/`, it shells out to `build-stats.sh` /
   `build-index.sh` and writes the regenerated copies to
-  `${RA_CACHE_DIR:-$HOME/.cache/relationship-agent}/derived/` — a directory
+  `${SPOMNI_CACHE_DIR:-${RA_CACHE_DIR:-$HOME/.cache/spomni}}/derived/` — a directory
   outside the store — and reads from there. Store copies remain
   ingestion's alone to write.
 - **Readers:** `packages/attention` (the fallback reachout heuristic's

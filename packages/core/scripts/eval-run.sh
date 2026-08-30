@@ -179,6 +179,8 @@ config = {
                 store_copy,
             ],
             "env": {
+                "SPOMNI_CACHE_DIR": cache_dir,
+                "SPOMNI_CORE_SCRIPTS_DIR": repo_root + "/packages/core/scripts",
                 "RA_CACHE_DIR": cache_dir,
                 "RA_CORE_SCRIPTS_DIR": repo_root + "/packages/core/scripts",
             },

@@ -212,7 +212,7 @@ async function main() {
     command: "node",
     args: ["--experimental-strip-types", SERVER_ENTRY, "--store", tempStore],
     cwd: path.join(REPO_ROOT, "packages/query/server"),
-    env: { ...process.env, RA_CACHE_DIR: cacheDir },
+    env: { ...process.env, SPOMNI_CACHE_DIR: cacheDir },
     stderr: "pipe",
   });
 

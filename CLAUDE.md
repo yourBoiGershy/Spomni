@@ -50,7 +50,9 @@ I/O, dumb, sub-package per lane), `ingestion` (filing, matching, links),
 briefs). **Single-writer rule:** each runtime artifact type has exactly one
 writing package; siblings communicate only through core's contracts, declared
 in each `package.md` manifest as provides/consumes with versions. Product
-skills live in `packages/<pkg>/skills/`; `.claude/skills/` is harness-only.
+skills live in `packages/<pkg>/skills/` and are symlinked into
+`.claude/skills/` so Claude Code exposes them as slash commands; the only
+real directories there are the harness skills (`explore`, `implement`).
 Full detail: `docs/PROJECT-CONTEXT.md` (Packages section).
 
 ---
@@ -109,7 +111,10 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   (override via `HARNESS_PROTECTED_PREFIXES` in the hook's environment).
 - One package = one focused agent/session's territory; cross-package needs are
   met via the other package's `package.md` + core contracts, never its files.
-- Test commands (bash 3.2, no npm/jest — run all before any merge):
+- Test commands (bash 3.2, no npm/jest — run all before any merge). The
+  one-shot wrapper is `bash scripts/test-all.sh` (every suite below, the
+  query suite when node is present, plus `.claude/scripts/oss-guard.sh`; CI
+  runs the same). Individually:
   `bash packages/core/tests/run-store-tests.sh`,
   `bash packages/connectors/tests/run-capture-tests.sh`,
   `bash packages/connectors/tests/run-beeper-capture-tests.sh`,
@@ -119,7 +124,12 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   `bash packages/ingestion/tests/run-shard-tests.sh`,
   `bash packages/attention/tests/run-attention-tests.sh`,
   `bash packages/attention/tests/run-capacity-tests.sh`, and
-  `bash packages/attention/tests/run-queue-tests.sh`.
+  `bash packages/attention/tests/run-queue-tests.sh`,
+  `bash packages/query/tests/run-query-tests.sh` (needs node ≥ 22.6 +
+  `npm ci` in `packages/query/server`), and
+  `bash .claude/scripts/tests/run-oss-guard-tests.sh`.
+  Open-source guard (data-dir tripwire, secrets/PII scan, never-send lint,
+  enrichment denylist): `bash .claude/scripts/oss-guard.sh`.
   Store sanity: `bash packages/core/scripts/validate-store.sh <store-dir>`
   (checks people/interactions/wakeups only — not inbox/).
   Capture-sync audit: `bash packages/connectors/scripts/check-sync.sh <store-dir>`

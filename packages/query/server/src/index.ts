@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-// Entry point for the relationship-agent query MCP server.
+// Entry point for the spomni-query MCP server.
 //
 // Scaffold (docs/plans/2026-08-29-08-chat-mcp-query-layer.md, unit 3) plus
-// store-reader wiring from unit 6: parses --store / RA_STORE_DIR, ensures a
-// fresh store-reader is available, constructs the MCP server, registers the
-// tool registry (Wave C fills it in), and connects the stdio transport.
+// store-reader wiring from unit 6: parses --store / SPOMNI_STORE_DIR
+// (RA_STORE_DIR deprecated fallback), ensures a fresh store-reader is
+// available, constructs the MCP server, registers the tool registry (Wave C
+// fills it in), and connects the stdio transport.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerTools } from "./tools/registry.ts";
@@ -31,11 +32,11 @@ function parseArgs(argv: string[]): Cli {
     }
   }
 
-  storeDir ??= process.env.RA_STORE_DIR;
+  storeDir ??= process.env.SPOMNI_STORE_DIR ?? process.env.RA_STORE_DIR;
 
   if (!storeDir) {
     process.stderr.write(
-      "relationship-agent-query: missing store directory. Pass --store <dir> or set RA_STORE_DIR.\n",
+      "spomni-query: missing store directory. Pass --store <dir> or set SPOMNI_STORE_DIR.\n",
     );
     process.exit(1);
   }
@@ -48,11 +49,11 @@ async function main(): Promise<void> {
 
   const { reader, generatedAt } = ensureFresh(storeDir);
   process.stderr.write(
-    `relationship-agent-query: store ready (generated_at=${generatedAt})\n`,
+    `spomni-query: store ready (generated_at=${generatedAt})\n`,
   );
 
   const server = new McpServer({
-    name: "relationship-agent-query",
+    name: "spomni-query",
     version: "0.1.0",
   });
 
@@ -62,6 +63,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  process.stderr.write(`relationship-agent-query: fatal error: ${String(err)}\n`);
+  process.stderr.write(`spomni-query: fatal error: ${String(err)}\n`);
   process.exit(1);
 });

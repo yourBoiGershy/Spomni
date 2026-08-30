@@ -83,9 +83,9 @@ gap accumulated; `lanes.tsv` itself carries no state about missed runs.
 ```
 # lanes.tsv — sync-scheduler lane config. See
 # packages/core/contracts/sync-lanes.md for the format.
-beeper	900	true	/bin/bash /Users/example/relationship-agent/packages/connectors/beeper-in/scripts/beeper-sweep.sh
+beeper	900	true	/bin/bash /Users/example/spomni/packages/connectors/beeper-in/scripts/beeper-sweep.sh
 
-# gmail-in	300	false	/bin/bash /Users/example/relationship-agent/packages/connectors/gmail-in/scripts/gmail-sweep.sh
+# gmail-in	300	false	/bin/bash /Users/example/spomni/packages/connectors/gmail-in/scripts/gmail-sweep.sh
 ```
 
 ## Notes

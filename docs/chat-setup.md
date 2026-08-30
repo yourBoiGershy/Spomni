@@ -51,7 +51,7 @@ bash packages/query/tests/smoke-live.sh
 All six tools (`search_people`, `get_person`, `list_interactions`,
 `get_interaction`, `get_contact_stats`, `suggest_reachouts`) must print PASS.
 If `data/store` has no `index.json`/`stats.json` yet, the server regenerates
-both into `${RA_CACHE_DIR:-~/.cache/relationship-agent}` on the fly — your
+both into `${SPOMNI_CACHE_DIR:-~/.cache/spomni}` on the fly — your
 store directory itself is never written to.
 
 ## 5. Ask questions

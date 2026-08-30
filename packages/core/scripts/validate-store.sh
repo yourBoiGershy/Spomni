@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# validate-store.sh — schema-and-links checker for a relationship-agent store.
+# validate-store.sh — schema-and-links checker for a spomni store.
 #
 # Usage: validate-store.sh [store-dir]   (defaults to ".")
 #

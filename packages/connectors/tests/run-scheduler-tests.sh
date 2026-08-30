@@ -332,13 +332,13 @@ EOF
 install_out="$("$CLI" install --dry-run --data-dir "$cli_data_dir" 2>&1)"
 install_rc=$?
 assert_eq "install --dry-run: exits 0" "$install_rc" "0"
-assert_contains "install --dry-run: enabled lane's label rendered" "$install_out" "com.relationship-agent.sync.${install_enabled_lane}"
+assert_contains "install --dry-run: enabled lane's label rendered" "$install_out" "com.spomni.sync.${install_enabled_lane}"
 assert_contains "install --dry-run: enabled lane's interval rendered" "$install_out" "<integer>300</integer>"
 assert_contains "install --dry-run: scheduler path rendered" "$install_out" "$CLI"
 assert_contains "install --dry-run: data-dir rendered" "$install_out" "$cli_data_dir"
-assert_not_contains "install --dry-run: disabled lane excluded" "$install_out" "com.relationship-agent.sync.${install_disabled_lane}"
+assert_not_contains "install --dry-run: disabled lane excluded" "$install_out" "com.spomni.sync.${install_disabled_lane}"
 
-if [ -f "$HOME/Library/LaunchAgents/com.relationship-agent.sync.${install_enabled_lane}.plist" ]; then
+if [ -f "$HOME/Library/LaunchAgents/com.spomni.sync.${install_enabled_lane}.plist" ]; then
   fail "install --dry-run: must not write a real plist to ~/Library/LaunchAgents"
 else
   pass "install --dry-run: no plist written to ~/Library/LaunchAgents"
@@ -353,7 +353,7 @@ uninstall_rc=$?
 assert_eq "uninstall --dry-run: exits 0" "$uninstall_rc" "0"
 assert_contains "uninstall --dry-run: prints bootout action" "$uninstall_out" "launchctl bootout"
 assert_contains "uninstall --dry-run: prints remove action" "$uninstall_out" "Would remove"
-assert_contains "uninstall --dry-run: names the target label" "$uninstall_out" "com.relationship-agent.sync.${install_enabled_lane}"
+assert_contains "uninstall --dry-run: names the target label" "$uninstall_out" "com.spomni.sync.${install_enabled_lane}"
 
 # =============================================================================
 # 8. CLI status — row per configured lane, malformed config -> exit 1
@@ -385,6 +385,14 @@ assert_contains "status: disabled lane row shows not-installed" "$disabled_row" 
 
 status_row_count="$(printf '%s\n' "$status_out" | grep -c "^${LANE_NS}-install-" || true)"
 assert_eq "status: exactly one row per configured lane (2 configured)" "$status_row_count" "2"
+
+# LEGACY-row coverage (the pre-rename label-prefix detection in `status`, see
+# LEGACY_LABEL_PREFIX in sync-scheduler.sh) is intentionally NOT tested here:
+# the CLI's plist paths are always
+# $HOME/Library/LaunchAgents (no --home / HOME-override flag exists to
+# sandbox them, unlike --data-dir), so planting a fake legacy plist would
+# write into the real invoking user's LaunchAgents directory. Skipped rather
+# than risk polluting the host running this suite.
 
 status_bad_data_dir="$SANDBOX/cli-data-bad"
 mkdir -p "$status_bad_data_dir"
