@@ -7,14 +7,22 @@ on:
 
 jobs:
   test:
-    # macOS: the pipeline targets bash 3.2 and BSD userland; the scheduler
-    # tests exercise launchd plist rendering (dry-run only).
-    runs-on: macos-latest
+    # macOS: the pipeline targets bash 3.2 and BSD userland (the scheduler
+    # tests exercise launchd plist rendering, dry-run only). ubuntu: GNU
+    # portability — plans 27/06 both hit BSD/GNU sed/date bugs, so both
+    # userlands run every suite.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: packages/query/server/package-lock.json
       - name: Install query server deps
         run: cd packages/query/server && npm ci
       - name: Run every suite + oss-guard

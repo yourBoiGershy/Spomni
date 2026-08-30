@@ -1,126 +1,157 @@
-# Plan 09: Infrastructure — cloud runtime, data-repo discipline, egress hygiene
-Status: In progress (data repo created + scaffolded 2026-08-29)
-Package: core (store-sync script) + harness (`.claude/hooks/` guards) + docs; integrates attention's sweep (06)
-Depends-on: 01; integrates 06's sweep entry point and 10's Composio lanes; constrains the mcp stream's remote surface
+# Plan 09: Infrastructure — phone/cloud speed, store-sync, egress hygiene, heartbeat
 
-## Objective
-Zero self-hosted infrastructure, reachable from any device: the private data repo on
-GitHub is the authoritative store and rendezvous, Claude Code cloud sessions are the
-interactive surface (phone included), scheduled routines run the sweeps, and the
-Composio CLI carries all outside-world reads identically in every runtime.
-Simultaneously make the open-source posture honest: a finite, enumerated, mechanically
-guarded list of lanes where person-data ever leaves the store.
+> **Consolidation 2026-08-30 (ROADMAP Goal 4 — trimmed).** Keep deliverables 1
+> (`store-sync.sh commit` calls plan 38's `reindex.sh`, not `build-index.sh`
+> directly), 2, 3 (cold-start is a **row in 38's `bench-retrieval.sh`**, not a second
+> script), 5 for **routines only** (lane liveness reads the scheduler's existing
+> `run-start`/`run-end` state files; `sync-scheduler.sh` gets no heartbeat stamp).
+> Moved to plan 39: 6b, 6c, 7 (git-guard + branch protection). Later: 4, 8, 6a
+> pre-push installer (39 A2's hook check covers the push boundary). Work units:
+> wave A = 1, 2, 3(row); wave B = 6, 8; wave C = 10, 11, 12; wave D unchanged.
+Status: In progress — REVISED 2026-08-30 (v2; v1 was Composio-era and is superseded here)
+Package: core (`store-sync.sh`, `heartbeat-stamp.sh`, contracts) + attention (staleness step in sweep) + query (cold-start bench) + harness (`.claude/hooks/`, `scripts/setup.sh`) + docs
+Depends-on: 01, 06, 19 (all done); 35 (done — zero-setup query path is the baseline this plan measures)
+Branch: `chunk-09-phone-cloud-infra`
 
-## Context
-Read docs/PROJECT-CONTEXT.md first. Decisions that bind this plan:
-- **cloud-native-runtime** (supersedes home-hub-tailscale) — cloud sessions + routines
-  against the data repo's own `main`, direct commits, no PRs; `COMPOSIO_API_KEY` in the
-  cloud environment env vars (no secrets store yet — accepted); home hub demoted to
-  privacy variant.
-- **composio-hub** — outside-world access is `composio execute` CLI shell-out; works in
-  any runtime with the key present.
-- **git-as-sync-protocol** — git carries history, atomicity, and rendezvous; the store
-  stays plain files.
-- **pii-egress-allowlist** — every egress lane enumerated in `docs/EGRESS.md`; the
-  public repo mechanically cannot carry real data.
-- **code-data-separation** — machinery public, store private; sessions bridge them by
-  cloning the machinery repo into the data-repo sandbox (`machinery/`, gitignored).
+## Mission test (§1)
+Everything here cuts a **running cost** — the restart cost of opening the assistant
+from a phone (1 m 27 s bootstrap for one question, 2026-08-30), the remembering-to
+cost of committing a debrief, and the noticing cost of a schedule that silently died.
+Nothing drafts, sends, scores, or performs a relationship. The egress allowlist is
+pure hygiene for other people's data.
 
-Standing state (done 2026-08-29): private repo `relationship-agent-data` created and
-scaffolded per core contracts (inbox/people/interactions/wakeups+signals, generated
-index.json, bootstrap CLAUDE.md that clones the machinery repo); local checkouts
-symlink `data/store` → the clone; empty store passes `validate-store.sh`.
+## Goal (from ROADMAP area 3)
+From a phone: **an answer in seconds** — no `npm ci`, no server boot — and
+**debrief → filed → committed with zero manual steps**; nothing about other people
+leaves `data/` except through the enumerated lanes in `docs/EGRESS.md`.
 
-The topology:
+## What already exists (do not rebuild)
+- Data repo `relationship-agent-data` live on GitHub, 127 people / 356 interactions;
+  `data/store` symlinks to the local clone. Its `CLAUDE.md` already tells a cold
+  session to shallow-clone the machinery and run `who-next-direct.sh` (bash+jq, no
+  node) — plan 35.
+- `.claude/scripts/oss-guard.sh` — PII / secrets / never-send / enrichment /
+  gitignore checks over the **machinery** repo's tracked tree, run in CI on macOS and
+  Linux. This IS the scan script v1 wanted; what's missing is the pre-push and
+  harness-hook mounts and the CI check being *required*.
+- `docs/runtime-cloud.md` — cadence map + queue model; explicitly leaves environment
+  spec, store-sync mechanics and deadman escalation to this plan.
+- `packages/core/scripts/wakeup-add.sh` (the only creation path for wake-ups),
+  `build-index.sh`, `validate-store.sh`.
+- Decisions that bind: `cloud-native-runtime`, `git-as-sync-protocol`,
+  `pii-egress-allowlist`, `code-data-separation`, `composio-retired` (first-party
+  claude.ai connectors are the only pipes to the user's own accounts).
 
+## Topology (current, Composio-free)
 ```
-any device ──(self-email / Composio lanes)──▶ user accounts ──▶ sweeps pull → inbox/
-phone/laptop ──(claude.ai/code cloud session on data repo)──▶ talk, debrief, query
-scheduled routine ──(same cloud environment)──▶ sweep → commit to data repo main
-any device ◀──(Gmail drafts, rendered repo files — plan 07)── connectors-out
+phone/laptop ──(claude.ai/code cloud session on the DATA repo)──▶ answer (bash+jq) / debrief → store-sync commit → data-repo main
+Mac (launchd) ──(sync-scheduler lanes: beeper local; gmail/calendar via mcp-lane-tick)──▶ inbox/ → filing → store-sync commit → push
+attention sweep ──(reads heartbeats/)──▶ staleness wake-up when a lane/routine goes quiet
 ```
+Beeper is **Mac-only** (desktop app); it never runs in the cloud. Cloud sessions
+reach Gmail/Calendar only through the first-party connectors the user linked.
 
 ## Deliverables
-- `packages/core/scripts/store-sync.sh` — the write discipline every runtime uses
-  against the data repo: `pull` (fetch+merge, loud on conflict), `commit` (validate
-  store → rebuild index → commit), `push` (with one pull-merge retry for concurrent
-  session races). No-op cleanly when the store isn't a git repo.
-- Cloud environment spec (in `docs/runtime-cloud.md`), recording the VERIFIED
-  2026-08-29 configuration (see composio-dual-transport): network access **full**
-  (Trusted 403s composio.dev); setup script installs the CLI pinned to
-  `COMPOSIO_INSTALL_VERSION=0.4.0` only — no login line (the Composio claude.ai
-  connector is the session transport; CLI login waits on a fresh dashboard-minted
-  `uak_` key and is optional until the sandbox proxy quirk resolves); env var
-  `COMPOSIO_API_KEY` documented with the no-secrets-store caveat and rotation
-  guidance; the routine definition for sweeps (cadence config; verify whether routines
-  carry connectors). BOTH transports are firm requirements (user decision 2026-08-29):
-  the connector wherever a model drives (queries, debriefs, cloud sessions), the CLI
-  wherever code drives (deterministic sweep scripts, device-side cron/launchd) — the
-  CLI is also the degradation path when the connector/cloud lane is unavailable. The
-  local Mac's CLI session is already authenticated; every other runtime needs the
-  fresh dashboard-minted `uak_` key (`composio login --user-api-key … --org ok_…`).
-- Heartbeat/deadman: each sweep stamps `last-sweep` in the data repo; staleness > 2×
-  cadence surfaces as a wake-up entry — a dead schedule announces itself.
-- git-guard repo-scoping: the machinery repo's branch/push guard must not block the
-  data repo's designed direct-to-main flow — scope the guard to the machinery repo's
-  own paths/remotes.
-- PII-and-secrets scan guard, three enforcement points sharing one scan script:
-  (a) `.claude/hooks/pii-guard.sh` (harness guard on commit/push in the machinery
-  repo); (b) a native git `pre-push` hook installed by a setup script — the push
-  boundary is what matters in a public repo, a pushed branch is world-readable whether
-  or not it merges; (c) CI as a **required PR check**. Flags real-looking emails,
-  phone numbers, non-reserved domains outside synthetic-fixture conventions
-  (`example.com`/`example.org`, reserved numbers) AND credential-shaped strings
-  (API keys, tokens). Asserts `data/` stays gitignored. Named findings, never silent.
-- `docs/EGRESS.md` — the allowlist per pii-egress-allowlist, updated for this
-  topology: LLM provider + provider sandbox (cloud-native-runtime), the private data
-  repo host, the user's own accounts via Composio (payloads transit Composio's cloud;
-  retention caveat from composio-hub), public web-search queries (public-sphere
-  identifiers only — told-by-user facts never leave in a query), rendered deliveries
-  to the user's own surfaces. Adding a lane requires a DECISIONS entry.
-- Home-hub appendix in `docs/runtime-cloud.md`: the Tailscale privacy variant, kept
-  current enough to be followable, explicitly non-default.
+1. **`packages/core/scripts/store-sync.sh`** — the write discipline every runtime uses
+   against the data repo: `pull` (fetch + merge, loud on conflict, never rebase),
+   `commit [-m msg]` (validate-store → build-index → `git add -A` → commit; refuses
+   on validation failure), `push` (one pull-merge retry on non-fast-forward, then
+   fail loudly), `status`. No-op with a clear line when the store dir isn't a git
+   repo. Resolves the store through `data/store` symlink or an explicit path. Sets
+   a fallback git identity from env (`SPOMNI_GIT_NAME/EMAIL`) when the runtime has
+   none — that's the cloud case.
+2. **Zero-manual-step debrief from a cloud session** — the data repo's `CLAUDE.md`
+   gains a "Debriefing from a cold session" section (mirror of the query section:
+   clone machinery shallow, run `/debrief` per the SKILL, then
+   `store-sync.sh commit && store-sync.sh push`). The debrief SKILL's closing step
+   references store-sync when the store is a git repo. Companion: a
+   `data/store/CLAUDE.md` exemplar committed in the machinery repo at
+   `packages/core/templates/data-repo-CLAUDE.md` so `init-store.sh` writes it for
+   new users (no user-specific content).
+3. **Cold-start bench** — `packages/query/scripts/cold-start-bench.sh`: from an empty
+   temp dir, time (a) shallow machinery clone, (b) `who-next-direct.sh` first answer
+   on a fixture store, (c) the two together; prints one line per stage + total.
+   Records the 2026-08-30 baseline in `docs/runtime-cloud.md` and sets the target:
+   **≤ 15 s clone→answer in the cloud, ≤ 5 s on a warm checkout**. If the clone
+   dominates, the cloud environment's setup script pre-clones `machinery/`
+   (gitignored in the data repo) so a session finds it warm.
+4. **Cloud environment spec** folded into `docs/runtime-cloud.md` (replacing v1's
+   Composio text): environment = data repo; setup script = pin `jq`, shallow-clone
+   machinery into `machinery/`, export `SPOMNI_STORE=.`; git identity via env; no
+   secrets at all (connectors are session-scoped, nothing to store); which routines
+   can run in the cloud (`daily-attention`, `weekly-planning`, gmail/calendar sweeps
+   *if* routines carry connectors — verify and record) and which cannot (beeper).
+   Home-hub/Tailscale appendix reduced to a pointer at the superseded decision.
+5. **Heartbeat + staleness** — `packages/core/contracts/heartbeat.md` 1.0.0:
+   `<store>/heartbeats/<routine>.json` `{routine, stamped_at, cadence_hours, ok}`;
+   `packages/core/scripts/heartbeat-stamp.sh <store> <routine> --cadence-hours N
+   [--ok|--fail]`. Stamped by `sync-scheduler.sh run <lane>` on lane completion and by
+   the sweep / weekly-planning skills on success (they already promise this in
+   `runtime-cloud.md`). Attention's sweep gains a **staleness step**: any heartbeat
+   older than 2 × `cadence_hours` yields exactly ONE pending wake-up
+   (`origin: standing`, `--source-signal staleness:<routine>`; skipped while one is
+   already pending/fired-unresolved) — a dead schedule announces itself, once.
+6. **Scan mounts** (oss-guard is the scan): (a) `scripts/setup.sh --hooks` installs a
+   native `.git/hooks/pre-push` that runs `oss-guard.sh` and blocks on FAIL (push is
+   the world-readable boundary); (b) `.claude/hooks/git-guard.sh` runs
+   `oss-guard.sh --only secrets` before allowing any `git push` command (fast subset;
+   full guard is the pre-push hook + CI); (c) CI: the `oss-guard-linux` job is made a
+   **required status check** on `main` — a user action in GitHub settings, recorded
+   as a checklist line in `docs/SETUP.md`.
+7. **git-guard repo-scoping** — the machinery repo's never-on-main / no-push-main
+   rules apply only when the command runs inside a repo whose `origin` URL matches
+   the machinery repo (`relationship-agent` without the `-data` suffix, overridable
+   via `HARNESS_MACHINERY_REMOTE`); the data repo's designed direct-to-main flow is
+   not blocked. Destructive-git tiers stay global.
+8. **`docs/EGRESS.md`** — the allowlist per `pii-egress-allowlist`, one row per lane:
+   Anthropic (model inference + cloud sandbox: whatever a session reads), GitHub
+   (the private data repo — encrypted at rest by GitHub, hardening note), Google
+   via first-party Gmail/Calendar connectors (read + draft; nothing about third
+   parties is *written* out except a draft the user sends), Beeper desktop (local
+   bridge; its own cloud per the user's Beeper account), Ollama (local, no egress),
+   rendered deliveries to the user's own surfaces (plan 33 beeper-self). Explicit
+   non-lanes: web search with told-by-user facts, enrichment APIs, any auto-send.
+   Adding a lane requires a DECISIONS entry — stated in the file.
 
-## Work units
-Wave A (parallel):
-1. [worker] `packages/core/scripts/store-sync.sh` — pull/commit/push discipline,
-   validate+reindex before commit, loud conflicts, one pull-merge retry, non-git no-op.
-2. [worker] Tests for store-sync: commit rejects an invalid store; index regenerated;
-   push race (simulated non-fast-forward) retries once then fails loudly; non-git dir
-   no-ops.
-3. [worker] `docs/EGRESS.md` + `docs/runtime-cloud.md` (environment spec, setup
-   script content, routine definition, heartbeat rule, home-hub appendix).
+## Work units (splitting rule applied; every brief ≤ 3 min)
+Wave A — parallel, 5 workers + nothing shared:
+1. [dev-worker, core] `store-sync.sh` (deliverable 1).
+2. [dev-worker, core] `heartbeat.md` contract + `heartbeat-stamp.sh` (deliverable 5, stamp side only).
+3. [dev-worker, query] `cold-start-bench.sh` + baseline run on the fixture store (deliverable 3).
+4. [dev-worker, harness] git-guard repo-scoping + `--only secrets` pre-push check in the hook (deliverables 6b, 7).
+5. [orchestrator, docs] `docs/EGRESS.md` + DECISIONS pointer (deliverable 8) — docs are orchestrator-editable.
 
-Wave B (after A):
-4. [worker] The shared scan script + its three mounts (harness hook, git pre-push +
-   installer, CI required check) — PII patterns + credential patterns, gitignore
-   assertion, named findings.
-5. [worker] git-guard repo-scoping + the sweep-side heartbeat stamp and
-   staleness→wake-up rule (via core's `wakeup-add.sh`).
-6. [checker] End-to-end sim on fixtures: clone the (fixture) store fresh, run
-   store-sync pull→commit→push against a bare remote, verify validate-gate blocks a
-   bad store, heartbeat stamps, planted fake-PII and fake-API-key both caught by the
-   scan, stale heartbeat yields exactly one wake-up.
+Wave B — after A, parallel, 4 workers:
+6. [dev-worker, core] store-sync tests (`run-store-sync-tests.sh`, wired into `scripts/test-all.sh`): commit rejects an invalid store; index regenerated; push race against a bare remote retries once then fails loudly; non-git dir no-ops; identity fallback from env.
+7. [dev-worker, connectors] `sync-scheduler.sh run` stamps the lane heartbeat (ok/fail) — plus a case in `run-scheduler-tests.sh`.
+8. [dev-worker, attention] sweep staleness step + `run-attention-tests.sh` cases: stale → exactly one wake-up; fresh → none; second run → no duplicate.
+9. [dev-worker, harness] `scripts/setup.sh --hooks` pre-push installer + heartbeat/store-sync tests for the hook path in `run-oss-guard-tests.sh`.
+
+Wave C — after B, 2 workers + orchestrator docs:
+10. [dev-worker, core] `templates/data-repo-CLAUDE.md` + `init-store.sh` writes it; debrief SKILL closing step references store-sync (deliverable 2).
+11. [dev-worker, attention] sweep + weekly-planning SKILLs call `heartbeat-stamp.sh` on success (they already document the promise).
+12. [orchestrator, docs] `runtime-cloud.md` environment section + bench baseline/target; `SETUP.md` gains the "required check" and `--hooks` lines; ROADMAP row 09.
+
+Wave D — live proof (one user session, not a worker):
+13. Open a cloud session on the data repo from the phone; run the bench for real; ask one `/who-next`; do one `/debrief` of an inbox event; confirm the commit lands on data-repo `main` untouched by hand. Kill a launchd lane for 2× its cadence; confirm one staleness wake-up appears, and only one.
 
 ## Interfaces
-Consumes: store contracts + scripts (01); plan 06's sweep entry point (optional at
-runtime); composio-in lanes (10); core's `wakeup-add.sh`.
-Produces: the write discipline every session and routine uses; `docs/EGRESS.md`,
-binding every stream — the mcp stream's remote answer surface ships answers, never the
-store, and any transport it exposes must be authenticated/private.
+Consumes: core store contracts + `validate-store.sh`/`build-index.sh`/`wakeup-add.sh`; sync-scheduler lane runner (19); attention sweep (06); oss-guard (open-source readiness).
+Produces: `store-sync.sh` (every writing runtime), heartbeat contract 1.0.0 (connectors + attention write, attention reads), `docs/EGRESS.md` (binds every stream), repo-scoped git-guard.
+Single-writer check: `heartbeats/` is a new artifact type with **two** writing packages (connectors for lanes, attention for routines) — resolved by making the *file per routine* the unit: each routine's file has exactly one writer. Recorded in `heartbeat.md`.
 
 ## Proof of done
-A cloud session opened on the data repo from a phone can debrief and commit with zero
-manual steps; the scheduled routine runs the sweep unattended in the cloud environment
-and its commit appears on the data repo's main; the two-remote sim passes; killing the
-schedule surfaces a staleness wake-up; the scan blocks both a planted real-looking
-email and a planted API key; `docs/EGRESS.md` enumerates every lane and nothing in the
-repo transmits outside them.
+- Bench: cloud cold session clone→first answer ≤ 15 s (baseline recorded next to it); warm ≤ 5 s.
+- Phone debrief: filed + committed + pushed with zero typed git commands.
+- Store-sync suite green incl. the simulated push race; validate-gate blocks a bad store.
+- Killed lane → exactly one staleness wake-up; restored lane → none further.
+- `git push` of a branch with a planted API key is blocked at the harness hook, the pre-push hook, and CI (three mounts, one scan).
+- Pushing to `main` in the data repo is not blocked by the machinery's git-guard.
+- `docs/EGRESS.md` lists every lane; oss-guard's never-send/no-enrichment checks are cited as the mechanical half.
 
 ## Out of scope
-- Machinery-as-plugin packaging (its own later chunk — see ROADMAP Later)
-- The query MCP server (mcp stream)
-- Push notifications to the phone (output-adapter concern)
-- Encryption-at-rest beyond what GitHub provides (documented in EGRESS.md as a
-  hardening note)
-- Local-model runtime (revisit trigger on pii-egress-allowlist)
+- Machinery-as-plugin packaging (ROADMAP Later; depends on this plan).
+- Cloud-side beeper (impossible — desktop bridge).
+- Retrieval speed beyond cold start (ROADMAP area 4).
+- Push notifications to the phone (plan 33's lane already covers nudge delivery).
+- Encryption at rest beyond GitHub's (hardening note in EGRESS.md only).
