@@ -803,7 +803,11 @@ else
   status=$?
   window_start="$(printf '%s' "$out" | cut -f1)"
   months="$(printf '%s' "$out" | cut -f2)"
-  expected_prefix="$(date -u -v-2m +%Y-%m)"
+  if date -u -d '@0' +%s >/dev/null 2>&1; then
+    expected_prefix="$(date -u -d "-2 months" +%Y-%m)"
+  else
+    expected_prefix="$(date -u -v-2m +%Y-%m)"
+  fi
   if [ "$status" -eq 0 ] && [ "$months" = "2" ] && [ "${window_start%%-??T*}" = "$expected_prefix" ]; then
     pass "resolve-backfill-window: window_months=2 resolves to months=2 and window_start ~ now-2mo"
   else
