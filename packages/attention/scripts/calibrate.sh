@@ -1,32 +1,60 @@
 #!/bin/bash
 # calibrate.sh — SKETCH implementation of packages/attention/specs/calibration.md
-# (plan 11 unit 9). Aggregates <store-dir>/wakeups/*.md outcome history into
-# a full rewrite of <store-dir>/ranking-weights.json per
-# packages/core/contracts/ranking-weights.md.
+# (plan 11 unit 9) plus its plan-30 amendments (unit 16/17): --seed-from-
+# user-model and --rescale <dimension>. Three mutually-exclusive modes, all
+# sole-writer paths onto <store-dir>/ranking-weights.json
+# (packages/core/contracts/ranking-weights.md 1.1.0):
 #
-# CALLER: this script is a step in plan 06's sweep pipeline
+#   1. Ordinary mode (default): aggregates <store-dir>/wakeups/*.md outcome
+#      history into a full rewrite of ranking-weights.json's signal-types/
+#      tags dimensions (calibration.md sections 1-5). Carries the kinds/
+#      evidence dimensions forward verbatim from the previous file (this
+#      mode never touches them) and stamps schema_version 1.1.0.
+#   2. --seed-from-user-model: seeds the kinds/evidence dimensions from the
+#      store's confirmed data/store/user-model.md (calibration.md "Seeding
+#      from user-model"). Never touches signal-types/tags.
+#   3. --rescale <dimension>: geometric-mean renormalizes one dimension
+#      (kinds|evidence|signal-types|tags) in place (calibration.md
+#      "Rescale"). Never touches the other three dimensions.
+#
+# CALLER: ordinary mode is a step in plan 06's sweep pipeline
 # (skills/sweep/SKILL.md), invoked AFTER "acted-on detection"
 # (packages/attention/specs/outcome-recording.md) and before delivery via an
 # output adapter:
 #
 #   ... -> fire due wake-ups -> acted-on detection -> calibrate (this script) -> deliver
 #
+# --seed-from-user-model and --rescale are user-invoked only — never part of
+# the sweep pipeline; an operator runs them explicitly (onboarding
+# confirmation flow, a later user-model revision confirmation, or a manual
+# rebalance).
+#
 # It is not meant to be a finished, hardened CLI yet — this is a sketch that
 # implements the calibration.md formula end-to-end so plan 06's sweep has a
-# concrete, testable step to call, and so fixtures (plan 11 unit 11) have
-# something to run against. See calibration.md for the full spec, formula
-# derivation, clamps, and the flagged signal-type gap (section 2.1).
+# concrete, testable step to call, and so fixtures have something to run
+# against. See calibration.md for the full spec, formula derivation, clamps,
+# and the flagged signal-type gap (section 2.1).
 #
-# Usage: calibrate.sh <store-dir> [--window-days <n>]   (default window: 90)
+# Usage:
+#   calibrate.sh <store-dir> [--window-days <n>] [--today <YYYY-MM-DD>]
+#   calibrate.sh <store-dir> --seed-from-user-model [--today <YYYY-MM-DD>]
+#   calibrate.sh <store-dir> --rescale <kinds|evidence|signal-types|tags> [--today <YYYY-MM-DD>]
+#
+# (default window: 90; --today overrides the wall-clock date used for
+# `updated`/rationale stamps and, in ordinary mode, the aggregation window's
+# "today" anchor — for fixtures/tests.)
 #
 # Reads:  <store-dir>/wakeups/*.md, <store-dir>/people/*.md (tags only),
 #         <store-dir>/ranking-weights.json (if present, as the per-step
-#         clamp baseline).
+#         clamp baseline / rescale-and-seed target),
+#         <store-dir>/user-model.md (seed mode only, confirmed status
+#         required — refuses with exit 3 otherwise).
 # Writes: <store-dir>/ranking-weights.json (full rewrite; sole write this
-#         script performs on that file).
-# Side effect: may create at most one new wakeups/<id>.md suppression
-#         proposal per person per run, via packages/core/scripts/wakeup-add.sh
-#         (calibration.md section 4) — never writes wakeups/ fields itself.
+#         script performs on that file, atomic via mktemp+mv).
+# Side effect (ordinary mode only): may create at most one new
+#         wakeups/<id>.md suppression proposal per person per run, via
+#         packages/core/scripts/wakeup-add.sh (calibration.md section 4) —
+#         never writes wakeups/ fields itself.
 #
 # Portable to bash 3.2 (macOS default): no associative arrays, no mapfile.
 # Uses jq for aggregation math (already a dependency of
@@ -40,10 +68,16 @@ WAKEUP_ADD="${SCRIPT_DIR}/../../core/scripts/wakeup-add.sh"
 
 usage() {
   cat >&2 <<EOF
-Usage: ${SCRIPT_NAME} <store-dir> [--window-days <n>]
+Usage:
+  ${SCRIPT_NAME} <store-dir> [--window-days <n>] [--today <YYYY-MM-DD>]
+  ${SCRIPT_NAME} <store-dir> --seed-from-user-model [--today <YYYY-MM-DD>]
+  ${SCRIPT_NAME} <store-dir> --rescale <kinds|evidence|signal-types|tags> [--today <YYYY-MM-DD>]
 
-Aggregates <store-dir>/wakeups/*.md outcome history into a full rewrite of
-<store-dir>/ranking-weights.json. See packages/attention/specs/calibration.md.
+Ordinary mode aggregates <store-dir>/wakeups/*.md outcome history into a
+full rewrite of <store-dir>/ranking-weights.json's signal-types/tags
+dimensions. --seed-from-user-model and --rescale are mutually exclusive
+with each other, with --window-days, and with ordinary mode. See
+packages/attention/specs/calibration.md.
 EOF
   exit 1
 }
@@ -56,11 +90,35 @@ STORE_DIR="$1"
 shift
 
 WINDOW_DAYS=90
+WINDOW_DAYS_SET=0
+SEED_MODE=0
+RESCALE_MODE=0
+RESCALE_DIM=""
+TODAY_OVERRIDE=""
+MODE_COUNT=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --window-days)
       [ "$#" -ge 2 ] || usage
       WINDOW_DAYS="$2"
+      WINDOW_DAYS_SET=1
+      shift 2
+      ;;
+    --seed-from-user-model)
+      SEED_MODE=1
+      MODE_COUNT=$((MODE_COUNT + 1))
+      shift
+      ;;
+    --rescale)
+      [ "$#" -ge 2 ] || usage
+      RESCALE_MODE=1
+      RESCALE_DIM="$2"
+      MODE_COUNT=$((MODE_COUNT + 1))
+      shift 2
+      ;;
+    --today)
+      [ "$#" -ge 2 ] || usage
+      TODAY_OVERRIDE="$2"
       shift 2
       ;;
     *)
@@ -69,6 +127,26 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+if [ "${MODE_COUNT}" -gt 1 ]; then
+  echo "${SCRIPT_NAME}: --seed-from-user-model and --rescale are mutually exclusive" >&2
+  exit 1
+fi
+
+if [ "${WINDOW_DAYS_SET}" -eq 1 ] && { [ "${SEED_MODE}" -eq 1 ] || [ "${RESCALE_MODE}" -eq 1 ]; }; then
+  echo "${SCRIPT_NAME}: --window-days cannot be combined with --seed-from-user-model or --rescale" >&2
+  exit 1
+fi
+
+if [ "${RESCALE_MODE}" -eq 1 ]; then
+  case "${RESCALE_DIM}" in
+    kinds|evidence|signal-types|tags) ;;
+    *)
+      echo "${SCRIPT_NAME}: --rescale dimension must be one of kinds|evidence|signal-types|tags (got '${RESCALE_DIM}')" >&2
+      exit 1
+      ;;
+  esac
+fi
 
 if [ ! -d "${STORE_DIR}" ]; then
   echo "${SCRIPT_NAME}: store directory does not exist: '${STORE_DIR}'" >&2
@@ -84,6 +162,266 @@ WAKEUPS_DIR="${STORE_DIR}/wakeups"
 PEOPLE_DIR="${STORE_DIR}/people"
 WEIGHTS_PATH="${STORE_DIR}/ranking-weights.json"
 
+if [ -n "${TODAY_OVERRIDE}" ]; then
+  TODAY="${TODAY_OVERRIDE}"
+else
+  TODAY="$(date -u +%Y-%m-%d)"
+fi
+GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# =============================================================================
+# --seed-from-user-model mode (calibration.md "Seeding from user-model")
+# =============================================================================
+
+if [ "${SEED_MODE}" -eq 1 ]; then
+  USER_MODEL_PATH="${STORE_DIR}/user-model.md"
+
+  if [ ! -f "${USER_MODEL_PATH}" ]; then
+    echo "${SCRIPT_NAME}: --seed-from-user-model requires ${USER_MODEL_PATH} to exist" >&2
+    exit 3
+  fi
+
+  UM_STATUS="$(awk '
+    /^---$/ { fmc++; if (fmc == 2) exit; next }
+    fmc == 1 && /^status: / { sub(/^status: */, ""); print; exit }
+  ' "${USER_MODEL_PATH}")"
+
+  if [ "${UM_STATUS}" != "confirmed" ]; then
+    echo "${SCRIPT_NAME}: --seed-from-user-model refuses: user-model.md status is '${UM_STATUS:-<unset>}', not 'confirmed'" >&2
+    exit 3
+  fi
+
+  UM_REVISION="$(awk '
+    /^---$/ { fmc++; if (fmc == 2) exit; next }
+    fmc == 1 && /^revision: / { sub(/^revision: */, ""); print; exit }
+  ' "${USER_MODEL_PATH}")"
+
+  if ! printf '%s' "${UM_REVISION}" | grep -Eq '^[0-9]+$'; then
+    echo "${SCRIPT_NAME}: --seed-from-user-model refuses: user-model.md frontmatter 'revision' is missing or not an integer" >&2
+    exit 3
+  fi
+
+  get_axis_weight() {
+    axis="$1"
+    awk -v axis="${axis}" '
+      /^## Investment mix/ { insec = 1; next }
+      /^## / { insec = 0 }
+      insec && $0 ~ ("^- " axis ": ") {
+        line = $0
+        sub("^- " axis ": *", "", line)
+        sub(/ .*/, "", line)
+        print line
+        exit
+      }
+    ' "${USER_MODEL_PATH}"
+  }
+
+  PROTECTED_TEXT="$(awk '
+    /^## Protected time/ { insec = 1; next }
+    /^## / { insec = 0 }
+    insec { print }
+  ' "${USER_MODEL_PATH}")"
+
+  is_protected_axis() {
+    axis="$1"
+    case "${axis}" in
+      business) pattern="work|business|client" ;;
+      friends) pattern="friend" ;;
+      family) pattern="family" ;;
+      community) pattern="community" ;;
+      transactional) pattern="transactional" ;;
+      *) return 1 ;;
+    esac
+    printf '%s' "${PROTECTED_TEXT}" | grep -Eqi "${pattern}"
+  }
+
+  kind_axis() {
+    case "$1" in
+      friend) echo "friends" ;;
+      family) echo "family" ;;
+      collaborator) echo "business" ;;
+      professional) echo "business" ;;
+      community) echo "community" ;;
+      transactional) echo "transactional" ;;
+      scheduling) echo "transactional" ;;
+      unsolicited) echo "transactional" ;;
+      unknown) echo "" ;;
+    esac
+  }
+
+  kind_weight() {
+    kind="$1"
+    axis="$(kind_axis "${kind}")"
+    if [ -z "${axis}" ]; then
+      printf '1.0'
+      return
+    fi
+    aw="$(get_axis_weight "${axis}")"
+    if [ -z "${aw}" ]; then
+      aw="0.0"
+    fi
+    w="$(awk -v aw="${aw}" 'BEGIN { w = 0.5 + aw; if (w < 0.25) w = 0.25; if (w > 2.0) w = 2.0; printf "%.2f", w }')"
+    if is_protected_axis "${axis}"; then
+      w="$(awk -v w="${w}" 'BEGIN { if (w < 1.0) w = 1.0; printf "%.2f", w }')"
+    fi
+    printf '%s' "${w}"
+  }
+
+  NEW_KINDS_JSON="{"
+  first=1
+  for k in friend family collaborator professional community scheduling transactional unsolicited unknown; do
+    kw="$(kind_weight "${k}")"
+    if [ "${first}" -eq 0 ]; then NEW_KINDS_JSON="${NEW_KINDS_JSON},"; fi
+    NEW_KINDS_JSON="${NEW_KINDS_JSON}\"${k}\":${kw}"
+    first=0
+  done
+  NEW_KINDS_JSON="${NEW_KINDS_JSON}}"
+
+  NEW_EVIDENCE_JSON='{"meeting":1.5,"co_attended":1.3,"user_initiated":1.2,"talking_point":1.2,"email":1.0,"chat_day":0.8}'
+
+  if [ -f "${WEIGHTS_PATH}" ]; then
+    PREV_JSON="$(cat "${WEIGHTS_PATH}")"
+  else
+    PREV_JSON='{"schema_version":"1.0.0","generated_at":null,"weights":{"signal-types":{},"tags":{},"kinds":{},"evidence":{}}}'
+  fi
+
+  TMP_SEED_OUT="$(mktemp)"
+  TMP_SEED_ENVELOPE="$(mktemp)"
+  trap 'rm -f "${TMP_SEED_OUT}" "${TMP_SEED_ENVELOPE}"' EXIT
+
+  jq -n \
+    --argjson prev "${PREV_JSON}" \
+    --argjson new_kinds "${NEW_KINDS_JSON}" \
+    --argjson new_evidence "${NEW_EVIDENCE_JSON}" \
+    --argjson revision "${UM_REVISION}" \
+    --arg today "${TODAY}" \
+    --arg generated_at "${GENERATED_AT}" \
+    '
+      def reseed_dim($newvals; $prevdim):
+        ($newvals | to_entries | map(
+          .key as $k
+          | (.value + 0) as $neww
+          | ($prevdim[$k]) as $prevEntry
+          | if $prevEntry == null then
+              { key: $k,
+                value: { weight: $neww, updated: $today,
+                         rationale: ("seeded from user-model revision " + ($revision | tostring)) },
+                written: true }
+            else
+              ($prevEntry.rationale // "") as $rat
+              | (if ($rat | test("^seeded from user-model revision [0-9]+$"))
+                 then ($rat | capture("^seeded from user-model revision (?<n>[0-9]+)$"))
+                 else null end) as $cap
+              | if ($cap != null) and (($cap.n | tonumber) < $revision) then
+                  { key: $k,
+                    value: { weight: $neww, updated: $today,
+                             rationale: ("seeded from user-model revision " + ($revision | tostring)) },
+                    written: true }
+                else
+                  { key: $k, value: $prevEntry, written: false }
+                end
+            end
+        ));
+
+      reseed_dim($new_kinds; ($prev.weights.kinds // {})) as $kindsResult
+      | reseed_dim($new_evidence; ($prev.weights.evidence // {})) as $evResult
+      | {
+          envelope: {
+            schema_version: "1.1.0",
+            generated_at: $generated_at,
+            weights: {
+              "signal-types": ($prev.weights["signal-types"] // {}),
+              "tags": ($prev.weights.tags // {}),
+              "kinds": ($kindsResult | map({key, value: .value}) | from_entries),
+              "evidence": ($evResult | map({key, value: .value}) | from_entries)
+            }
+          },
+          kinds_written: ($kindsResult | map(select(.written)) | length),
+          evidence_written: ($evResult | map(select(.written)) | length),
+          kept: (($kindsResult + $evResult) | map(select(.written | not)) | length)
+        }
+    ' > "${TMP_SEED_OUT}"
+
+  jq -S '.envelope' "${TMP_SEED_OUT}" > "${TMP_SEED_ENVELOPE}"
+  mv "${TMP_SEED_ENVELOPE}" "${WEIGHTS_PATH}"
+
+  KINDS_WRITTEN="$(jq -r '.kinds_written' "${TMP_SEED_OUT}")"
+  EVIDENCE_WRITTEN="$(jq -r '.evidence_written' "${TMP_SEED_OUT}")"
+  KEPT="$(jq -r '.kept' "${TMP_SEED_OUT}")"
+
+  echo "seeded kinds=${KINDS_WRITTEN} evidence=${EVIDENCE_WRITTEN} kept=${KEPT} from user-model revision ${UM_REVISION}"
+  exit 0
+fi
+
+# =============================================================================
+# --rescale <dimension> mode (calibration.md "Rescale")
+# =============================================================================
+
+if [ "${RESCALE_MODE}" -eq 1 ]; then
+  if [ ! -f "${WEIGHTS_PATH}" ]; then
+    echo "${SCRIPT_NAME}: --rescale requires an existing ${WEIGHTS_PATH}" >&2
+    exit 1
+  fi
+
+  GEOMEAN_RAW="$(jq -r --arg dim "${RESCALE_DIM}" '
+    (.weights[$dim] // {}) as $d
+    | ($d | length) as $n
+    | if $n == 0 then "EMPTY"
+      else (($d | to_entries | map(.value.weight | log) | add / $n) | exp) | tostring
+      end
+  ' "${WEIGHTS_PATH}")"
+
+  if [ "${GEOMEAN_RAW}" = "EMPTY" ]; then
+    echo "rescale: no-op (empty)"
+    exit 0
+  fi
+
+  GEOMEAN_ROUNDED="$(awk -v m="${GEOMEAN_RAW}" 'BEGIN { printf "%.2f", m }')"
+
+  IS_NOOP="$(awk -v m="${GEOMEAN_RAW}" 'BEGIN { d = m - 1.0; if (d < 0) d = -d; print (d <= 0.01) ? "1" : "0" }')"
+  if [ "${IS_NOOP}" = "1" ]; then
+    echo "rescale: no-op (mean ${GEOMEAN_ROUNDED})"
+    exit 0
+  fi
+
+  TMP_RESCALE_OUT="$(mktemp)"
+  trap 'rm -f "${TMP_RESCALE_OUT}"' EXIT
+
+  jq -S \
+    --arg dim "${RESCALE_DIM}" \
+    --argjson geomean "${GEOMEAN_RAW}" \
+    --arg geomean_rounded "${GEOMEAN_ROUNDED}" \
+    --arg today "${TODAY}" \
+    --arg generated_at "${GENERATED_AT}" \
+    '
+      (.weights[$dim]) as $d
+      | ($d | to_entries | map(
+          .value.weight as $ow
+          | (($ow / $geomean) as $w0 | ([[$w0, 0.25] | max, 2.0] | min)) as $wc
+          | ((($wc * 100 | round) / 100)) as $wr
+          | .value = {
+              weight: $wr,
+              updated: $today,
+              rationale: ("rescaled " + $today + ": dimension mean " + $geomean_rounded + " → 1.0")
+            }
+        ) | from_entries) as $newDim
+      | .weights[$dim] = $newDim
+      | .generated_at = $generated_at
+      | .schema_version = "1.1.0"
+    ' "${WEIGHTS_PATH}" > "${TMP_RESCALE_OUT}"
+
+  mv "${TMP_RESCALE_OUT}" "${WEIGHTS_PATH}"
+
+  N_ENTRIES="$(jq -r --arg dim "${RESCALE_DIM}" '.weights[$dim] | length' "${WEIGHTS_PATH}")"
+  echo "rescaled ${RESCALE_DIM}: mean ${GEOMEAN_ROUNDED} → 1.0 (${N_ENTRIES} entries)"
+  exit 0
+fi
+
+# =============================================================================
+# Ordinary mode (calibration.md sections 1-5): unchanged below, plus kinds/
+# evidence pass-through and the schema 1.1.0 bump.
+# =============================================================================
+
 TMP_WAKEUPS="$(mktemp)"
 TMP_PEOPLE="$(mktemp)"
 TMP_PREV="$(mktemp)"
@@ -93,8 +431,8 @@ TMP_OUT="$(mktemp)"
 TMP_SUPPRESS="$(mktemp)"
 trap 'rm -f "$TMP_WAKEUPS" "$TMP_PEOPLE" "$TMP_PREV" "$TMP_JQ" "$TMP_JQ_MAIN" "$TMP_OUT" "$TMP_SUPPRESS"' EXIT
 
-TODAY="$(date -u +%Y-%m-%d)"
-GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+# TODAY / GENERATED_AT are already set above (mode-independent; --today
+# overrides TODAY for all three modes).
 
 # --- Extract wakeups/*.md frontmatter into JSON-lines -----------------------
 #
@@ -244,7 +582,7 @@ fi
 if [ -f "${WEIGHTS_PATH}" ]; then
   cp "${WEIGHTS_PATH}" "${TMP_PREV}"
 else
-  printf '{"schema_version":"1.0.0","generated_at":null,"weights":{"signal-types":{},"tags":{}}}\n' > "${TMP_PREV}"
+  printf '{"schema_version":"1.0.0","generated_at":null,"weights":{"signal-types":{},"tags":{},"kinds":{},"evidence":{}}}\n' > "${TMP_PREV}"
 fi
 
 # --- jq aggregation: calibration.md sections 1-5 ----------------------------
@@ -384,11 +722,13 @@ def adjust($stats; $prevmap; $negfield; $roundlabel):
 
 | {
     ranking_weights: {
-      schema_version: "1.0.0",
+      schema_version: "1.1.0",
       generated_at: $generated_at,
       weights: {
         "signal-types": $newSig,
-        "tags": $newTag
+        "tags": $newTag,
+        "kinds": ($prev.weights.kinds // {}),
+        "evidence": ($prev.weights.evidence // {})
       }
     },
     suppression_candidates: $suppressCandidates

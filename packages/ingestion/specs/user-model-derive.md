@@ -55,7 +55,11 @@ computed over the trailing-90-day window:
    - Calendar meetings with 2 or more attendees (self excluded from the
      count) → `business`.
    - Chat-days on a personal Beeper channel (the `whatsapp` or `matrix`
-     lanes specifically — not `linkedin`) → `friends`.
+     lanes specifically — not `linkedin`; the channel segment in
+     `source-capture` is matched case-insensitively, since live ids carry
+     mixed-case channel names, e.g. `beeper-in-WhatsApp`) → `friends`. A
+     legacy bare `beeper-<hex>` id (no `-in-<channel>` segment) is not a
+     personal-channel match — it falls through to the next rule.
    - A `family` tag on the person (`people/<slug>.md` tags) → `family`.
    - None of the above match → `unassigned`.
 

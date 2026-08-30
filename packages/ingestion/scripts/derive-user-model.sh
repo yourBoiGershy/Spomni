@@ -23,8 +23,13 @@
 #   2. Else, in order: a calendar meeting with >=2 attendees (self
 #      excluded) in-window -> business; an in-window interaction whose
 #      source-capture is a personal Beeper channel (`beeper-in-whatsapp`
-#      or `beeper-in-matrix` specifically, not `beeper-in-linkedin`) ->
+#      or `beeper-in-matrix` specifically, not `beeper-in-linkedin`;
+#      matched case-insensitively — live source-capture ids carry
+#      mixed-case channel segments, e.g. `beeper-in-WhatsApp`) ->
 #      friends; a `family` tag on the person -> family; else unassigned.
+#      A legacy bare `beeper-<hex>` id (no `-in-<channel>` segment) is
+#      NOT treated as personal — it stays unassigned, since the channel
+#      can't be determined from the id alone.
 #
 # Weight per axis = round(interaction share, 2). Zero in-window evidence
 # on an axis (no interactions and no meetings) renders as
@@ -291,7 +296,7 @@ jq -n \
               then $kindmap[$meta.kind]
               else (
                 if ($win | any(.calendar == true and ((.others // []) | length) >= 1)) then "business"
-                elif ($win | any(($src[.id] // "") as $s | ($s | contains("beeper-in-whatsapp")) or ($s | contains("beeper-in-matrix")))) then "friends"
+                elif ($win | any(($src[.id] // "" | ascii_downcase) as $s | ($s | contains("beeper-in-whatsapp")) or ($s | contains("beeper-in-matrix")))) then "friends"
                 elif (($meta.tags // []) | index("family")) then "family"
                 else "unassigned"
                 end

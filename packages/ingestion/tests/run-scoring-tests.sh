@@ -265,6 +265,36 @@ else
 $(cat "$um_sim_store/user-model.md")"
 fi
 
+# --- assertion 13b: mixed-case Beeper channel in source-capture
+# (`beeper-in-WhatsApp`, as seen in the live store) still matches the
+# personal-channel heuristic case-insensitively, for a person the
+# heuristic (not a stated `kind`) actually decides. sol-abernathy carries
+# no `kind`, no `family` tag, and no calendar co-attendance — under the
+# fixture's baseline (lowercase-hex legacy beeper ids), sol's interactions
+# fall through to `unassigned` and the golden friends share is driven
+# entirely by other (kind: friend) people, 0.24. Rewriting sol's beeper
+# interaction ids to mixed-case `beeper-in-WhatsApp-<hex>` must flip sol
+# onto the friends axis and raise the share to 0.32 — the exact number a
+# hand count confirms (sol's 5 interactions move from unassigned into
+# friends out of the fixture's fixed in-window total). Regression lock for
+# the case-sensitivity bug fixed at packages/ingestion/scripts/
+# derive-user-model.sh (channel match is now `ascii_downcase`d before the
+# whatsapp/matrix contains() check). ---
+um_case_store="$(fresh_store um-case-insensitive)"
+for f in "$um_case_store"/interactions/*-sol-abernathy.md; do
+  [ -e "$f" ] || continue
+  sed -i.bak 's/beeper-in-/beeper-in-WhatsApp-/' "$f"
+  rm -f "$f.bak"
+done
+"$DERIVE_USER_MODEL" "$um_case_store" --today "$TODAY" >"$WORK_DIR/um-case.out" 2>"$WORK_DIR/um-case.err"
+case_friends_line="$(grep -m1 '^- friends:' "$um_case_store/user-model.md")"
+expected_case_friends_line="- friends: 0.32 — largest share of interactions in the last 90 days"
+if [ "$case_friends_line" = "$expected_case_friends_line" ]; then
+  pass "derive-user-model.sh: mixed-case beeper-in-WhatsApp on unkinded sol-abernathy flips friends: to 0.32 ('$case_friends_line')"
+else
+  fail "derive-user-model.sh: mixed-case beeper channel test expected friends line '$expected_case_friends_line', got '$case_friends_line'"
+fi
+
 # ==========================================================================
 # SECTION C — rescale-scores.sh and check-judgment.sh
 # ==========================================================================
@@ -549,6 +579,32 @@ if [ "$sim_bad_line" = "$actual_sim_line" ]; then
   echo "SABOTAGE-FAILED-TO-CATCH: doctored embedding-similarity line matched actual output"
 else
   echo "FAIL (expected): embedding-similarity exact-value check catches a doctored line (doctored != actual: '$actual_sim_line')"
+fi
+
+# Sabotage 4b: neuter the `ascii_downcase` case-fold in a scratch copy of
+# derive-user-model.sh (reverting to the pre-fix case-sensitive match) and
+# confirm assertion 13b's mixed-case sol-abernathy scenario no longer
+# produces the fixed friends: 0.32 line — proves 13b actually exercises
+# the ascii_downcase fix, not an unrelated byte.
+sab_user_model_script="$WORK_DIR/derive-user-model-broken.sh"
+sed 's/(\$src\[\.id\] \/\/ "" | ascii_downcase) as \$s/(\$src[.id] \/\/ "") as \$s/' "$DERIVE_USER_MODEL" >"$sab_user_model_script"
+chmod +x "$sab_user_model_script"
+if diff -q "$DERIVE_USER_MODEL" "$sab_user_model_script" >/dev/null 2>&1; then
+  echo "FAIL (expected): sabotage sed did not change derive-user-model.sh — pattern no longer matches the source, sabotage proof is stale"
+else
+  sab_case_store="$(fresh_store um-case-sabotage)"
+  for f in "$sab_case_store"/interactions/*-sol-abernathy.md; do
+    [ -e "$f" ] || continue
+    sed -i.bak 's/beeper-in-/beeper-in-WhatsApp-/' "$f"
+    rm -f "$f.bak"
+  done
+  "$sab_user_model_script" "$sab_case_store" --today "$TODAY" >/dev/null 2>"$WORK_DIR/sab-case.err" || true
+  sab_case_friends_line="$(grep -m1 '^- friends:' "$sab_case_store/user-model.md" 2>/dev/null || echo "(no draft written)")"
+  if [ "$sab_case_friends_line" = "- friends: 0.32 — largest share of interactions in the last 90 days" ]; then
+    echo "SABOTAGE-FAILED-TO-CATCH: reverting ascii_downcase still produced the fixed friends: 0.32 line ('$sab_case_friends_line')"
+  else
+    echo "FAIL (expected): reverting ascii_downcase in a scratch copy breaks the mixed-case match — friends line is now '$sab_case_friends_line', not the fixed '- friends: 0.32 — largest share of interactions in the last 90 days' — proves assertion 13b actually exercises the case-insensitivity fix"
+  fi
 fi
 
 # Sabotage 5 (section C): doctor a byte in expected/rescale-report.tsv and
