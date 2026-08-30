@@ -52,6 +52,16 @@
 > below or its inputs — `stats.json`/`build-stats.sh` read the resulting
 > `interactions/*.md` files identically either way.
 
+> **Progress narration (plan 31 amendment).** The session-driven flow
+> above is also bound by `packages/ingestion/skills/onboarding-seed/
+> SKILL.md`'s "Progress narration (binding)" section: before each step/
+> sub-step it prints one `▶ Step N(x) — <what's about to happen>` line,
+> and after it one or two `✓ Step N(x) <elapsed>s — <what was found>`
+> lines sourced only from that step's own script summary line, never
+> invented numbers — a pure running-cost cut so the user never has to ask
+> what's happening mid-run. This spec does not restate that contract; the
+> SKILL.md is the model of record for it.
+
 Status: spec (plan 11 unit 13, cold-start phase; amended by plan 24 unit 2 —
 6-month configurable window + participation-signal scoring). Package:
 `packages/ingestion` (the confirmation write, per the single-writer rule)

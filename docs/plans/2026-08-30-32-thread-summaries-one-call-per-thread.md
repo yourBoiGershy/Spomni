@@ -37,7 +37,13 @@ the entire message in the chat instance … we just need main semantics."
   (summary = gist + that day's who/how-many; commitments/open threads on the
   last day only), upserts person files (no `tier`/`tier_source`; facts under
   `## Facts` with the JSON's provenance label), appends the capture id to
-  `debrief-filed.log`. Same on-disk shape review-tiers reads today.
+  `debrief-filed.log`. Same on-disk shape review-tiers reads today. "Never
+  drop an active day" (coordinator correction, live-run fix): a day's
+  resolved people set falls back through every non-self summary person -> an
+  existing person matched by that day's senderName -> a single per-thread
+  fallback person (named from the chat title, tagged `group-chat` for a
+  group) — unconditional on chat type, so a group whose summary under-lists
+  participants never silently loses a day.
 - **D3 Duplicate captures collapse first.** Captures sharing a `chatID` are
   grouped; the writer unions messages by message `id` and files the union
   once, marking every contributing capture id filed. (Two shard workers each
