@@ -1,5 +1,14 @@
 # Spec: onboarding tiering seed
 
+> **Superseded in part (plan 30, 2026-08-29).** The 'Tier suggestions
+> (deterministic scoring model)' section is superseded by
+> `packages/core/contracts/relationship-scoring.md` 1.0.0 (judgment with
+> priors) and `specs/review-tiers.md`; `scripts/suggest-tiers.sh` is
+> retained only for the legacy seed test suite. The insufficient-data
+> gate, the 20-person cap, the one-session/no-backlog rule, confirm/
+> adjust/skip semantics, and the no-guilt framing remain binding and are
+> inherited by review-tiers.
+
 Status: spec (plan 11 unit 13, cold-start phase; amended by plan 24 unit 2 —
 6-month configurable window + participation-signal scoring). Package:
 `packages/ingestion` (the confirmation write, per the single-writer rule)
