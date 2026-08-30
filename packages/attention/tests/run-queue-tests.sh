@@ -21,6 +21,10 @@
 #   8. dismiss (valid reason, invalid reason refusal, double-dismiss refusal)
 #   9. validate-store.sh clean after the full lifecycle
 #   10. event-proposal fires with kind + proposed_event in the batch
+#   11. acted-on sweep (specs/outcome-recording.md): matching interaction
+#      inside the window -> true; open window with no match -> untouched +
+#      silent; closed window with no match -> false; re-run -> silent and
+#      byte-identical
 #
 # bash 3.2 portable (no associative arrays, no mapfile) — must run under
 # macOS's stock /bin/bash, invocable from anywhere.
@@ -35,6 +39,7 @@ QUEUE="$REPO_ROOT/packages/attention/scripts/wakeup-queue.sh"
 WAKEUP_ADD="$REPO_ROOT/packages/core/scripts/wakeup-add.sh"
 VALIDATOR="$REPO_ROOT/packages/core/scripts/validate-store.sh"
 PERSON_FIXTURE="$REPO_ROOT/packages/core/fixtures/store/people/aiko-tanaka.md"
+PERSON_FIXTURE_2="$REPO_ROOT/packages/core/fixtures/store/people/ayesha-malik.md"
 WEEK_PLAN_FIXTURE="$REPO_ROOT/packages/attention/fixtures/capacity/busy-week/expected/week-plan.json"
 INBOX_FIXTURE="$REPO_ROOT/packages/attention/fixtures/capacity/busy-week/inbox/20260830T080000Z-calendar-in-calendar-bw01.md"
 
@@ -61,7 +66,7 @@ summary_and_exit() {
   fi
 }
 
-for req in "$QUEUE" "$WAKEUP_ADD" "$VALIDATOR" "$PERSON_FIXTURE" "$WEEK_PLAN_FIXTURE" "$INBOX_FIXTURE"; do
+for req in "$QUEUE" "$WAKEUP_ADD" "$VALIDATOR" "$PERSON_FIXTURE" "$PERSON_FIXTURE_2" "$WEEK_PLAN_FIXTURE" "$INBOX_FIXTURE"; do
   if [ ! -f "$req" ]; then
     fail "required file missing: $req"
     summary_and_exit
@@ -485,6 +490,135 @@ if [ -n "$S10_BATCH_FILE" ]; then
   fi
 else
   fail "event-proposal: no batch file written"
+fi
+
+# =============================================================================
+# Scenario 11: acted-on sweep
+# =============================================================================
+
+S11_DIR="$TMP_ROOT/s11-acted-on"
+mkdir -p "$S11_DIR/people" "$S11_DIR/interactions" "$S11_DIR/wakeups"
+cp "$PERSON_FIXTURE" "$S11_DIR/people/"
+cp "$PERSON_FIXTURE_2" "$S11_DIR/people/"
+
+# A: fires 2026-09-01 (window (09-01, 09-08]); a matching interaction lands
+#    inside the window -> should resolve to acted-on: true.
+S11_A_FILE="$(add_wakeup "$S11_DIR" --due 2026-09-01 --person aiko-tanaka --why "acted-a" --origin user-ask)"
+# B: fires 2026-09-01 too, same window, but no interaction ever mentions
+#    ayesha-malik -> should stay untouched (window still open on 2026-09-03).
+S11_B_FILE="$(add_wakeup "$S11_DIR" --due 2026-09-01 --person ayesha-malik --why "acted-b" --origin user-ask)"
+# C: fires 2026-08-20 (window (08-20, 08-27]); no interaction, and by
+#    2026-09-03 the window is long closed -> should resolve to acted-on: false.
+S11_C_FILE="$(add_wakeup "$S11_DIR" --due 2026-08-20 --person aiko-tanaka --why "acted-c" --origin user-ask)"
+
+"$QUEUE" "$S11_DIR" fire --today 2026-08-20 --now 2026-08-20T14:00:00Z >/dev/null 2>&1
+"$QUEUE" "$S11_DIR" fire --today 2026-09-01 --now 2026-09-01T14:00:00Z >/dev/null 2>&1
+
+if grep -q '^fired-on: 2026-08-20$' "$S11_C_FILE" && grep -q '^fired-on: 2026-09-01$' "$S11_A_FILE" \
+  && grep -q '^fired-on: 2026-09-01$' "$S11_B_FILE"; then
+  pass "acted-on: setup fired A/B/C with the expected fired-on dates"
+else
+  fail "acted-on: setup did not fire A/B/C as expected"
+fi
+
+# interaction matching A only (people: aiko-tanaka), dated inside A's window
+S11_INTERACTION="$S11_DIR/interactions/2026-09-03-aiko-tanaka.md"
+{
+  echo "---"
+  echo "schema_version: 1.0.0"
+  echo "date: 2026-09-03"
+  echo "people: [\"[[aiko-tanaka]]\"]"
+  echo "calendar-event: null"
+  echo "source-capture: null"
+  echo "---"
+  echo ""
+  echo "## Summary"
+  echo ""
+  echo "Caught up with Aiko."
+  echo ""
+  echo "## Commitments"
+  echo ""
+  echo "- _none_"
+} > "$S11_INTERACTION"
+
+s11_out="$("$QUEUE" "$S11_DIR" acted-on --today 2026-09-03 2>&1)"
+s11_status=$?
+
+if [ "$s11_status" -eq 0 ]; then
+  pass "acted-on: sweep exits 0"
+else
+  fail "acted-on: sweep exited $s11_status: $s11_out"
+fi
+
+S11_A_ID="2026-09-01-aiko-tanaka"
+S11_B_ID="2026-09-01-ayesha-malik"
+S11_C_ID="2026-08-20-aiko-tanaka"
+
+if printf '%s\n' "$s11_out" | grep -qx "acted-on ${S11_A_ID} -> true"; then
+  pass "acted-on: matching interaction inside the window -> true, printed"
+else
+  fail "acted-on: expected 'acted-on ${S11_A_ID} -> true' in output: $s11_out"
+fi
+
+if printf '%s\n' "$s11_out" | grep -qx "acted-on ${S11_C_ID} -> false"; then
+  pass "acted-on: no match + closed window -> false, printed"
+else
+  fail "acted-on: expected 'acted-on ${S11_C_ID} -> false' in output: $s11_out"
+fi
+
+if printf '%s\n' "$s11_out" | grep -q "${S11_B_ID}"; then
+  fail "acted-on: open-window no-match entry B should not appear in output: $s11_out"
+else
+  pass "acted-on: open-window no-match entry B silent (no output line)"
+fi
+
+if grep -q '^acted-on: true$' "$S11_A_FILE"; then
+  pass "acted-on: A's file carries acted-on: true"
+else
+  fail "acted-on: A's file missing acted-on: true: $(grep acted-on "$S11_A_FILE")"
+fi
+
+if grep -qx 'acted-on:' "$S11_B_FILE"; then
+  pass "acted-on: B's file left untouched (acted-on still null)"
+else
+  fail "acted-on: B's file was modified: $(grep acted-on "$S11_B_FILE")"
+fi
+
+if grep -q '^acted-on: false$' "$S11_C_FILE"; then
+  pass "acted-on: C's file carries acted-on: false"
+else
+  fail "acted-on: C's file missing acted-on: false: $(grep acted-on "$S11_C_FILE")"
+fi
+
+# re-run: idempotent — A and C are already resolved (skipped), B's window is
+# still open on 2026-09-03 -> still untouched. Whole store must be silent and
+# byte-identical.
+S11_SNAPSHOT="$TMP_ROOT/s11-snapshot"
+cp -R "$S11_DIR" "$S11_SNAPSHOT"
+
+s11b_out="$("$QUEUE" "$S11_DIR" acted-on --today 2026-09-03 2>&1)"
+s11b_status=$?
+
+if [ "$s11b_status" -eq 0 ] && [ -z "$s11b_out" ]; then
+  pass "acted-on: re-run is silent"
+else
+  fail "acted-on: re-run was not silent (status=$s11b_status): $s11b_out"
+fi
+
+s11b_diff="$(diff -r "$S11_SNAPSHOT" "$S11_DIR" 2>&1)"
+if [ -z "$s11b_diff" ]; then
+  pass "acted-on: re-run leaves the store byte-identical"
+else
+  fail "acted-on: re-run changed the store:"
+  echo "$s11b_diff"
+fi
+
+s11_validate_out="$("$VALIDATOR" "$S11_DIR" 2>&1)"
+s11_validate_status=$?
+if [ "$s11_validate_status" -eq 0 ]; then
+  pass "validate-store.sh clean after the acted-on sweep"
+else
+  fail "validate-store.sh reported findings after the acted-on sweep: $s11_validate_out"
 fi
 
 summary_and_exit
