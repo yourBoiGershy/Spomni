@@ -14,6 +14,31 @@ usually `null`. Renders per `packages/core/contracts/answer-style.md`
 1.0.0 — read that contract in full; this skill restates its rules below for
 convenience but the contract is the source of truth.
 
+## 0. Pick the read path
+
+If the `spomni-query` MCP tools (`suggest_reachouts`, `search_people`,
+`get_person`, etc.) are not present in the current session, or the first
+call to one of them errors, do not spend the ~90s of `npm ci` + server boot
+on a cold cloud/phone session. Instead run:
+
+```
+bash packages/query/scripts/who-next-direct.sh <store-dir> --mode <mode> --limit 20
+```
+
+where `<store-dir>` is `data/store` in a code checkout, or the root of a
+clone of the user's private data repo. This zero-dependency (bash + jq)
+script reads `index.json`/`stats.json`/`people/*.md` directly and prints one
+JSON object per line — already filtered for the 14-day cooldown, stubs,
+(in `coffee` mode) inbound LinkedIn pitches, and (in `coffee`/`all` modes)
+`kind: transactional` people such as landlords, dropped unless
+`--include-transactional` is passed — and pre-ranked. Use its lines as
+the candidate pool for steps 3–5: each object's `facts` and `personal`
+fields stand in for the `get_person` call (no separate lookup needed), and
+`open_threads`/`commitments_user`/`tier`/`kind` stand in for the per-person
+judgment inputs `suggest_reachouts`/`search_people` would have supplied.
+Drop any object with `"stub": true`. Everything from step 4 on is
+unchanged, regardless of which path built the pool.
+
 ## 1. Parse args
 
 - Mode: `friends` | `coffee` | `all` (default `all`).
@@ -69,8 +94,10 @@ by longer silence first. Take the top `--limit` (≤5).
 If a first-party Google Calendar connector
 (`mcp__claude_ai_Google_Calendar__list_events`) is present in the current
 session, call it for the next 7 days and open the answer naming the open
-days (e.g. `This week (Wed/Thu open):`). If the connector is not present,
-omit the availability clause silently — do not mention its absence.
+days (e.g. `This week (Wed/Thu open):`). If the connector is not present —
+including whenever the direct-read fallback from step 0 built the
+candidate pool, since that path never has calendar access — skip the
+availability line silently; do not mention its absence.
 
 ## 7. Render — `packages/core/contracts/answer-style.md` 1.0.0, verbatim rules
 
