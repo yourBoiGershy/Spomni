@@ -115,9 +115,9 @@ correctable — and every correction changes future behaviour measurably.
 | 30 | Semantic scoring: user model × relationship kind × judged warrant (priors, local optional embeddings, rescale, `/review-tiers`) | 15, 25, 26 | **Built** (PR #22). Owed: live U19.2–5 (see block) |
 | 34 ph.1 | Feedback ledger — `signals/feedback.jsonl`, numbered-reply parsing incl. `<n> draft`, corrections → prompts + evals | 31, 33 | Done 2026-08-30 (PRs #31, #32) |
 | 34 ph.2 | Active iteration — outcome-derived kind weights, prefilter by kind weight, ledger-counted `not-this-person`, user-model revision proposals (U25–U33; report card U34/35 **cut**) | ≥ 2 weeks of live ledger | Gated (ledger day 0 + 14; day 0 = 30 live proof) |
-| 36 D | Preference loop, narrowed — `learn-sweep.sh`: ledger cursor → learned eval cases + conflict digest; never writes `user-model.md` (34 U31/32) | 34 ph.1, 36 B | **Proposed** — Goal 2 step 2 |
+| 36 D | Preference loop, narrowed — `learn-sweep.sh`: ledger cursor → learned eval cases + conflict digest; never writes `user-model.md` (34 U31/32) | 34 ph.1 (36 B's 1.2.0 types ride later, additive) | **Built** 2026-08-30 (branch chunk-36d-learn-sweep) — `learn` lane in the lanes template; live: add the row to your `lanes.tsv` + `install` |
 
-**Owed now:** Goal 2 in order — 30 live proof (starts the ledger clock; `signals/feedback.jsonl` is empty as of 2026-08-30) → 36 D → 34 ph.2. Plan 37 (sequence memo) deleted; the Goal 2 block below is the sequence.
+**Owed now:** Goal 2 in order — 30 live proof (starts the ledger clock; `signals/feedback.jsonl` is empty as of 2026-08-30) → 36 D (built; needs the live `learn` lane row) → 34 ph.2. Plan 37 (sequence memo) deleted; the Goal 2 block below is the sequence.
 
 ### 6. Attention & delivery
 
@@ -196,7 +196,7 @@ Nearest ingredient: intent — the user's stated kind/tier always outranks a der
    `user-model.md` → `calibrate.sh --seed-from-user-model`; Ollama on/off branches;
    `/review-tiers --all`; **correct ≥ 5 lines** so `signals/feedback.jsonl` gets its
    first day (ledger day 0); axis edit re-judge; `validate-store` clean → row 30 Done.
-2. **36 D narrowed** (buildable now, 3 units): `learn-sweep.sh` (attention) — cursor
+2. **36 D narrowed** (**built 2026-08-30**, 4 units: ingestion `--exclude`, attention script, suite, lane row): `learn-sweep.sh` (attention) — cursor
    over the ledger → `feedback-to-evals.sh` append + conflict detection → 3-line
    digest; registered as a sync-tick target; **never writes `user-model.md`** (that is
    34 U31/U32). Contract types ride with 36 B's 1.2.0 bump.

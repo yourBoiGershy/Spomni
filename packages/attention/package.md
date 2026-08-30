@@ -34,6 +34,21 @@ attention-merge).
   `undebriefed-mention.md` (plan 06: the sweep's once-then-drop mention of a
   past un-debriefed meeting — candidate derivation, `mentioned.log`, the
   ≥3-give-entries gate, the 14-day drop-out)
+- `scripts/learn-sweep.sh` — deterministic, no-model sync-tick: walks a
+  line-count cursor over `signals/feedback.jsonl`, turns new corrections
+  into learned regression eval cases via ingestion's
+  `feedback-to-evals.sh`, and holds disputed (conflicting) corrections for
+  the user instead of auto-resolving them (plan 36 D). Sole writer of
+  `<data-dir>/attention/learn-sweep.cursor` and
+  `<data-dir>/attention/learn-conflicts.tsv`; scheduled as the `learn`
+  sync lane; prints a 3-line digest; never writes user-model.md.
+- `scripts/staleness.sh` — the deterministic staleness check the `sweep` skill
+  calls: reads routine heartbeats (`heartbeats/<routine>.json`, `heartbeat@1.0.0`)
+  and connector-lane scheduler state (`<sync-data-dir>/connectors/sync-scheduler/`)
+  and creates exactly one pending wake-up (`origin: standing`,
+  `source-signal: staleness:<name>`, `signal-type: staleness`) per subject
+  that has gone quiet for more than 2x its cadence, deduped against any
+  already-pending or fired-unresolved entry for that same signal
 - `scripts/capacity.sh` — deterministic week-plan writer per
   `packages/core/contracts/week-plan.md`, sole writer of `signals/week-plan.json`,
   per plan 12 cadence-capacity (docs/plans/2026-08-29-12-cadence-capacity.md)
@@ -95,7 +110,12 @@ attention-merge).
   and `signal-scan`'s draft composition step read the ledger read-only via
   ingestion's `packages/ingestion/scripts/feedback-recent.sh` (`##
   Recent corrections` / `## Recent draft edits` blocks); attention never
-  reads `signals/feedback.jsonl` directly.
+  reads `signals/feedback.jsonl` directly. `scripts/learn-sweep.sh` is the
+  one exception: it reads `signals/feedback.jsonl` read-only for its
+  cursor walk, then calls ingestion's `scripts/feedback-to-evals.sh` to
+  turn new corrections into eval cases (sanctioned cross-package call,
+  mirroring the `feedback-file.sh` precedent above) — attention never
+  writes the ledger or the eval cases itself.
 - `signal-event@^1`, `wakeup@1.2` (core) — outcome recording targets the 1.1 fields
   specifically (`fired-on`, `dismiss-reason`, `acted-on`, `snooze-count`); a 1.0 file
   is upgraded to 1.1 in place the first time a 1.1 writer (`wakeup-queue.sh`
@@ -159,7 +179,8 @@ attention-merge).
 `packages/attention/**`; at runtime: the `wakeups/` lifecycle (fire/snooze/dismiss
 state, including the outcome fields), `wakeups/fired/` (fire batch artifacts —
 stays attention-owned even after delivery; `deliver-tick.sh` only reads it),
-`ranking-weights.json`, and `signals/week-plan.json` in the private data dir.
+`ranking-weights.json`, `signals/week-plan.json`, and `<data-dir>/attention/`
+(the `learn-sweep.sh` cursor + conflicts file) in the private data dir.
 `outbox/` (including `outbox/delivered.log`) is connectors-owned, not attention's
 — see `packages/connectors/package.md` (plan 33).
 
