@@ -368,6 +368,52 @@ else
 fi
 rm -rf "$REPO"
 
+REPO="$(new_repo)"
+mkdir -p "$REPO/packages/connectors/beeper-out/scripts"
+cat > "$REPO/packages/connectors/beeper-out/scripts/x.sh" <<'SH'
+#!/usr/bin/env bash
+# refuse: chat id not in profile ## Notify self-only chat
+curl -X POST "http://localhost:23373/v1/chats/1/messages" -d "$1"
+SH
+commit_extra "$REPO"
+out="$(run_guard "$REPO" never-send)"
+status=$?
+if [ "$status" -eq 0 ] && ! printf '%s' "$out" | grep -q 'FAIL:'; then
+    pass "never-send: allows beeper-out/scripts POST when the self-only guard string is present"
+else
+    fail "never-send: expected pass, got status=$status output=$out"
+fi
+rm -rf "$REPO"
+
+REPO="$(new_repo)"
+mkdir -p "$REPO/packages/connectors/beeper-out/scripts"
+cat > "$REPO/packages/connectors/beeper-out/scripts/x.sh" <<'SH'
+#!/usr/bin/env bash
+curl -X POST "http://localhost:23373/v1/chats/1/messages" -d "$1"
+SH
+commit_extra "$REPO"
+out="$(run_guard "$REPO" never-send)"
+status=$?
+if [ "$status" -eq 1 ] && printf '%s' "$out" | grep -q 'FAIL: never-send'; then
+    pass "never-send: fails beeper-out/scripts POST without the self-only guard string"
+else
+    fail "never-send: expected FAIL, got status=$status output=$out"
+fi
+rm -rf "$REPO"
+
+REPO="$(new_repo)"
+printf '#!/usr/bin/env bash\ncurl -X POST "http://localhost:23373/v1/chats/1/messages"\n' \
+    > "$REPO/packages/attention/foo.sh"
+commit_extra "$REPO"
+out="$(run_guard "$REPO" never-send)"
+status=$?
+if [ "$status" -eq 1 ] && printf '%s' "$out" | grep -q 'FAIL: never-send:'; then
+    pass "never-send: fails a raw Beeper messages POST outside beeper-out/scripts"
+else
+    fail "never-send: expected FAIL, got status=$status output=$out"
+fi
+rm -rf "$REPO"
+
 # ===========================================================================
 # 8. no-enrichment
 # ===========================================================================

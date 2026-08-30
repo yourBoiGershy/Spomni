@@ -353,3 +353,21 @@ ambiguity — so a 6-month backfill files in seconds instead of minutes of paral
 model workers. Plan 31.
 Revisit if: derived tiers measurably mis-rank nudges (then weight derived lower in
 ranking, not reinstate the gate), or a lane's metadata turns out to need judgment.
+
+**notify-self-is-a-send** · 2026-08-30
+A message to the user's *own* self-chat or self-address is a permitted send. The
+invariant moves from "never call a send API" to "the recipient is always the user":
+`connectors/beeper-out` refuses (exit 4, zero HTTP calls) any chat id that is not the
+`beeper_chat_id` stated in `profile.md ## Notify`; `gmail-out`'s skill refuses any
+recipient other than the stated `gmail_address`; `oss-guard.sh` allowlists the
+beeper-out path only while the literal guard string `refuse: chat id not in profile
+## Notify` is present in the file. Default channel is the Beeper "Note to self"
+Matrix chat (unattended-capable over local HTTP, and replies are already captured by
+beeper-in); `gmail-self` is the fallback; `outbox/<date>.md` is always written.
+Delivery rides on the sync scheduler (`notify` lane + sweep step 8), gated by quiet
+hours, idempotent via `outbox/delivered.log`. Why: a nudge that never reaches the user
+is the running cost of remembering-to left uncut; draft-never-send is about *other
+people*, and the research note rejected WhatsApp/iMessage self-chats (network metadata)
+and third-party push (data leaves the machine). Plan 33.
+Revisit if: never widen to any other recipient. Reconsider the default only if Beeper
+Desktop's local API stops being available headlessly.

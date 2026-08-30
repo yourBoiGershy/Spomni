@@ -316,7 +316,7 @@ EOF
 
 # ---------------------------------------------------------------------------
 check_never_send() {
-    local pattern='send_message|send_email|gmail__send|slack_send_message|mcp__beeper__send_message|messages\.send|chat\.postMessage'
+    local pattern='send_message|send_email|gmail__send|slack_send_message|mcp__beeper__send_message|messages\.send|chat\.postMessage|(-X *)?POST[^\n]*/v1/chats/[^ ]*/(messages|reminders)|/v1/chats/[^ ]*/(messages|reminders)[^\n]*(-X *)?POST'
     local matches
     matches="$(git grep -n -I -E "$pattern" \
         -- 'packages/connectors/**' 'packages/attention/**' "${SELF_EXCLUDE[@]}" 2>/dev/null)"
@@ -329,6 +329,16 @@ check_never_send() {
         # exclude tests/ and evals/ trees
         case "$path" in
             */tests/*|*/evals/*) continue ;;
+        esac
+
+        case "$path" in
+            packages/connectors/beeper-out/scripts/*)
+                if grep -qF 'refuse: chat id not in profile ## Notify' "$path" 2>/dev/null; then
+                    continue
+                fi
+                report "never-send (beeper-out without self-only guard)" "$line"
+                continue
+                ;;
         esac
 
         case "$path" in

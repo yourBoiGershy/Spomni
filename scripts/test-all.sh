@@ -17,8 +17,11 @@ SKIP_NODE=0
 
 SUITES="
 packages/core/tests/run-store-tests.sh
+packages/core/tests/run-render-tests.sh
 packages/connectors/tests/run-capture-tests.sh
 packages/connectors/tests/run-beeper-capture-tests.sh
+packages/connectors/tests/run-beeper-out-tests.sh
+packages/connectors/tests/run-deliver-tests.sh
 packages/connectors/tests/run-scheduler-tests.sh
 packages/ingestion/tests/run-seed-tests.sh
 packages/ingestion/tests/run-triage-tests.sh

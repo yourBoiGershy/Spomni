@@ -232,6 +232,11 @@ suggest-tiers.sh <store-dir>/stats.json <participation-tsv-path>
 `/review-tiers --all`'s semantic judgment; it writes nothing and this skill
 does not invoke it.
 
+State the channel once: `bash packages/ingestion/scripts/profile-set-notify.sh
+<store> --channel beeper-self --beeper-chat-id <id> --quiet-hours 22:00-08:00`
+(default beeper-self when the beeper lane is configured, else gmail-self
+with `--gmail-address`).
+
 ## Summary
 
 End with a short summary:

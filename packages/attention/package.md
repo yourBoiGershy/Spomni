@@ -21,8 +21,8 @@ attention-merge).
   `daily-attention` entry: preflight (last-sweep check, stale week-plan
   regeneration) → inbox filing (ingestion `debrief` batch) → calendar-reconcile
   (skip, plan 04 unbuilt) → signal-scan → fire due wake-ups → acted-on detection →
-  calibrate → un-debriefed mention → hand batch to an output adapter (skip, plan 07
-  unbuilt) → heartbeat; every step skips-with-log if its dependency is unbuilt/absent),
+  calibrate → un-debriefed mention → deliver via connectors' `deliver-tick.sh`
+  (plan 33) → heartbeat; every step skips-with-log if its dependency is unbuilt/absent),
   `skills/weekly-planning/` (the Sunday routine: store-sync pull → `scripts/capacity.sh`
   → commit week-plan; per plan 12 cadence-capacity)
 - `specs/` (plan 05 detector/ranking specs): `ranking.md` (score formula,
@@ -135,12 +135,22 @@ attention-merge).
 - `person@^1.1` (core) — the `kind`/`kind_note`/`kind_source`/`kind_expires`/
   `kind_updated` columns (1.1.0 addition) the `tier-drift` prefilter reads per person,
   alongside the pre-1.1.0 `tier` field.
+- `nudge-card@^1` (core) — the shape `wakeup-queue.sh fire` writes into each fired
+  batch's `entries` array; connectors' `deliver-tick.sh` (plan 33) is the reader that
+  renders it for delivery.
+- `profile@^1.1` (core) — read-only, `## Notify` section: the sweep's deliver step
+  (step 8) does not read this itself, but hands off to `deliver-tick.sh`, which
+  resolves the delivery channel from it (default `beeper-self`, fallback
+  `gmail-self`); listed here because the sweep is the caller.
 
 ## Owned paths
 
 `packages/attention/**`; at runtime: the `wakeups/` lifecycle (fire/snooze/dismiss
-state, including the outcome fields), `wakeups/fired/` (fire batch artifacts),
+state, including the outcome fields), `wakeups/fired/` (fire batch artifacts —
+stays attention-owned even after delivery; `deliver-tick.sh` only reads it),
 `ranking-weights.json`, and `signals/week-plan.json` in the private data dir.
+`outbox/` (including `outbox/delivered.log`) is connectors-owned, not attention's
+— see `packages/connectors/package.md` (plan 33).
 
 ## Built by
 

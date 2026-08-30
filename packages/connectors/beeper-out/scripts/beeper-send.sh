@@ -1,0 +1,218 @@
+#!/bin/bash
+# beeper-send.sh — the self-only Beeper send lane.
+#
+# Usage:
+#   beeper-send.sh <store-dir> --text-file <f> [--chat-id <id>]
+#                  [--reminder <iso>] [--private-data-root <p>]
+#
+# Posts the contents of <f> (a rendered nudge, already drafted by another
+# package) as a text message to the user's own Beeper "Note to self" chat,
+# via the local Beeper Desktop/Server Client API. This is the one send this
+# repo ever performs on the user's behalf, and it is only ever addressed to
+# the user themselves — `docs/DECISIONS.md#notify-self-is-a-send`. It never
+# sends to any other chat id; the only source of truth for the destination
+# chat is `<store-dir>/profile.md`'s `## Notify` section
+# (`packages/core/contracts/profile.md` 1.1.0), never a caller-supplied
+# default.
+#
+# Config/token resolution is delegated to beeper-in's shared lib.sh
+# (`beeper_load_config`) — same data dir, same skip-disabled/skip-no-token
+# semantics as the beeper-in sweep. This package never writes or copies
+# beeper-in's token/config; it only reads them.
+#
+# <private-data-root> (--private-data-root, or --store-dir/../.. by
+# default, matching the `data/{store,connectors}` layout documented in
+# docs/data-layout.md — <private-data-root>/data/store is the store dir,
+# <private-data-root>/data/connectors/beeper-in is beeper-in's data dir)
+# is used to build the beeper-in data dir passed to beeper_load_config:
+# `<private-data-root>/data/connectors/beeper-in`.
+#
+# Exit codes:
+#   0  sent (or a clean skip: skip-disabled / skip-no-token)
+#   4  refuse — no beeper_chat_id in profile.md's ## Notify, or a
+#      --chat-id argument that does not match the profile's resolved id.
+#      Zero HTTP calls happen on any refusal path.
+#   5  send-failed — the messages/reminders POST failed (transport error or
+#      non-success response)
+#
+# --reminder <iso>: after a successful send, also POST a reminder for the
+# same chat at the given ISO-8601 timestamp. The Reminder POST body shape
+# below is NOT recorded in beeper-in/api-notes.md (that file only covers
+# the read-only surface this package's sibling uses) — verify live before
+# relying on it in production; the shape used here is Beeper's documented
+# `{"reminder":{"remindAt":"<iso>"}}` convention, unverified against a live
+# instance by this unit.
+#
+# Portable to bash 3.2 (macOS default): no associative arrays, no mapfile.
+
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+
+BEEPER_IN_LIB="${REPO_ROOT}/packages/connectors/beeper-in/scripts/lib.sh"
+OUT_LIB="${SCRIPT_DIR}/lib.sh"
+
+# shellcheck source=packages/connectors/beeper-in/scripts/lib.sh
+. "$BEEPER_IN_LIB"
+# shellcheck source=packages/connectors/beeper-out/scripts/lib.sh
+. "$OUT_LIB"
+
+usage() {
+  echo "usage: beeper-send.sh <store-dir> --text-file <f> [--chat-id <id>] [--reminder <iso>] [--private-data-root <p>]" >&2
+  exit 1
+}
+
+STORE_DIR="${1:-}"
+[ -z "$STORE_DIR" ] && usage
+shift
+
+TEXT_FILE=""
+CHAT_ID_ARG=""
+REMINDER_ISO=""
+PRIVATE_DATA_ROOT=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --text-file)
+      TEXT_FILE="${2:-}"
+      shift 2
+      ;;
+    --chat-id)
+      CHAT_ID_ARG="${2:-}"
+      shift 2
+      ;;
+    --reminder)
+      REMINDER_ISO="${2:-}"
+      shift 2
+      ;;
+    --private-data-root)
+      PRIVATE_DATA_ROOT="${2:-}"
+      shift 2
+      ;;
+    *)
+      usage
+      ;;
+  esac
+done
+
+[ -z "$TEXT_FILE" ] && usage
+if [ ! -f "$TEXT_FILE" ]; then
+  echo "beeper-send: no such text file: ${TEXT_FILE}" >&2
+  exit 1
+fi
+
+case "$STORE_DIR" in
+  /*) STORE_DIR_ABS="$STORE_DIR" ;;
+  *) STORE_DIR_ABS="$(cd "$STORE_DIR" 2>/dev/null && pwd)" ;;
+esac
+if [ -z "${STORE_DIR_ABS:-}" ]; then
+  echo "beeper-send: no such store dir: ${STORE_DIR}" >&2
+  exit 1
+fi
+
+if [ -z "$PRIVATE_DATA_ROOT" ]; then
+  PRIVATE_DATA_ROOT="$(cd "${STORE_DIR_ABS}/../.." 2>/dev/null && pwd)"
+fi
+if [ -z "$PRIVATE_DATA_ROOT" ]; then
+  echo "beeper-send: could not resolve private data root from store dir ${STORE_DIR_ABS}" >&2
+  exit 1
+fi
+
+BEEPER_IN_DATA_DIR="${PRIVATE_DATA_ROOT}/data/connectors/beeper-in"
+
+beeper_load_config "$BEEPER_IN_DATA_DIR"
+load_rc=$?
+
+case "$load_rc" in
+  2)
+    echo "skip-disabled"
+    exit 0
+    ;;
+  3)
+    echo "skip-no-token"
+    exit 0
+    ;;
+esac
+
+# ---------------------------------------------------------------------------
+# Resolve beeper_chat_id from <store-dir>/profile.md's `## Notify` section
+# (packages/core/contracts/profile.md 1.1.0). Bullet shape:
+#   - **[stated-by-user]** beeper_chat_id: 1 (2026-08-30)
+# Strip the provenance tag, the key, and any trailing "(date)". No section
+# or no key -> refuse (exit 4), zero HTTP calls.
+# ---------------------------------------------------------------------------
+PROFILE_FILE="${STORE_DIR_ABS}/profile.md"
+
+RESOLVED_CHAT_ID=""
+if [ -f "$PROFILE_FILE" ]; then
+  notify_section="$(awk '/^## Notify$/{flag=1;next} /^## /{flag=0} flag' "$PROFILE_FILE")"
+  notify_line="$(printf '%s\n' "$notify_section" | grep -m1 'beeper_chat_id:' || true)"
+  if [ -n "$notify_line" ]; then
+    RESOLVED_CHAT_ID="$(printf '%s\n' "$notify_line" | sed -E 's/.*beeper_chat_id:[[:space:]]*//; s/[[:space:]]*\([0-9-]+\)[[:space:]]*$//')"
+  fi
+fi
+
+if [ -z "$RESOLVED_CHAT_ID" ]; then
+  echo "refuse: no beeper_chat_id in profile ## Notify" >&2
+  exit 4
+fi
+
+if [ -n "$CHAT_ID_ARG" ] && [ "$CHAT_ID_ARG" != "$RESOLVED_CHAT_ID" ]; then
+  echo "refuse: chat id not in profile ## Notify" >&2
+  exit 4
+fi
+
+CHAT_ID="$RESOLVED_CHAT_ID"
+ENCODED_CHAT_ID="$(beeper_urlencode "$CHAT_ID")"
+
+# ---------------------------------------------------------------------------
+# Send: POST /v1/chats/<id>/messages {"text": <file contents>}
+# ---------------------------------------------------------------------------
+MESSAGE_TEXT_JSON="$(jq -Rs '.' "$TEXT_FILE")"
+SEND_BODY="$(jq -cn --argjson text "$MESSAGE_TEXT_JSON" '{text: $text}')"
+
+send_resp="$(beeper_post "/v1/chats/${ENCODED_CHAT_ID}/messages" "$SEND_BODY")"
+send_rc=$?
+
+if [ "$send_rc" -ne 0 ] || [ -z "$send_resp" ]; then
+  echo "send-failed chat=${CHAT_ID} reason=transport-error" >&2
+  exit 5
+fi
+
+send_error="$(printf '%s' "$send_resp" | jq -r '.error // .message // empty' 2>/dev/null)"
+if [ -n "$send_error" ]; then
+  echo "send-failed chat=${CHAT_ID} reason=${send_error}" >&2
+  exit 5
+fi
+
+message_id="$(printf '%s' "$send_resp" | jq -r '.id // .messageID // .pendingMessageID // empty' 2>/dev/null)"
+[ -z "$message_id" ] && message_id="-"
+
+echo "sent chat=${CHAT_ID} message_id=${message_id}"
+
+# ---------------------------------------------------------------------------
+# Optional reminder: POST /v1/chats/<id>/reminders
+# {"reminder":{"remindAt":"<iso>"}} — shape unverified against a live
+# instance by this unit; see header note.
+# ---------------------------------------------------------------------------
+if [ -n "$REMINDER_ISO" ]; then
+  REMINDER_BODY="$(jq -cn --arg at "$REMINDER_ISO" '{reminder: {remindAt: $at}}')"
+  reminder_resp="$(beeper_post "/v1/chats/${ENCODED_CHAT_ID}/reminders" "$REMINDER_BODY")"
+  reminder_rc=$?
+
+  if [ "$reminder_rc" -ne 0 ]; then
+    echo "send-failed chat=${CHAT_ID} reason=reminder-transport-error" >&2
+    exit 5
+  fi
+
+  reminder_error="$(printf '%s' "$reminder_resp" | jq -r '.error // .message // empty' 2>/dev/null)"
+  if [ -n "$reminder_error" ]; then
+    echo "send-failed chat=${CHAT_ID} reason=reminder-${reminder_error}" >&2
+    exit 5
+  fi
+
+  echo "reminder chat=${CHAT_ID} at=${REMINDER_ISO}"
+fi
+
+exit 0

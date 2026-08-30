@@ -116,8 +116,11 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   query suite when node is present, plus `.claude/scripts/oss-guard.sh`; CI
   runs the same). Individually:
   `bash packages/core/tests/run-store-tests.sh`,
+  `bash packages/core/tests/run-render-tests.sh`,
   `bash packages/connectors/tests/run-capture-tests.sh`,
   `bash packages/connectors/tests/run-beeper-capture-tests.sh`,
+  `bash packages/connectors/tests/run-beeper-out-tests.sh`,
+  `bash packages/connectors/tests/run-deliver-tests.sh`,
   `bash packages/connectors/tests/run-scheduler-tests.sh`,
   `bash packages/ingestion/tests/run-seed-tests.sh`,
   `bash packages/ingestion/tests/run-triage-tests.sh`,

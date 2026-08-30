@@ -456,15 +456,15 @@ if [ -f "$store_dir/profile.md" ]; then
                 ln="${entry%%:*}"
                 txt="${entry#*:}"
                 case "$txt" in
-                    "## Priorities"|"## Cadence wishes"|"## Signal opt-outs"|"## Style notes") ;;
-                    *) report "$f" "$ln" "unexpected section '${txt}' (profile.md allows only Priorities, Cadence wishes, Signal opt-outs, Style notes)" ;;
+                    "## Priorities"|"## Cadence wishes"|"## Signal opt-outs"|"## Style notes"|"## Notify") ;;
+                    *) report "$f" "$ln" "unexpected section '${txt}' (profile.md allows only Priorities, Cadence wishes, Signal opt-outs, Style notes, Notify)" ;;
                 esac
             done <<EOF
 $bad_headings
 EOF
         fi
 
-        for section in "Priorities" "Cadence wishes" "Signal opt-outs" "Style notes"; do
+        for section in "Priorities" "Cadence wishes" "Signal opt-outs" "Style notes" "Notify"; do
             bullets=$(awk -v header="## ${section}" '
                 $0 == header {insec=1; next}
                 /^## /{insec=0}
@@ -488,6 +488,26 @@ EOF
                     rest=$(printf '%s' "$txt" | sed -E 's/^- \*\*\[(stated-by-user|observed-from-behavior)\]\*\*[[:space:]]*//')
                     if ! printf '%s' "$rest" | grep -qE '^[A-Za-z0-9_-]+ — (all|\[\[[A-Za-z0-9_-]+\]\])[[:space:]]*$'; then
                         report "$f" "$ln" "Signal opt-outs bullet malformed (expected '<signal-type> — all' or '<signal-type> — [[slug]]')"
+                    fi
+                fi
+                if [ "$section" = "Notify" ]; then
+                    if ! printf '%s' "$txt" | grep -qE '^- \*\*\[stated-by-user\]\*\* (channel|beeper_chat_id|quiet_hours|gmail_address): [^[:space:]]+'; then
+                        rest=$(printf '%s' "$txt" | sed -E 's/^- \*\*\[(stated-by-user|observed-from-behavior)\]\*\*[[:space:]]*//')
+                        key="${rest%%:*}"
+                        report "$f" "$ln" "Notify bullet: unknown key '${key}' (expected channel, beeper_chat_id, quiet_hours, or gmail_address, [stated-by-user] only, non-empty value)"
+                    else
+                        key=$(printf '%s' "$txt" | sed -E 's/^- \*\*\[stated-by-user\]\*\* ([A-Za-z_]+):.*/\1/')
+                        val=$(printf '%s' "$txt" | sed -E 's/^- \*\*\[stated-by-user\]\*\* [A-Za-z_]+:[[:space:]]*//; s/[[:space:]]*\([0-9]{4}-[0-9]{2}-[0-9]{2}\)[[:space:]]*$//; s/[[:space:]]*$//')
+                        if [ "$key" = "channel" ]; then
+                            if ! printf '%s' "$val" | grep -qE '^(beeper-self|gmail-self|outbox|none)$'; then
+                                report "$f" "$ln" "Notify channel value invalid (expected beeper-self, gmail-self, outbox, or none)"
+                            fi
+                        fi
+                        if [ "$key" = "quiet_hours" ]; then
+                            if ! printf '%s' "$val" | grep -qE '^[0-2][0-9]:[0-5][0-9]-[0-2][0-9]:[0-5][0-9]$'; then
+                                report "$f" "$ln" "Notify quiet_hours value malformed (expected HH:MM-HH:MM)"
+                            fi
+                        fi
                     fi
                 fi
             done <<EOF
