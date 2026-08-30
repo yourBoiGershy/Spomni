@@ -94,6 +94,21 @@ changes future behavior, and every change is measurable.
 - Guardrails: draft-never-send untouched; learned rules are plain text the
   user can read and delete in `user-model.md`; nothing leaves `data/`.
 
+### D — as built (2026-08-30, branch `chunk-36d-learn-sweep`; narrowed per the consolidation header)
+- `packages/attention/scripts/learn-sweep.sh <store> --data-dir <d> [--dry-run]` — line-count
+  cursor at `<d>/attention/learn-sweep.cursor` (sound because the ledger is append-only);
+  new corrections → ingestion's `feedback-to-evals.sh` (which gained `--exclude <case,…>`);
+  conflict = same `(type, slug)` in one sweep, different `to`, and the later `from` ≠ the
+  earlier `to` (a chain is not a conflict); held rows in `<d>/attention/learn-conflicts.tsv`
+  (`case status first_ts first_to second_ts second_to`), flipped to `resolved` only when
+  the user corrects that field again; 3-line digest; exit 0. Never writes `user-model.md`,
+  `people/`, `ranking-weights.json`, or the ledger — rules/proposals stay plan 34 U31/U32.
+- Lane row `learn` (900 s, enabled, after `feedback`) in `packages/core/templates/sync-lanes.tsv`.
+- Suite: `packages/attention/tests/run-learn-tests.sh` (in `test-all.sh`).
+- Not built (deferred to 34 ph.2 / 36 B): the extra ledger types (`nudge-acted`,
+  `draft-edited` …), user-model rev++, per-person overrides beyond what `tier_source`
+  already gives.
+
 ## Order and sizing
 A1 contract+spec → A2 summarize/file-thread changes ‖ B1 merge script ‖ C1
 noise triage (parallel, three packages) → A3 refresh-person ‖ B2 candidates +

@@ -12,9 +12,15 @@
 # for), plan 34 D4/U20.
 #
 # Usage:
-#   feedback-to-evals.sh <store-dir> --data-dir <data-dir>
+#   feedback-to-evals.sh <store-dir> --data-dir <data-dir> [--exclude <case>[,<case>...]]
 #
 # Behavior:
+#   - `--exclude a,b` holds the named `<slug>-<type>` cases out of the
+#     suite: any existing case dir for a held name is removed, a
+#     "holding <name> (excluded by caller)" line is printed to stderr, and
+#     the final summary reports `held=<m>` — used by attention's
+#     learn-sweep.sh (plan 36 D) to keep a ledger conflict from being
+#     silently auto-resolved by "latest wins".
 #   - Reads <store-dir>/signals/feedback.jsonl (missing/empty -> no
 #     corrections).
 #   - Keeps only lines with type tier-correction|kind-correction and
@@ -63,10 +69,12 @@ fi
 
 store_dir="$1"; shift
 data_dir=""
+exclude_list=""
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --data-dir) data_dir="${2:-}"; shift 2 ;;
+        --exclude) exclude_list="${2:-}"; shift 2 ;;
         *) die "unknown argument: $1" 2 ;;
     esac
 done
@@ -118,6 +126,7 @@ if [ ! -s "$corrections_tsv" ]; then
 fi
 
 case_count=0
+held_count=0
 generated_names="$(mktemp "${TMPDIR:-/tmp}/ra-feedback-to-evals-names.XXXXXX")"
 trap 'rm -f "$corrections_tsv" "$generated_names"' EXIT
 
@@ -139,6 +148,16 @@ while IFS="$(printf '\t')" read -r slug type to text ts from; do
 
     case_name="${slug}-${type}"
     case_dir="${cases_dir}/${case_name}"
+
+    case ",${exclude_list}," in
+        *",${case_name},"*)
+            rm -rf "$case_dir"
+            printf 'feedback-to-evals: holding %s (excluded by caller)\n' "$case_name" >&2
+            held_count=$((held_count + 1))
+            continue
+            ;;
+    esac
+
     today="${ts%%T*}"
 
     rm -rf "$case_dir"
@@ -310,7 +329,7 @@ GRADER
     case_count=$((case_count + 1))
 done < "$corrections_tsv"
 
-if [ "$case_count" -eq 0 ]; then
+if [ "$case_count" -eq 0 ] && [ "$held_count" -eq 0 ]; then
     printf 'feedback-to-evals: no corrections\n'
     : > "$suite_file"
     exit 0
@@ -323,5 +342,9 @@ fi
     done
 } > "$suite_file"
 
-printf 'feedback-to-evals: cases=%d\n' "$case_count"
+if [ "$held_count" -gt 0 ]; then
+    printf 'feedback-to-evals: cases=%d held=%d\n' "$case_count" "$held_count"
+else
+    printf 'feedback-to-evals: cases=%d\n' "$case_count"
+fi
 exit 0
