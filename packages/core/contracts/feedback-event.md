@@ -33,8 +33,9 @@ rewritten. Lines are appended in timestamp order and never edited or deleted.
     flows.
 - **Readers:** `packages/ingestion` (`feedback-recent.sh`,
   `feedback-to-evals.sh`), `packages/attention` (`calibrate.sh`, proposal
-  generation, the report card), `packages/query` (explaining "why did this
-  change" / surfacing past feedback in answers).
+  generation, the report card, `learn-sweep.sh` — cursor walk that calls
+  ingestion's `feedback-to-evals.sh`, plan 36 D), `packages/query`
+  (explaining "why did this change" / surfacing past feedback in answers).
 
 ## Semantics
 
@@ -99,3 +100,7 @@ structure (no frontmatter, no wrapping array).
   agent stop re-asking the user things they already said. Any consumer that
   needs a machine-usable value should use `reason`/`from`/`to`, not attempt
   to parse `text`.
+- This ledger's append-only, never-rewritten rule is what makes a
+  line-count cursor (`<data-dir>/attention/learn-sweep.cursor`) exact — any
+  tool that ever rewrote or reordered this file would silently break that
+  cursor's meaning.

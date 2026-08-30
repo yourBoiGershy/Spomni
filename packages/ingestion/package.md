@@ -90,7 +90,10 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   `<data-dir>/evals/feedback/suite.txt` — turns every
   tier-correction/kind-correction ledger line into a T3 regression eval
   case proving the correction sticks against a later `review tiers` pass,
-  latest-per-slug-per-type wins, idempotent; run only via
+  latest-per-slug-per-type wins, idempotent; `--exclude <case,…>` holds
+  named `<slug>-<type>` cases out of the suite (removing any prior case
+  dir) and reports `held=<m>` — the hook attention's `learn-sweep.sh` uses
+  for ledger conflicts (plan 36 D); run only via
   `RA_EVAL_PRIVATE_MANIFEST` per `contracts/eval-case.md` 1.3.0's
   private-manifest mode, per plan 34 D4/U20),
   `scripts/summarize-thread.sh` (one headless model call

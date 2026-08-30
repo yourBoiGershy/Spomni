@@ -69,6 +69,7 @@ schedule with **no laptop session**; adding or disabling a lane is a config act.
 | 17 | Composio retirement & direct Google lanes (gmail-in, calendar-in) | 14 | Done 2026-08-29. User steps left: Composio dashboard unlink, Google-grant revoke |
 | 19 | Scheduled syncs runner (config-driven lanes, restart-safe) | 13 | Done 2026-08-29; beeper verified firing |
 | 28 | Autonomous sync runtime — headless `claude -p` ticks for the MCP lanes, cost cap, watchdog | 19, 26 | **Built** (PR #16). Owed: live U5.2–5 (see block) |
+| 40 | Dynamic sync routing — `lanes.tsv` `{{REPO_ROOT}}`/`{{STORE_DIR}}`/`{{CLAUDE_BIN}}`… placeholders resolved per tick (sync-lanes 1.1.0), `init` + `resolve <lane>`, `install` retires legacy agents, beeper `store_dir` optional | 19, 28 | **Built** 2026-08-30 (plan `docs/plans/2026-08-30-40-dynamic-sync-routing.md`); owed: live cutover from main checkout (init + install, beeper config/token, orphan inbox) |
 | 29 | Connector fleet — `after` column + concurrency proof + new-lane playbook | 28 live | **Later** (Phase 2; roster toggle already exists). Phases 0–1 of `docs/plans/2026-08-30-29-connector-fleet.md` = the live session (scheduler relocation + 28 proof) and stay owed |
 
 **Owed now:** the live session — 29 Phase 0 (move the scheduler install off the `stream-connectors` worktree; only the legacy beeper lane is installed) → 28 live proof. Checklist: `docs/plans/2026-08-30-29-connector-fleet.md` Phases 0–1. No code.

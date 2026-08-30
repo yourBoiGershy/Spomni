@@ -7,7 +7,11 @@
 #     sync-lanes 1.0.0, see packages/core/contracts/sync-lanes.md)
 #   sync_state_read / sync_state_write — per-lane last-run state (atomic)
 #   sync_log_file / sync_log_append — per-lane log with rotation at 512000B
-#   sync_run_lane — run one lane's command, recording state + log
+#   sync_export_env / sync_resolve_command — sync-lanes 1.1.0 {{...}}
+#     placeholder expansion (REPO_ROOT/DATA_DIR/PRIVATE_DATA_ROOT/STORE_DIR/
+#     CLAUDE_BIN) so a lane's command routes to the current checkout/store
+#   sync_run_lane — run one lane's command (after placeholder expansion),
+#     recording state + log
 #
 # Side-effect-free on source: no `set -e`, no top-level work beyond function
 # definitions and readonly constants. `set -u`-safe — callers may run under
@@ -264,6 +268,63 @@ sync_log_append() {
 }
 
 # ---------------------------------------------------------------------------
+# sync_export_env <data_dir> — export SPOMNI_REPO_ROOT, SPOMNI_DATA_DIR,
+# SPOMNI_PRIVATE_DATA_ROOT, SPOMNI_STORE_DIR, SPOMNI_CLAUDE_BIN so a lane
+# command can reference the current checkout/store without hardcoding paths.
+# Honors SYNC_REPO_ROOT / SPOMNI_CLAUDE_BIN overrides from the caller's env.
+# ---------------------------------------------------------------------------
+sync_export_env() {
+  data_dir="$1"
+
+  if [ -n "${SYNC_REPO_ROOT:-}" ]; then
+    SPOMNI_REPO_ROOT="$SYNC_REPO_ROOT"
+  else
+    SPOMNI_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+  fi
+
+  SPOMNI_DATA_DIR="$(cd "$data_dir" 2>/dev/null && pwd)"
+  [ -n "$SPOMNI_DATA_DIR" ] || SPOMNI_DATA_DIR="$data_dir"
+
+  SPOMNI_PRIVATE_DATA_ROOT="$(dirname "$SPOMNI_DATA_DIR")"
+
+  SPOMNI_STORE_DIR="$(cd "$SPOMNI_DATA_DIR/store" 2>/dev/null && pwd -P)"
+  [ -n "$SPOMNI_STORE_DIR" ] || SPOMNI_STORE_DIR="$SPOMNI_DATA_DIR/store"
+
+  if [ -n "${SPOMNI_CLAUDE_BIN:-}" ]; then
+    :
+  elif command -v claude >/dev/null 2>&1; then
+    SPOMNI_CLAUDE_BIN="$(command -v claude)"
+  elif [ -x "$HOME/.claude/local/claude" ]; then
+    SPOMNI_CLAUDE_BIN="$HOME/.claude/local/claude"
+  else
+    SPOMNI_CLAUDE_BIN="claude"
+  fi
+
+  export SPOMNI_REPO_ROOT SPOMNI_DATA_DIR SPOMNI_PRIVATE_DATA_ROOT SPOMNI_STORE_DIR SPOMNI_CLAUDE_BIN
+}
+
+# ---------------------------------------------------------------------------
+# sync_resolve_command <data_dir> <command> — echo <command> with {{...}}
+# placeholders expanded against <data_dir> (see sync_export_env). Unknown
+# {{X}} tokens are left untouched. Calls sync_export_env as a side effect.
+# ---------------------------------------------------------------------------
+sync_resolve_command() {
+  data_dir="$1"
+  command="$2"
+
+  sync_export_env "$data_dir"
+
+  resolved="$command"
+  resolved="${resolved//\{\{REPO_ROOT\}\}/$SPOMNI_REPO_ROOT}"
+  resolved="${resolved//\{\{DATA_DIR\}\}/$SPOMNI_DATA_DIR}"
+  resolved="${resolved//\{\{PRIVATE_DATA_ROOT\}\}/$SPOMNI_PRIVATE_DATA_ROOT}"
+  resolved="${resolved//\{\{STORE_DIR\}\}/$SPOMNI_STORE_DIR}"
+  resolved="${resolved//\{\{CLAUDE_BIN\}\}/$SPOMNI_CLAUDE_BIN}"
+
+  printf '%s\n' "$resolved"
+}
+
+# ---------------------------------------------------------------------------
 # sync_run_lane <config_file> <data_dir> <lane> — unknown lane: stderr +
 # exit 2. Disabled: sync_log_append "skip-disabled", exit 0. Enabled: log
 # "run-start", record start, run the lane's command via /bin/bash -c
@@ -306,7 +367,10 @@ sync_run_lane() {
   start_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   start_epoch="$(date -u +%s)"
 
-  /bin/bash -c "$command" >> "$log_file" 2>&1
+  sync_export_env "$data_dir"
+  resolved_command="$(sync_resolve_command "$data_dir" "$command")"
+
+  /bin/bash -c "$resolved_command" >> "$log_file" 2>&1
   cmd_exit=$?
 
   end_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
