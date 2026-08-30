@@ -22,7 +22,18 @@
 # writes into this data dir's inbox/).
 beeper	900	true	/bin/bash <ABS-REPO-ROOT>/packages/connectors/beeper-in/scripts/beeper-sweep.sh
 
-# Placeholder rows for plan 17 (gmail/calendar first-party connectors) —
-# uncomment and fill in once those lanes exist.
-# gmail-in	300	false	/bin/bash <ABS-REPO-ROOT>/packages/connectors/gmail-in/scripts/gmail-sweep.sh
-# calendar-in	300	false	/bin/bash <ABS-REPO-ROOT>/packages/connectors/calendar-in/scripts/calendar-sweep.sh
+# MCP lanes (plan 28) — gmail/calendar sync runs as a headless Claude
+# session per tick, via packages/connectors/scripts/mcp-lane-tick.sh. These
+# rows are disabled by default; before enabling:
+#   1. Set --claude-bin below to your machine's absolute claude path.
+#   2. Run: bash <ABS-REPO-ROOT>/packages/connectors/scripts/mcp-lane-tick.sh
+#      preflight --claude-bin <path> --lane gmail|calendar
+#      and confirm it reports preflight-ok.
+#   3. Flip enabled to true and re-run sync-scheduler.sh install.
+#
+# Interval rationale: each tick is a model session, not a free localhost
+# call (unlike beeper's 900s), so intervals here are a cost decision —
+# gmail hourly, calendar every 2 hours. Worst-case ceiling at these
+# defaults: 24 + 12 = 36 model sessions/day.
+gmail-in	3600	false	/bin/bash <ABS-REPO-ROOT>/packages/connectors/scripts/mcp-lane-tick.sh tick --claude-bin <ABS-CLAUDE-BIN> --prompt "/gmail-sweep pages=4" --allowed-tools "mcp__claude_ai_Gmail__*,Bash,Read,Write" --max-turns 50 --timeout-seconds 900
+calendar-in	7200	false	/bin/bash <ABS-REPO-ROOT>/packages/connectors/scripts/mcp-lane-tick.sh tick --claude-bin <ABS-CLAUDE-BIN> --prompt "/calendar-sweep pages=2" --allowed-tools "mcp__claude_ai_Google_Calendar__*,Bash,Read,Write" --max-turns 50 --timeout-seconds 900

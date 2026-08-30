@@ -83,6 +83,8 @@ model context, with a verbatim-paste fallback for the inline-page residual
 capture-event 1.2.0. See the SKILL doc's §3–§9 and "Fetch-to-file invariant"
 section for the full mechanism.
 
+Scheduling (plan 28): this lane runs headless under the sync scheduler via `packages/connectors/scripts/mcp-lane-tick.sh tick --prompt "/calendar-sweep pages=N" …`; sweep semantics unchanged — see `packages/core/templates/sync-lanes.tsv`.
+
 ## Backfill mode (plan 24)
 
 `calendar-sweep`'s SKILL.md also documents an explicit-invocation-only

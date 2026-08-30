@@ -396,6 +396,153 @@ printf '%s\t60\ttrue\n' "${LANE_NS}-status-bad" > "$status_bad_cfg"
 status_bad_rc=$?
 assert_eq "status: malformed config -> exit 1" "$status_bad_rc" "1"
 
+# =============================================================================
+# 9. mcp-lane-tick.sh — headless-session wrapper (plan 28 D2), driven by the
+#    offline stub-claude.sh fixture. Covers tick's every exit path + flag
+#    construction + watchdog, preflight's pass/fail paths, sync_run_lane
+#    integration, and the updated core template parsing under sync_lanes_list.
+# =============================================================================
+
+MCP_TICK="$REPO_ROOT/packages/connectors/scripts/mcp-lane-tick.sh"
+STUB_CLAUDE="$REPO_ROOT/packages/connectors/tests/fixtures/stub-claude.sh"
+
+if [ ! -x "$MCP_TICK" ]; then
+  fail "mcp-lane-tick.sh: expected executable at $MCP_TICK"
+elif [ ! -x "$STUB_CLAUDE" ]; then
+  fail "stub-claude.sh: expected executable at $STUB_CLAUDE"
+else
+
+  # NOTE on capture style below: the wrapper's watchdog runs in a backgrounded
+  # subshell (`( sleep N; ... ) &`) that is not exec-optimized (it has code
+  # after the sleep), so `kill "$WATCHDOG_PID"` only reaps the subshell's own
+  # PID — the `sleep` it forked internally is orphaned (reparented to pid 1)
+  # and keeps the wrapper's inherited stdout/stderr fd open for the rest of
+  # its duration. `x="$(cmd)"` command substitution blocks until every holder
+  # of that pipe's write end closes it, so capturing via `$(...)` here would
+  # hang for up to --timeout-seconds (default 900s). Redirecting to a real
+  # file instead (as sync_run_lane itself does in production) sidesteps this
+  # — a file redirect doesn't wait on orphaned fd holders.
+  tick_out_file="$SANDBOX/tick-out.txt"
+
+  # --- (i) tick-ok ---
+  STUB_CLAUDE_MODE=ok "$MCP_TICK" tick --claude-bin "$STUB_CLAUDE" --prompt "/gmail-sweep pages=4" --allowed-tools "mcp__claude_ai_Gmail__*,Bash,Read,Write" --timeout-seconds 5 > "$tick_out_file" 2>&1
+  tick_ok_rc=$?
+  tick_ok_out="$(cat "$tick_out_file" 2>/dev/null)"
+  assert_eq "mcp-lane-tick tick: ok mode -> exit 0" "$tick_ok_rc" "0"
+  assert_contains "mcp-lane-tick tick: ok mode -> tick-ok in output" "$tick_ok_out" "tick-ok"
+
+  # --- (ii) argv construction ---
+  argv_file="$SANDBOX/stub-argv.txt"
+  rm -f "$argv_file"
+  argv_prompt="/gmail-sweep pages=4"
+  argv_tools="mcp__claude_ai_Gmail__*,Bash,Read,Write"
+  STUB_CLAUDE_MODE=ok STUB_CLAUDE_ARGV_FILE="$argv_file" \
+    "$MCP_TICK" tick --claude-bin "$STUB_CLAUDE" --prompt "$argv_prompt" \
+    --allowed-tools "$argv_tools" --max-turns 7 --timeout-seconds 5 >/dev/null 2>&1
+  argv_content="$(cat "$argv_file" 2>/dev/null)"
+  assert_contains "mcp-lane-tick tick: argv carries --allowedTools <csv>" "$argv_content" "$(printf -- '--allowedTools\n%s' "$argv_tools")"
+  assert_contains "mcp-lane-tick tick: argv carries --max-turns <n>" "$argv_content" "$(printf -- '--max-turns\n7')"
+  assert_contains "mcp-lane-tick tick: argv carries --permission-mode acceptEdits" "$argv_content" "$(printf -- '--permission-mode\nacceptEdits')"
+  assert_contains "mcp-lane-tick tick: argv carries -p <prompt>" "$argv_content" "$(printf -- '-p\n%s' "$argv_prompt")"
+
+  # --- (iii) nosummary -> exit 4 ---
+  STUB_CLAUDE_MODE=nosummary "$MCP_TICK" tick --claude-bin "$STUB_CLAUDE" --prompt "hi" --allowed-tools "Bash" --timeout-seconds 5 > "$tick_out_file" 2>&1
+  tick_nosummary_rc=$?
+  tick_nosummary_out="$(cat "$tick_out_file" 2>/dev/null)"
+  assert_eq "mcp-lane-tick tick: nosummary mode -> exit 4" "$tick_nosummary_rc" "4"
+  assert_contains "mcp-lane-tick tick: nosummary mode -> reason=no-summary" "$tick_nosummary_out" "reason=no-summary"
+
+  # --- (iv) claude's own nonzero exit propagates ---
+  STUB_CLAUDE_MODE=exit7 "$MCP_TICK" tick --claude-bin "$STUB_CLAUDE" --prompt "hi" --allowed-tools "Bash" --timeout-seconds 5 > "$tick_out_file" 2>&1
+  tick_exit7_rc=$?
+  tick_exit7_out="$(cat "$tick_out_file" 2>/dev/null)"
+  assert_eq "mcp-lane-tick tick: exit7 mode -> exit 7 (propagated)" "$tick_exit7_rc" "7"
+  assert_contains "mcp-lane-tick tick: exit7 mode -> reason=exit=7" "$tick_exit7_out" "reason=exit=7"
+
+  # --- (v) watchdog timeout ---
+  timeout_start="$(date +%s)"
+  STUB_CLAUDE_MODE=sleep "$MCP_TICK" tick --claude-bin "$STUB_CLAUDE" --prompt "hi" --allowed-tools "Bash" --timeout-seconds 2 > "$tick_out_file" 2>&1
+  tick_timeout_rc=$?
+  tick_timeout_out="$(cat "$tick_out_file" 2>/dev/null)"
+  timeout_end="$(date +%s)"
+  timeout_elapsed=$((timeout_end - timeout_start))
+  assert_eq "mcp-lane-tick tick: watchdog timeout -> exit 3" "$tick_timeout_rc" "3"
+  assert_contains "mcp-lane-tick tick: watchdog timeout -> reason=timeout" "$tick_timeout_out" "reason=timeout"
+  if [ "$timeout_elapsed" -lt 25 ]; then
+    pass "mcp-lane-tick tick: watchdog timeout completes well under wall-clock budget (${timeout_elapsed}s)"
+  else
+    fail "mcp-lane-tick tick: watchdog timeout took too long (${timeout_elapsed}s, expected < 25s)"
+  fi
+
+  # --- (vi) preflight ---
+  STUB_CLAUDE_MODE=tools-full "$MCP_TICK" preflight --claude-bin "$STUB_CLAUDE" --lane gmail > "$tick_out_file" 2>&1
+  preflight_full_rc=$?
+  preflight_full_out="$(cat "$tick_out_file" 2>/dev/null)"
+  assert_eq "mcp-lane-tick preflight: gmail, all tools present -> exit 0" "$preflight_full_rc" "0"
+  assert_contains "mcp-lane-tick preflight: gmail, all tools present -> preflight-ok" "$preflight_full_out" "preflight-ok"
+
+  STUB_CLAUDE_MODE=tools-missing "$MCP_TICK" preflight --claude-bin "$STUB_CLAUDE" --lane calendar > "$tick_out_file" 2>&1
+  preflight_missing_rc=$?
+  preflight_missing_out="$(cat "$tick_out_file" 2>/dev/null)"
+  assert_eq "mcp-lane-tick preflight: calendar, missing tool -> exit 2" "$preflight_missing_rc" "2"
+  assert_contains "mcp-lane-tick preflight: calendar, missing tool -> preflight-fail" "$preflight_missing_out" "preflight-fail"
+  assert_contains "mcp-lane-tick preflight: calendar, missing tool -> names list_events" "$preflight_missing_out" "list_events"
+
+  # --- (vii) sync_run_lane integration ---
+  mcp_run_data_dir="$SANDBOX/mcp-run-data"
+  mkdir -p "$mcp_run_data_dir"
+  mcp_run_cfg="$SANDBOX/mcp-run-config.tsv"
+
+  mcp_fail_lane="${LANE_NS}-mcp-exit7"
+  mcp_ok_lane="${LANE_NS}-mcp-ok"
+
+  cat > "$mcp_run_cfg" <<EOF
+${mcp_fail_lane}	60	true	STUB_CLAUDE_MODE=exit7 /bin/bash ${MCP_TICK} tick --claude-bin ${STUB_CLAUDE} --prompt "hi" --allowed-tools "Bash" --timeout-seconds 5
+${mcp_ok_lane}	60	true	STUB_CLAUDE_MODE=ok /bin/bash ${MCP_TICK} tick --claude-bin ${STUB_CLAUDE} --prompt "hi" --allowed-tools "Bash" --timeout-seconds 5
+EOF
+
+  sync_run_lane "$mcp_run_cfg" "$mcp_run_data_dir" "$mcp_fail_lane"
+  mcp_fail_run_rc=$?
+  assert_eq "sync_run_lane + mcp-lane-tick: exit7 lane propagates exit 7" "$mcp_fail_run_rc" "7"
+  mcp_fail_state="$(sync_state_read "$mcp_run_data_dir" "$mcp_fail_lane")"
+  mcp_fail_state_exit="$(printf '%s' "$mcp_fail_state" | awk -F'\t' '{print $3}')"
+  assert_eq "sync_run_lane + mcp-lane-tick: exit7 lane state last_exit=7" "$mcp_fail_state_exit" "7"
+  mcp_fail_log="$(cat "$(sync_log_file "$mcp_run_data_dir" "$mcp_fail_lane")" 2>/dev/null)"
+  assert_contains "sync_run_lane + mcp-lane-tick: exit7 lane log contains tick-fail" "$mcp_fail_log" "tick-fail"
+
+  sync_run_lane "$mcp_run_cfg" "$mcp_run_data_dir" "$mcp_ok_lane"
+  mcp_ok_run_rc=$?
+  assert_eq "sync_run_lane + mcp-lane-tick: ok lane exits 0" "$mcp_ok_run_rc" "0"
+  mcp_ok_state="$(sync_state_read "$mcp_run_data_dir" "$mcp_ok_lane")"
+  mcp_ok_state_exit="$(printf '%s' "$mcp_ok_state" | awk -F'\t' '{print $3}')"
+  assert_eq "sync_run_lane + mcp-lane-tick: ok lane state last_exit=0" "$mcp_ok_state_exit" "0"
+
+  # --- (viii) core template parses under sync_lanes_list ---
+  template_src="$REPO_ROOT/packages/core/templates/sync-lanes.tsv"
+  template_copy_dir="$SANDBOX/template-check"
+  mkdir -p "$template_copy_dir"
+  template_copy="$template_copy_dir/lanes.tsv"
+  sed -e "s#<ABS-REPO-ROOT>#$REPO_ROOT#g" -e "s#<ABS-CLAUDE-BIN>#$STUB_CLAUDE#g" "$template_src" > "$template_copy"
+
+  template_rows="$(sync_lanes_list "$template_copy")"
+  template_rc=$?
+  assert_eq "core template sync-lanes.tsv: parses cleanly under sync_lanes_list" "$template_rc" "0"
+  template_row_count="$(printf '%s\n' "$template_rows" | grep -c .)"
+  assert_eq "core template sync-lanes.tsv: exactly 3 rows" "$template_row_count" "3"
+
+  # --- (ix) tick/subcommand argument errors ---
+  "$MCP_TICK" tick --claude-bin "$STUB_CLAUDE" --allowed-tools "Bash" >/dev/null 2>/dev/null
+  tick_missing_flag_rc=$?
+  tick_missing_flag_err="$("$MCP_TICK" tick --claude-bin "$STUB_CLAUDE" --allowed-tools "Bash" 2>&1 >/dev/null)"
+  assert_eq "mcp-lane-tick tick: missing required --prompt -> exit 2" "$tick_missing_flag_rc" "2"
+  assert_contains "mcp-lane-tick tick: missing required --prompt -> usage on stderr" "$tick_missing_flag_err" "Usage:"
+
+  "$MCP_TICK" bogus-subcommand >/dev/null 2>/dev/null
+  unknown_subcommand_rc=$?
+  assert_eq "mcp-lane-tick: unknown subcommand -> exit 2" "$unknown_subcommand_rc" "2"
+
+fi
+
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 

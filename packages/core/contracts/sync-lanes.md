@@ -38,6 +38,13 @@ from a field separator).
 | `enabled` | enum | literal `true` or `false` — no other spelling. |
 | `command` | string | absolute-path invocation, run via `/bin/bash -c` under launchd's minimal environment: no user shell profile is sourced, so commands must not assume any `PATH` beyond `/usr/bin:/bin:/usr/sbin:/sbin`. Skip conditions inside a lane (no token, source unreachable) exit 0, per `connector-interface.md`'s sweeps convention — the scheduler treats exit 0 as a clean run regardless of whether work happened. |
 
+A lane's `command` may itself be a model session — a headless `claude -p`
+wrapper such as connectors' `mcp-lane-tick.sh` — rather than a plain script.
+For such lanes, `interval_seconds` is not just a freshness knob but a cost
+decision: each tick spends a capped model session, so the interval should be
+set deliberately rather than defaulted low. See the template's MCP lane rows
+(`packages/core/templates/sync-lanes.tsv`) for worked defaults and rationale.
+
 Blank lines and lines starting with `#` are ignored (comments). Leading
 whitespace before `#` does not count — a comment line must start with `#` in
 column 1 to be recognized as a comment by lane-list parsing; anything else on

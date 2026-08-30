@@ -139,6 +139,35 @@ bash packages/connectors/scripts/sync-scheduler.sh status
   `launchctl kickstart gui/$UID/com.relationship-agent.sync.<lane>` and check
   `LAST_EXIT 0`. If you get exit 126 → step 1.
 
+### 5a. Headless gmail / calendar lanes (plan 28)
+
+Gmail and Calendar fetch through the first-party claude.ai connectors, which
+only exist inside a Claude session — so their lane command runs a short,
+capped headless session per tick via
+`packages/connectors/scripts/mcp-lane-tick.sh`. The template ships both rows
+`enabled false`; enable them in this order:
+
+```sh
+CLAUDE_BIN="$(command -v claude)"   # absolute path; launchd has no PATH
+bash packages/connectors/scripts/mcp-lane-tick.sh preflight --claude-bin "$CLAUDE_BIN" --lane gmail
+bash packages/connectors/scripts/mcp-lane-tick.sh preflight --claude-bin "$CLAUDE_BIN" --lane calendar
+# both must print preflight-ok; preflight-fail names the missing connector tool
+$EDITOR data/connectors/sync-scheduler/lanes.tsv   # set --claude-bin, flip enabled → true
+bash packages/connectors/scripts/sync-scheduler.sh install
+bash packages/connectors/scripts/sync-scheduler.sh status
+```
+
+- Each tick is a model session, so intervals are a cost decision: template
+  defaults are gmail 3600s, calendar 7200s (≤36 sessions/day). Every tick is
+  triple-capped — page budget (`pages=N` in the prompt), `--max-turns`, and a
+  wall-clock `--timeout-seconds` watchdog — all in the `lanes.tsv` command
+  string, so tuning is a config edit.
+- A tick that times out, hits its turn cap, or ends without the sweep's
+  `sweep-ok` summary records a nonzero `LAST_EXIT` in `status` (3 = timeout,
+  4 = no summary, otherwise claude's own exit). If the failure names a
+  missing tool, re-run `preflight` — the connector likely needs re-linking in
+  claude.ai.
+
 ## 6. Prove the whole machine
 
 ```sh
