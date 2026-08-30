@@ -47,8 +47,10 @@ attention-merge).
   and connector-lane scheduler state (`<sync-data-dir>/connectors/sync-scheduler/`)
   and creates exactly one pending wake-up (`origin: standing`,
   `source-signal: staleness:<name>`, `signal-type: staleness`) per subject
-  that has gone quiet for more than 2x its cadence, deduped against any
-  already-pending or fired-unresolved entry for that same signal
+  that has gone quiet for more than 2x its cadence, plus a `<lane>-yield`
+  wake-up for an enabled, green capture lane whose `runs.log` shows 24h of
+  zero-event runs; deduped against any already-pending or fired-unresolved
+  entry for that same signal; scheduled hourly as the `staleness` sync lane
 - `scripts/capacity.sh` — deterministic week-plan writer per
   `packages/core/contracts/week-plan.md`, sole writer of `signals/week-plan.json`,
   per plan 12 cadence-capacity (docs/plans/2026-08-29-12-cadence-capacity.md)

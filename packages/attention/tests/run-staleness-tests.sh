@@ -20,6 +20,12 @@
 #   6. --dry-run on a stale store creates nothing
 #   7. missing heartbeats/ dir and empty --sync-data-dir -> exit 0, silent
 #   8. validate-store.sh clean on the final store
+#   9. zero-yield capture lanes (section 3): >=4 ok/events=0 runs in 24h ->
+#      one <lane>-yield wake-up; re-run -> already-pending; any events>0 ->
+#      ok; <4 ok runs -> never-run; runs older than 24h don't count;
+#      backfill-*/non-ok outcomes are ignored; --dry-run creates nothing;
+#      the ordinary lane-staleness check (section 2) for the same lane
+#      still runs alongside it
 #
 # bash 3.2 portable (no associative arrays, no mapfile) — must run under
 # macOS's stock /bin/bash, invocable from anywhere.
@@ -407,6 +413,294 @@ else
   else
     fail "validate-store.sh reported findings (status=$s8_status): $s8_out"
   fi
+fi
+
+# =============================================================================
+# Scenario 9: zero-yield capture lanes (section 3)
+# =============================================================================
+
+# --- 9a/9h: 6 ok/events=0 runs in 24h -> stale wake-up, AND the ordinary
+# lane-staleness check (section 2, fresh state) still reports ok alongside it
+# =============================================================================
+
+S9A_DIR="$TMP_ROOT/s9a-zero-yield-stale"
+new_store "$S9A_DIR"
+
+S9A_SYNC_DIR="$TMP_ROOT/s9a-sync-data"
+mkdir -p "$S9A_SYNC_DIR/connectors/sync-scheduler/state"
+mkdir -p "$S9A_SYNC_DIR/connectors/beeper-in"
+
+cat > "$S9A_SYNC_DIR/connectors/sync-scheduler/lanes.tsv" <<'EOF'
+# lane	interval_seconds	enabled	command
+beeper	900	true	/bin/true
+EOF
+
+# fresh state file -> section 2's ordinary check should say "beeper ok"
+printf '2026-08-30T11:50:00Z\t2026-08-30T11:55:00Z\t0\n' > "$S9A_SYNC_DIR/connectors/sync-scheduler/state/beeper.tsv"
+
+cat > "$S9A_SYNC_DIR/connectors/beeper-in/runs.log" <<'EOF'
+2026-08-29T13:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T15:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T17:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T19:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T21:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T23:00:00Z ok chats=1 events=0 quarantined=0
+EOF
+
+s9a_out="$("$STALENESS" "$S9A_DIR" --sync-data-dir "$S9A_SYNC_DIR" --now "$NOW" 2>&1)"
+s9a_status=$?
+
+if [ "$s9a_status" -eq 0 ]; then
+  pass "zero-yield stale: exits 0"
+else
+  fail "zero-yield stale: exited $s9a_status: $s9a_out"
+fi
+
+if printf '%s\n' "$s9a_out" | grep -q '^staleness: beeper-yield stale'; then
+  pass "zero-yield stale: output line reports 'beeper-yield stale'"
+else
+  fail "zero-yield stale: expected a 'beeper-yield stale' line, got: $s9a_out"
+fi
+
+if printf '%s\n' "$s9a_out" | grep -q '^staleness: beeper ok'; then
+  pass "zero-yield stale: ordinary lane-staleness check (section 2) still reports 'beeper ok' alongside it"
+else
+  fail "zero-yield stale: expected 'beeper ok' from the ordinary lane check too, got: $s9a_out"
+fi
+
+S9A_COUNT="$(count_wakeups "$S9A_DIR" "beeper-yield")"
+if [ "$S9A_COUNT" = "1" ]; then
+  pass "zero-yield stale: exactly one wake-up file created"
+else
+  fail "zero-yield stale: expected exactly 1 wake-up file, got $S9A_COUNT"
+fi
+
+S9A_WAKEUP="$(grep -l "^source-signal: staleness:beeper-yield\$" "$S9A_DIR"/wakeups/*.md 2>/dev/null | head -n1)"
+if [ -n "$S9A_WAKEUP" ] && grep -q '^status: pending$' "$S9A_WAKEUP" \
+  && grep -q '^origin: standing$' "$S9A_WAKEUP" \
+  && grep -q '^signal-type: staleness$' "$S9A_WAKEUP" \
+  && grep -q '\[\[self\]\]' "$S9A_WAKEUP"; then
+  pass "zero-yield stale: wake-up has status: pending, origin: standing, signal-type: staleness, [[self]]"
+else
+  fail "zero-yield stale: wake-up file missing expected fields: $(cat "$S9A_WAKEUP" 2>&1)"
+fi
+
+# --- 9b: re-run same inputs -> already-pending, still exactly one ----------
+
+s9b_out="$("$STALENESS" "$S9A_DIR" --sync-data-dir "$S9A_SYNC_DIR" --now "$NOW" 2>&1)"
+s9b_status=$?
+
+if [ "$s9b_status" -eq 0 ] && printf '%s\n' "$s9b_out" | grep -q '^staleness: beeper-yield already-pending'; then
+  pass "zero-yield re-run: reports already-pending"
+else
+  fail "zero-yield re-run: unexpected result (status=$s9b_status): $s9b_out"
+fi
+
+S9B_COUNT="$(count_wakeups "$S9A_DIR" "beeper-yield")"
+if [ "$S9B_COUNT" = "1" ]; then
+  pass "zero-yield re-run: still exactly one wake-up file"
+else
+  fail "zero-yield re-run: expected exactly 1 wake-up file, got $S9B_COUNT"
+fi
+
+# --- 9c: 6 ok lines, one with events=3 -> ok, no wake-up -------------------
+
+S9C_DIR="$TMP_ROOT/s9c-zero-yield-ok"
+new_store "$S9C_DIR"
+
+S9C_SYNC_DIR="$TMP_ROOT/s9c-sync-data"
+mkdir -p "$S9C_SYNC_DIR/connectors/sync-scheduler/state"
+mkdir -p "$S9C_SYNC_DIR/connectors/beeper-in"
+
+cat > "$S9C_SYNC_DIR/connectors/sync-scheduler/lanes.tsv" <<'EOF'
+# lane	interval_seconds	enabled	command
+beeper	900	true	/bin/true
+EOF
+
+cat > "$S9C_SYNC_DIR/connectors/beeper-in/runs.log" <<'EOF'
+2026-08-29T13:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T15:00:00Z ok chats=1 events=3 quarantined=0
+2026-08-29T17:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T19:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T21:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T23:00:00Z ok chats=1 events=0 quarantined=0
+EOF
+
+s9c_out="$("$STALENESS" "$S9C_DIR" --sync-data-dir "$S9C_SYNC_DIR" --now "$NOW" 2>&1)"
+s9c_status=$?
+
+if [ "$s9c_status" -eq 0 ] && printf '%s\n' "$s9c_out" | grep -q '^staleness: beeper-yield ok (6 runs, 3 events in 24h)'; then
+  pass "zero-yield with events: reports ok with correct run/event counts"
+else
+  fail "zero-yield with events: unexpected result (status=$s9c_status): $s9c_out"
+fi
+
+S9C_COUNT="$(count_wakeups "$S9C_DIR" "beeper-yield")"
+if [ "$S9C_COUNT" = "0" ]; then
+  pass "zero-yield with events: no wake-up created"
+else
+  fail "zero-yield with events: expected 0 wake-ups, got $S9C_COUNT"
+fi
+
+# --- 9d: only 3 ok lines -> never-run --------------------------------------
+
+S9D_DIR="$TMP_ROOT/s9d-zero-yield-never-run"
+new_store "$S9D_DIR"
+
+S9D_SYNC_DIR="$TMP_ROOT/s9d-sync-data"
+mkdir -p "$S9D_SYNC_DIR/connectors/sync-scheduler/state"
+mkdir -p "$S9D_SYNC_DIR/connectors/beeper-in"
+
+cat > "$S9D_SYNC_DIR/connectors/sync-scheduler/lanes.tsv" <<'EOF'
+# lane	interval_seconds	enabled	command
+beeper	900	true	/bin/true
+EOF
+
+cat > "$S9D_SYNC_DIR/connectors/beeper-in/runs.log" <<'EOF'
+2026-08-29T13:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T15:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T17:00:00Z ok chats=1 events=0 quarantined=0
+EOF
+
+s9d_out="$("$STALENESS" "$S9D_DIR" --sync-data-dir "$S9D_SYNC_DIR" --now "$NOW" 2>&1)"
+s9d_status=$?
+
+if [ "$s9d_status" -eq 0 ] && printf '%s\n' "$s9d_out" | grep -q '^staleness: beeper-yield never-run (3 runs in 24h, need 4)'; then
+  pass "zero-yield too few runs: reports never-run with count"
+else
+  fail "zero-yield too few runs: unexpected result (status=$s9d_status): $s9d_out"
+fi
+
+S9D_COUNT="$(count_wakeups "$S9D_DIR" "beeper-yield")"
+if [ "$S9D_COUNT" = "0" ]; then
+  pass "zero-yield too few runs: no wake-up created"
+else
+  fail "zero-yield too few runs: expected 0 wake-ups, got $S9D_COUNT"
+fi
+
+# --- 9e: 6 zero-event lines but all older than 24h -> never-run (0 runs) --
+
+S9E_DIR="$TMP_ROOT/s9e-zero-yield-stale-runs"
+new_store "$S9E_DIR"
+
+S9E_SYNC_DIR="$TMP_ROOT/s9e-sync-data"
+mkdir -p "$S9E_SYNC_DIR/connectors/sync-scheduler/state"
+mkdir -p "$S9E_SYNC_DIR/connectors/beeper-in"
+
+cat > "$S9E_SYNC_DIR/connectors/sync-scheduler/lanes.tsv" <<'EOF'
+# lane	interval_seconds	enabled	command
+beeper	900	true	/bin/true
+EOF
+
+# all timestamps well before the 24h window (now - 86400 = 2026-08-29T12:00:00Z)
+cat > "$S9E_SYNC_DIR/connectors/beeper-in/runs.log" <<'EOF'
+2026-08-27T13:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-27T15:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-27T17:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-27T19:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-27T21:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-27T23:00:00Z ok chats=1 events=0 quarantined=0
+EOF
+
+s9e_out="$("$STALENESS" "$S9E_DIR" --sync-data-dir "$S9E_SYNC_DIR" --now "$NOW" 2>&1)"
+s9e_status=$?
+
+if [ "$s9e_status" -eq 0 ] && printf '%s\n' "$s9e_out" | grep -q '^staleness: beeper-yield never-run (0 runs in 24h, need 4)'; then
+  pass "zero-yield stale runs: lines older than 24h don't count -> never-run (0 runs)"
+else
+  fail "zero-yield stale runs: unexpected result (status=$s9e_status): $s9e_out"
+fi
+
+S9E_COUNT="$(count_wakeups "$S9E_DIR" "beeper-yield")"
+if [ "$S9E_COUNT" = "0" ]; then
+  pass "zero-yield stale runs: no wake-up created"
+else
+  fail "zero-yield stale runs: expected 0 wake-ups, got $S9E_COUNT"
+fi
+
+# --- 9f: backfill-*/non-ok outcomes are ignored ----------------------------
+
+S9F_DIR="$TMP_ROOT/s9f-zero-yield-ignored-outcomes"
+new_store "$S9F_DIR"
+
+S9F_SYNC_DIR="$TMP_ROOT/s9f-sync-data"
+mkdir -p "$S9F_SYNC_DIR/connectors/sync-scheduler/state"
+mkdir -p "$S9F_SYNC_DIR/connectors/beeper-in"
+
+cat > "$S9F_SYNC_DIR/connectors/sync-scheduler/lanes.tsv" <<'EOF'
+# lane	interval_seconds	enabled	command
+beeper	900	true	/bin/true
+EOF
+
+# 4 valid ok/events=0 lines plus 2 lines that must be ignored: a
+# backfill-prefixed outcome and a non-"ok" skip outcome. If either were
+# counted, run_count would be 6 not 4 (still >= 4, but this scenario checks
+# they're excluded from the count itself, not just that the verdict matches).
+cat > "$S9F_SYNC_DIR/connectors/beeper-in/runs.log" <<'EOF'
+2026-08-29T13:00:00Z backfill-skip-disabled chats=0 events=0 quarantined=0
+2026-08-29T14:00:00Z skip-unreachable chats=0 events=0 quarantined=0
+2026-08-29T15:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T17:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T19:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T21:00:00Z ok chats=1 events=0 quarantined=0
+EOF
+
+s9f_out="$("$STALENESS" "$S9F_DIR" --sync-data-dir "$S9F_SYNC_DIR" --now "$NOW" 2>&1)"
+s9f_status=$?
+
+if [ "$s9f_status" -eq 0 ] && printf '%s\n' "$s9f_out" | grep -q '^staleness: beeper-yield stale'; then
+  pass "zero-yield ignored outcomes: backfill-*/non-ok lines excluded, remaining 4 ok/events=0 lines -> stale"
+else
+  fail "zero-yield ignored outcomes: unexpected result (status=$s9f_status): $s9f_out"
+fi
+
+S9F_COUNT="$(count_wakeups "$S9F_DIR" "beeper-yield")"
+if [ "$S9F_COUNT" = "1" ]; then
+  pass "zero-yield ignored outcomes: exactly one wake-up file created"
+else
+  fail "zero-yield ignored outcomes: expected exactly 1 wake-up file, got $S9F_COUNT"
+fi
+
+# --- 9g: --dry-run creates nothing ------------------------------------------
+
+S9G_DIR="$TMP_ROOT/s9g-zero-yield-dry-run"
+new_store "$S9G_DIR"
+
+S9G_SYNC_DIR="$TMP_ROOT/s9g-sync-data"
+mkdir -p "$S9G_SYNC_DIR/connectors/sync-scheduler/state"
+mkdir -p "$S9G_SYNC_DIR/connectors/beeper-in"
+
+cat > "$S9G_SYNC_DIR/connectors/sync-scheduler/lanes.tsv" <<'EOF'
+# lane	interval_seconds	enabled	command
+beeper	900	true	/bin/true
+EOF
+
+cat > "$S9G_SYNC_DIR/connectors/beeper-in/runs.log" <<'EOF'
+2026-08-29T13:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T15:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T17:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T19:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T21:00:00Z ok chats=1 events=0 quarantined=0
+2026-08-29T23:00:00Z ok chats=1 events=0 quarantined=0
+EOF
+
+S9G_FILES_BEFORE="$(find "$S9G_DIR/wakeups" -type f | sort)"
+
+s9g_out="$("$STALENESS" "$S9G_DIR" --sync-data-dir "$S9G_SYNC_DIR" --now "$NOW" --dry-run 2>&1)"
+s9g_status=$?
+
+if [ "$s9g_status" -eq 0 ] && printf '%s\n' "$s9g_out" | grep -q '^staleness: beeper-yield stale (would create:'; then
+  pass "zero-yield dry-run: exits 0 and reports stale with 'would create:'"
+else
+  fail "zero-yield dry-run: unexpected result (status=$s9g_status): $s9g_out"
+fi
+
+S9G_FILES_AFTER="$(find "$S9G_DIR/wakeups" -type f | sort)"
+if [ "$S9G_FILES_BEFORE" = "$S9G_FILES_AFTER" ]; then
+  pass "zero-yield dry-run: creates zero files"
+else
+  fail "zero-yield dry-run: wakeups/ file listing changed:"
+  diff <(printf '%s\n' "$S9G_FILES_BEFORE") <(printf '%s\n' "$S9G_FILES_AFTER")
 fi
 
 summary_and_exit

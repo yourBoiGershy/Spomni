@@ -21,10 +21,14 @@
 #   6. Non-empty chat -> one capture event per chat per run, piped through
 #      the shared normalizer with hints for the title + unique non-self
 #      senders.
-#   7. Normalizer exit 0 -> advance the chat's cursor; exit 1 -> quarantined,
-#      cursor left unadvanced, run becomes partial.
+#   7. Normalizer exit 0 -> advance the chat's cursor; exit 3 (plan 41,
+#      byte-identical duplicate body already in inbox/) -> counted as
+#      dedup, not an event, but the cursor still advances (the messages
+#      were already durably captured); exit 1 -> quarantined, cursor left
+#      unadvanced, run becomes partial.
 #   8. Update last-sweep (only if chat listing itself succeeded) and append
-#      the run's status line.
+#      the run's status line (run_log's `dedup=<n>` field, omitted when
+#      zero).
 #
 # --list-accounts: read-only report mode. Prints "accountID network status"
 # rows from GET /v1/accounts and exits. No store writes, no cursor writes,
@@ -292,6 +296,34 @@ fi
 CHATS_COUNT=0
 EVENTS_COUNT=0
 QUARANTINED_COUNT=0
+DEDUP_COUNT=0
+
+# advance_cursor_after_capture — shared cursor-advance logic for BOTH a
+# freshly-written capture (normalizer exit 0) and a duplicate the normalizer
+# refused to (re)write (exit 3, plan 41): either way the chat's messages
+# were already durably captured (the duplicate's body already lives in
+# inbox/ from an earlier run/chat), so the cursor and, on incremental first
+# capture, the coverage floor still need to move forward. Relies on the
+# caller's in-scope chat_id/final_cursor/cursor_rc/fetch_result.
+advance_cursor_after_capture() {
+  [ -n "$final_cursor" ] || return 0
+  if [ "$BACKFILL" -eq 1 ]; then
+    cursor_set "$chat_id" "$final_cursor" "$BACKFILL_CURSORS_FILE"
+  else
+    cursor_set "$chat_id" "$final_cursor"
+    # Coverage floor (D6): only on this chat's first-ever incremental
+    # capture (no prior cursor — cursor_rc from cursor_get above), record
+    # the fetched page's oldest cursor once. Write-once: never advanced
+    # again, never touched by --backfill except as its read-only start
+    # bound.
+    if [ "$cursor_rc" -ne 0 ]; then
+      floor_cursor="$(printf '%s' "$fetch_result" | jq -r '.oldestCursor // empty' 2>/dev/null)"
+      if [ -n "$floor_cursor" ] && ! coverage_floor_get "$chat_id" >/dev/null 2>&1; then
+        coverage_floor_set "$chat_id" "$floor_cursor"
+      fi
+    fi
+  fi
+}
 
 # Steps 5-7: per collected chat, fetch new messages, batch into one capture
 # event, normalize, advance the cursor only on normalizer success.
@@ -394,24 +426,14 @@ while IFS= read -r chat_json; do
 
   if [ "$normalize_rc" -eq 0 ]; then
     EVENTS_COUNT=$((EVENTS_COUNT + 1))
-    if [ -n "$final_cursor" ]; then
-      if [ "$BACKFILL" -eq 1 ]; then
-        cursor_set "$chat_id" "$final_cursor" "$BACKFILL_CURSORS_FILE"
-      else
-        cursor_set "$chat_id" "$final_cursor"
-        # Coverage floor (D6): only on this chat's first-ever incremental
-        # capture (no prior cursor — cursor_rc from cursor_get above), record
-        # the fetched page's oldest cursor once. Write-once: never advanced
-        # again, never touched by --backfill except as its read-only start
-        # bound.
-        if [ "$cursor_rc" -ne 0 ]; then
-          floor_cursor="$(printf '%s' "$fetch_result" | jq -r '.oldestCursor // empty' 2>/dev/null)"
-          if [ -n "$floor_cursor" ] && ! coverage_floor_get "$chat_id" >/dev/null 2>&1; then
-            coverage_floor_set "$chat_id" "$floor_cursor"
-          fi
-        fi
-      fi
-    fi
+    advance_cursor_after_capture
+  elif [ "$normalize_rc" -eq 3 ]; then
+    # Byte-identical duplicate of a body already in inbox/ (plan 41): the
+    # normalizer wrote nothing, but the messages were already durably
+    # captured — treat like a successful capture for cursor purposes, just
+    # not counted as a new event.
+    DEDUP_COUNT=$((DEDUP_COUNT + 1))
+    advance_cursor_after_capture
   else
     QUARANTINED_COUNT=$((QUARANTINED_COUNT + 1))
   fi
@@ -434,5 +456,5 @@ else
   OUTCOME="${LOG_PREFIX}ok"
 fi
 
-run_log "$OUTCOME" "$CHATS_COUNT" "$EVENTS_COUNT" "$QUARANTINED_COUNT" "$WARN"
+run_log "$OUTCOME" "$CHATS_COUNT" "$EVENTS_COUNT" "$QUARANTINED_COUNT" "$WARN" "$DEDUP_COUNT"
 exit 0

@@ -117,8 +117,9 @@ nothing.
   `heartbeats/<routine>.json` completion stamp, per `contracts/heartbeat.md`),
   `scripts/store-sync.sh` (the one write-discipline entry point every runtime —
   laptop, launchd lane, phone/cloud session — uses against a git-backed store:
-  `status`/`pull`/`commit`/`push`; reindexes + runs `validate-store.sh` before
-  every commit and refuses to stage on failure; never rebases)
+  `status`/`pull`/`commit`/`push`/`tick` (pull+commit+push in one call, quiet
+  when nothing changed); reindexes + runs `validate-store.sh` before every
+  commit and refuses to stage on failure; never rebases)
 - Fixtures: `fixtures/store/` (synthetic personas), `fixtures/corrupted/`
 
 ## Consumes

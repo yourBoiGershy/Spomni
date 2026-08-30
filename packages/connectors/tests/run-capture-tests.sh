@@ -234,7 +234,7 @@ while IFS= read -r etype; do
   [ -z "$etype" ] && continue
 
   eid="enum-coverage-$etype"
-  out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type "$etype" --id "$eid" 2>&1)"
+  out="$(printf 'trivial body %s' "$eid" | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type "$etype" --id "$eid" 2>&1)"
   status=$?
   edest="$STORE_DIR/inbox/$eid.md"
 
@@ -263,7 +263,7 @@ while IFS= read -r netype; do
   [ -z "$netype" ] && continue
 
   neid="enum-coverage-1-1-0-$netype"
-  out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type "$netype" --id "$neid" 2>&1)"
+  out="$(printf 'trivial body %s' "$neid" | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type "$netype" --id "$neid" 2>&1)"
   status=$?
   nedest="$STORE_DIR/inbox/$neid.md"
 
@@ -294,7 +294,7 @@ while IFS= read -r cetype; do
   [ -z "$cetype" ] && continue
 
   ceid="enum-coverage-1-2-0-$cetype"
-  out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type "$cetype" --id "$ceid" 2>&1)"
+  out="$(printf 'trivial body %s' "$ceid" | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type "$cetype" --id "$ceid" 2>&1)"
   status=$?
   cedest="$STORE_DIR/inbox/$ceid.md"
 
@@ -329,7 +329,7 @@ else
 fi
 
 # --- occurred_at: valid --occurred-at is emitted after captured_at ---
-out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type email --id occurred-at-valid --occurred-at 2026-08-29T12:00:00Z 2>&1)"
+out="$(printf 'trivial body occurred-at-valid' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type email --id occurred-at-valid --occurred-at 2026-08-29T12:00:00Z 2>&1)"
 status=$?
 occurred_dest="$STORE_DIR/inbox/occurred-at-valid.md"
 
@@ -352,7 +352,7 @@ else
 fi
 
 # --- occurred_at: omitting the flag produces no occurred_at line ---
-out="$(printf 'trivial body' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type email --id occurred-at-absent 2>&1)"
+out="$(printf 'trivial body occurred-at-absent' | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type email --id occurred-at-absent 2>&1)"
 status=$?
 absent_dest="$STORE_DIR/inbox/occurred-at-absent.md"
 
@@ -431,8 +431,8 @@ fi
 # --- assertion 3: --hint values land in participant-hints ---
 hint_fixture="$CALENDAR_FIXTURES_DIR/calendar-event.json"
 if [ -f "$hint_fixture" ]; then
-  out="$("$NORMALIZER" "$STORE_DIR" --source "calendar-in/calendar" --type calendar-event --id hint-test \
-    --hint "Dana Whitfield" --hint "dana.whitfield@example.com" --file "$hint_fixture" 2>&1)"
+  out="$( { cat "$hint_fixture"; printf '\nhint-test-unique-marker\n'; } | "$NORMALIZER" "$STORE_DIR" --source "calendar-in/calendar" --type calendar-event --id hint-test \
+    --hint "Dana Whitfield" --hint "dana.whitfield@example.com" 2>&1)"
   status=$?
   dest="$STORE_DIR/inbox/hint-test.md"
 
@@ -494,7 +494,7 @@ fi
 dup_fixture_a="$GMAIL_FIXTURES_DIR/email-voice-note.json"
 dup_fixture_b="$GMAIL_FIXTURES_DIR/email-linkedin-notification.json"
 
-out="$("$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type voice-note --id dup-test --file "$dup_fixture_a" 2>&1)"
+out="$( { cat "$dup_fixture_a"; printf '\ndup-id-test-unique-marker\n'; } | "$NORMALIZER" "$STORE_DIR" --source "$GENERIC_SOURCE" --type voice-note --id dup-test 2>&1)"
 status=$?
 dup_dest="$STORE_DIR/inbox/dup-test.md"
 
@@ -1052,6 +1052,328 @@ if [ -f "$dup_id_fixture" ]; then
 else
   fail "duplicate-message-id fixture missing: $dup_id_fixture"
 fi
+
+# ---------------------------------------------------------------------------
+# chunk-41: normalize-capture.sh content dedup (spec 1) — a VALID, non-empty
+# body whose sha256 already appears in <store>/inbox/.fingerprints (TSV
+# `sha256<TAB>id`) exits 3, prints the existing inbox path to stdout, and
+# writes nothing new (no inbox file, no quarantine entry). On first run with
+# no .fingerprints, the index is lazily built by hashing bodies of every
+# existing inbox/*.md (body = text after the frontmatter's closing '---').
+# After each successful write, the new hash<TAB>id is appended. Empty bodies
+# are exempt from dedup. Differing frontmatter with an identical body is
+# still a duplicate.
+# ---------------------------------------------------------------------------
+
+DEDUP_STORE="$(mktemp -d)"
+mkdir -p "$DEDUP_STORE/inbox"
+
+# --- 1/2/3: first write succeeds; a second write of the same body (with a
+# different id/type/source) exits 3, prints the FIRST file's path on stdout,
+# and creates no new inbox file. ---
+dedup_first_out="$(printf 'dedup-spec-body-one' | "$NORMALIZER" "$DEDUP_STORE" --source "$GENERIC_SOURCE" --type email --id dedup-first 2>&1)"
+dedup_first_status=$?
+dedup_first_dest="$DEDUP_STORE/inbox/dedup-first.md"
+
+if [ "$dedup_first_status" -eq 0 ] && [ -f "$dedup_first_dest" ]; then
+  pass "dedup: first write of a novel body succeeds"
+
+  dedup_before_count="$(find "$DEDUP_STORE/inbox" -maxdepth 1 -type f -name '*.md' | grep -c .)"
+
+  dedup_second_stdout="$(printf 'dedup-spec-body-one' | "$NORMALIZER" "$DEDUP_STORE" --source "other-source/x" --type other --id dedup-second 2>/dev/null)"
+  dedup_second_status=$?
+
+  if [ "$dedup_second_status" -eq 3 ]; then
+    pass "dedup: byte-identical body (different frontmatter) exits 3"
+  else
+    fail "dedup: byte-identical body exited $dedup_second_status (expected 3)"
+  fi
+
+  if [ "$dedup_second_stdout" = "$dedup_first_dest" ]; then
+    pass "dedup: stdout on exit 3 is the path of the EXISTING inbox file"
+  else
+    fail "dedup: stdout on exit 3 was [$dedup_second_stdout], expected [$dedup_first_dest]"
+  fi
+
+  if [ ! -e "$DEDUP_STORE/inbox/dedup-second.md" ]; then
+    pass "dedup: no new inbox file written for the duplicate"
+  else
+    fail "dedup: a new inbox file was written for the duplicate at $DEDUP_STORE/inbox/dedup-second.md"
+  fi
+
+  if [ ! -e "$DEDUP_STORE/inbox/quarantine/dedup-second.md" ]; then
+    pass "dedup: duplicate is NOT quarantined either"
+  else
+    fail "dedup: duplicate was quarantined at $DEDUP_STORE/inbox/quarantine/dedup-second.md"
+  fi
+
+  dedup_after_count="$(find "$DEDUP_STORE/inbox" -maxdepth 1 -type f -name '*.md' | grep -c .)"
+  if [ "$dedup_after_count" -eq "$dedup_before_count" ]; then
+    pass "dedup: inbox file count unchanged by the duplicate attempt"
+  else
+    fail "dedup: inbox file count changed by the duplicate attempt (before=$dedup_before_count, after=$dedup_after_count)"
+  fi
+else
+  fail "dedup: first write of a novel body did not succeed (status $dedup_first_status): $dedup_first_out"
+fi
+
+# --- 4: append-after-write — a successful write appends hash<TAB>id to
+# .fingerprints. ---
+if [ -f "$DEDUP_STORE/inbox/.fingerprints" ] && grep -qE $'\t''dedup-first$' "$DEDUP_STORE/inbox/.fingerprints"; then
+  pass "dedup: .fingerprints gained an entry for dedup-first after its successful write"
+else
+  fail "dedup: .fingerprints missing an entry for dedup-first"
+fi
+
+# --- 5: lazy index build — a FRESH store with a pre-existing inbox/*.md
+# written directly (bypassing the normalizer, so no .fingerprints exists
+# yet) is still detected as a duplicate on first run. ---
+LAZY_STORE="$(mktemp -d)"
+mkdir -p "$LAZY_STORE/inbox"
+cat > "$LAZY_STORE/inbox/pre-existing.md" <<'EOF'
+---
+schema_version: 1.2.0
+id: pre-existing
+source: gmail-in/gmail
+captured_at: 2026-08-01T00:00:00Z
+type: email
+participant-hints: []
+---
+lazy-index-body
+EOF
+
+if [ ! -e "$LAZY_STORE/inbox/.fingerprints" ]; then
+  pass "dedup: fresh store has no .fingerprints before first normalizer run"
+else
+  fail "dedup: fresh store unexpectedly already has .fingerprints"
+fi
+
+lazy_out="$(printf 'lazy-index-body\n' | "$NORMALIZER" "$LAZY_STORE" --source "$GENERIC_SOURCE" --type other --id lazy-attempt 2>/dev/null)"
+lazy_status=$?
+
+if [ "$lazy_status" -eq 3 ]; then
+  pass "dedup: lazy index build detects a pre-existing inbox file's body as a duplicate"
+else
+  fail "dedup: lazy index build did not detect the pre-existing duplicate (status $lazy_status)"
+fi
+
+if [ "$lazy_out" = "$LAZY_STORE/inbox/pre-existing.md" ]; then
+  pass "dedup: lazy index build's exit-3 stdout points at the pre-existing file"
+else
+  fail "dedup: lazy index build's exit-3 stdout was [$lazy_out], expected [$LAZY_STORE/inbox/pre-existing.md]"
+fi
+
+if [ -f "$LAZY_STORE/inbox/.fingerprints" ]; then
+  pass "dedup: .fingerprints was built lazily on first run"
+else
+  fail "dedup: .fingerprints was not built"
+fi
+
+rm -rf "$LAZY_STORE"
+
+# --- 6: empty bodies are never deduplicated — two empty captures both land. ---
+empty1_out="$(printf '' | "$NORMALIZER" "$DEDUP_STORE" --source "$GENERIC_SOURCE" --type other --id dedup-empty-1 2>&1)"
+empty1_status=$?
+empty2_out="$(printf '' | "$NORMALIZER" "$DEDUP_STORE" --source "$GENERIC_SOURCE" --type other --id dedup-empty-2 2>&1)"
+empty2_status=$?
+
+if [ "$empty1_status" -eq 0 ] && [ "$empty2_status" -eq 0 ] \
+  && [ -f "$DEDUP_STORE/inbox/dedup-empty-1.md" ] && [ -f "$DEDUP_STORE/inbox/dedup-empty-2.md" ]; then
+  pass "dedup: two empty-body captures both land (empty bodies exempt from dedup)"
+else
+  fail "dedup: empty-body captures did not both land (status1=$empty1_status, status2=$empty2_status)"
+fi
+
+rm -rf "$DEDUP_STORE"
+
+# ---------------------------------------------------------------------------
+# chunk-41: inbox-dedup.sh (spec 2) — packages/connectors/scripts/inbox-dedup.sh
+# <store> [--apply] [--private-data-root p]. Rebuilds .fingerprints; prints
+# `dup: <later-id> == <keeper-id>` per later byte-identical body (keeper =
+# lexically first filename) and a summary line. --apply deletes duplicates
+# except ids listed in column 1 of <p>/data/ingestion/debrief-filed.log
+# (default p = <store>/../..), printing `keep-filed: <id>` for those and
+# `inbox-dedup: removed <n>`. quarantine/ is never touched. Exit 0.
+# ---------------------------------------------------------------------------
+
+INBOX_DEDUP="$REPO_ROOT/packages/connectors/scripts/inbox-dedup.sh"
+
+if [ ! -x "$INBOX_DEDUP" ]; then
+  fail "inbox-dedup.sh not found/executable at $INBOX_DEDUP"
+else
+
+# write_dup_pair <inbox_dir> <keeper_id> <later_id> <body> — writes two
+# valid capture-event files sharing an identical body, keeper_id sorting
+# lexically before later_id.
+write_dup_pair() {
+  inbox_dir="$1"
+  keeper_id="$2"
+  later_id="$3"
+  body="$4"
+  for pair_id in "$keeper_id" "$later_id"; do
+    cat > "$inbox_dir/$pair_id.md" <<EOF
+---
+schema_version: 1.2.0
+id: $pair_id
+source: gmail-in/gmail
+captured_at: 2026-08-01T00:00:00Z
+type: email
+participant-hints: []
+---
+$body
+EOF
+  done
+}
+
+# --- (a) list mode (no --apply): reports the duplicate, deletes nothing. ---
+IDROOT_A="$(mktemp -d)"
+STORE_A="$IDROOT_A/data/store"
+mkdir -p "$STORE_A/inbox" "$STORE_A/inbox/quarantine"
+write_dup_pair "$STORE_A/inbox" "aaa-dup" "bbb-dup" "shared-dup-body-a"
+printf 'unrelated quarantined body\n' > "$STORE_A/inbox/quarantine/q-untouched.md"
+
+list_out="$("$INBOX_DEDUP" "$STORE_A" 2>&1)"
+list_status=$?
+
+if [ "$list_status" -eq 0 ]; then
+  pass "inbox-dedup.sh: list mode exits 0"
+else
+  fail "inbox-dedup.sh: list mode exited $list_status (expected 0): $list_out"
+fi
+
+if printf '%s\n' "$list_out" | grep -qxF "dup: bbb-dup == aaa-dup"; then
+  pass "inbox-dedup.sh: list mode reports 'dup: bbb-dup == aaa-dup' (keeper = lexically first)"
+else
+  fail "inbox-dedup.sh: list mode did not report the expected dup line: $list_out"
+fi
+
+if printf '%s\n' "$list_out" | grep -qE '^inbox-dedup: 1 duplicates? \([0-9]+ filed, kept\)$'; then
+  pass "inbox-dedup.sh: list mode prints the 'inbox-dedup: <n> duplicates (<k> filed, kept)' summary"
+else
+  fail "inbox-dedup.sh: list mode summary line missing/malformed: $list_out"
+fi
+
+if [ -f "$STORE_A/inbox/aaa-dup.md" ] && [ -f "$STORE_A/inbox/bbb-dup.md" ]; then
+  pass "inbox-dedup.sh: list mode deletes nothing (both duplicate files still present)"
+else
+  fail "inbox-dedup.sh: list mode deleted a file without --apply"
+fi
+
+if [ -f "$STORE_A/inbox/quarantine/q-untouched.md" ]; then
+  pass "inbox-dedup.sh: list mode leaves quarantine/ untouched"
+else
+  fail "inbox-dedup.sh: list mode touched quarantine/"
+fi
+
+# --- (b) --apply with no debrief-filed.log: deletes the later duplicate,
+# keeps the earliest. ---
+apply_out="$("$INBOX_DEDUP" "$STORE_A" --apply 2>&1)"
+apply_status=$?
+
+if [ "$apply_status" -eq 0 ]; then
+  pass "inbox-dedup.sh: --apply exits 0"
+else
+  fail "inbox-dedup.sh: --apply exited $apply_status (expected 0): $apply_out"
+fi
+
+if [ -f "$STORE_A/inbox/aaa-dup.md" ]; then
+  pass "inbox-dedup.sh: --apply keeps the lexically-first (earliest) duplicate"
+else
+  fail "inbox-dedup.sh: --apply removed the keeper (aaa-dup)"
+fi
+
+if [ ! -e "$STORE_A/inbox/bbb-dup.md" ]; then
+  pass "inbox-dedup.sh: --apply deletes the later duplicate"
+else
+  fail "inbox-dedup.sh: --apply did not delete the later duplicate (bbb-dup)"
+fi
+
+if printf '%s\n' "$apply_out" | grep -qxF "inbox-dedup: removed 1"; then
+  pass "inbox-dedup.sh: --apply prints 'inbox-dedup: removed 1'"
+else
+  fail "inbox-dedup.sh: --apply did not print the expected removed-count line: $apply_out"
+fi
+
+if [ -f "$STORE_A/inbox/quarantine/q-untouched.md" ]; then
+  pass "inbox-dedup.sh: --apply leaves quarantine/ untouched"
+else
+  fail "inbox-dedup.sh: --apply touched quarantine/"
+fi
+
+# --- index rebuilt correctly afterward: a subsequent run reports 0
+# duplicates and .fingerprints reflects the post-apply state (only the
+# keeper's hash/id remains). ---
+rerun_out="$("$INBOX_DEDUP" "$STORE_A" 2>&1)"
+if printf '%s\n' "$rerun_out" | grep -qxF "inbox-dedup: 0 duplicates (0 filed, kept)"; then
+  pass "inbox-dedup.sh: .fingerprints rebuilt correctly — re-run reports 0 duplicates"
+else
+  fail "inbox-dedup.sh: re-run after --apply did not report 0 duplicates: $rerun_out"
+fi
+
+if [ -f "$STORE_A/inbox/.fingerprints" ] && grep -qE $'\t''aaa-dup$' "$STORE_A/inbox/.fingerprints" \
+  && ! grep -qE $'\t''bbb-dup$' "$STORE_A/inbox/.fingerprints"; then
+  pass "inbox-dedup.sh: .fingerprints reflects post-apply disk state (aaa-dup present, bbb-dup absent)"
+else
+  fail "inbox-dedup.sh: .fingerprints does not reflect post-apply disk state"
+fi
+
+rm -rf "$IDROOT_A"
+
+# --- (c) keep-filed: a duplicate whose id is in
+# <private-data-root>/data/ingestion/debrief-filed.log column 1 survives
+# --apply, with a 'keep-filed: <id>' line and 'removed 0'. ---
+IDROOT_C="$(mktemp -d)"
+STORE_C="$IDROOT_C/priv/data/store"
+mkdir -p "$STORE_C/inbox" "$STORE_C/inbox/quarantine"
+write_dup_pair "$STORE_C/inbox" "xxx-dup" "yyy-dup" "shared-dup-body-c"
+printf 'unrelated quarantined body\n' > "$STORE_C/inbox/quarantine/q-untouched-c.md"
+
+FILED_ROOT="$IDROOT_C/priv"
+mkdir -p "$FILED_ROOT/data/ingestion"
+printf 'yyy-dup\t2026-08-15T00:00:00Z\n' > "$FILED_ROOT/data/ingestion/debrief-filed.log"
+
+filed_apply_out="$("$INBOX_DEDUP" "$STORE_C" --apply --private-data-root "$FILED_ROOT" 2>&1)"
+filed_apply_status=$?
+
+if [ "$filed_apply_status" -eq 0 ]; then
+  pass "inbox-dedup.sh: keep-filed --apply exits 0"
+else
+  fail "inbox-dedup.sh: keep-filed --apply exited $filed_apply_status (expected 0): $filed_apply_out"
+fi
+
+if [ -f "$STORE_C/inbox/yyy-dup.md" ]; then
+  pass "inbox-dedup.sh: a duplicate id found in debrief-filed.log survives --apply"
+else
+  fail "inbox-dedup.sh: a filed duplicate (yyy-dup) was deleted despite being in debrief-filed.log"
+fi
+
+if [ -f "$STORE_C/inbox/xxx-dup.md" ]; then
+  pass "inbox-dedup.sh: keep-filed case still keeps the lexically-first keeper too"
+else
+  fail "inbox-dedup.sh: keep-filed case removed the keeper (xxx-dup)"
+fi
+
+if printf '%s\n' "$filed_apply_out" | grep -qxF "keep-filed: yyy-dup"; then
+  pass "inbox-dedup.sh: prints 'keep-filed: yyy-dup' for the filed duplicate"
+else
+  fail "inbox-dedup.sh: did not print 'keep-filed: yyy-dup': $filed_apply_out"
+fi
+
+if printf '%s\n' "$filed_apply_out" | grep -qxF "inbox-dedup: removed 0"; then
+  pass "inbox-dedup.sh: keep-filed case removes nothing ('inbox-dedup: removed 0')"
+else
+  fail "inbox-dedup.sh: keep-filed case did not print 'inbox-dedup: removed 0': $filed_apply_out"
+fi
+
+if [ -f "$STORE_C/inbox/quarantine/q-untouched-c.md" ]; then
+  pass "inbox-dedup.sh: keep-filed --apply leaves quarantine/ untouched"
+else
+  fail "inbox-dedup.sh: keep-filed --apply touched quarantine/"
+fi
+
+rm -rf "$IDROOT_C"
+
+fi # INBOX_DEDUP present
 
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
