@@ -1,0 +1,17 @@
+line1	reject:bad-json
+missing-field-test	reject:missing-field:kind
+warrant-range-test	reject:warrant-range
+kind-vocab-test	reject:kind-vocabulary
+kind-note-empty-test	reject:kind-note-empty
+scheduling-expiry-test	reject:scheduling-needs-expiry
+expires-shape-test	reject:expires-shape
+confidence-enum-test	reject:confidence-enum
+tier-enum-test	reject:tier-enum
+rationale-kind-test	reject:rationale-cites-kind
+rationale-evidence-test	reject:rationale-cites-evidence
+rationale-length-test	reject:rationale-length
+wren-halloway	reject:gate:touchpoints<2
+cap-scheduling-test	reject:cap:scheduling>active
+cap-unknown-test	reject:cap:unknown>close
+expired-nonzero-test	reject:expired-nonzero
+mara-quill	reject:stated-kind-changed

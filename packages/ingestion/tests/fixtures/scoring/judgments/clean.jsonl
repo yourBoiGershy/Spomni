@@ -1,0 +1,3 @@
+{"slug":"clean-friend-test","attention_warrant":45,"suggested_tier":"active","kind":"friend","kind_note":"Longtime friend, casual contact.","rationale":"touchpoints and days_since_last look steady for this friend.","confidence":"medium"}
+{"slug":"clean-scheduling-test","attention_warrant":30,"suggested_tier":"active","kind":"scheduling","kind_note":"Coordinating a single dinner.","kind_expires":"2026-09-20","rationale":"touchpoints and chat_days support scheduling for one event.","confidence":"high"}
+{"slug":"mara-quill","attention_warrant":75,"suggested_tier":"close","kind":"friend","kind_note":"Old friend from climbing gym, monthly dinners.","rationale":"touchpoints and meetings show a steady friend rhythm.","confidence":"high"}
