@@ -113,8 +113,8 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   met via the other package's `package.md` + core contracts, never its files.
 - Test commands (bash 3.2, no npm/jest — run all before any merge). The
   one-shot wrapper is `bash scripts/test-all.sh` (every suite below, the
-  query suite when node is present, plus `.claude/scripts/oss-guard.sh`; CI
-  runs the same). Individually:
+  node-gated suites (query, reachouts-readonly) when node is present, plus
+  `.claude/scripts/oss-guard.sh`; CI runs the same). Individually:
   `bash packages/core/tests/run-store-tests.sh`,
   `bash packages/core/tests/run-render-tests.sh`,
   `bash packages/connectors/tests/run-capture-tests.sh`,
@@ -127,12 +127,16 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   `bash packages/ingestion/tests/run-shard-tests.sh`,
   `bash packages/ingestion/tests/run-structured-tests.sh`,
   `bash packages/ingestion/tests/run-feedback-tests.sh`,
+  `bash packages/ingestion/tests/run-embeddings-tests.sh`,
   `bash packages/attention/tests/run-attention-tests.sh`,
   `bash packages/attention/tests/run-capacity-tests.sh`, and
   `bash packages/attention/tests/run-queue-tests.sh`,
   `bash packages/query/tests/run-query-tests.sh` (needs node ≥ 22.6 +
-  `npm ci` in `packages/query/server`), and
-  `bash .claude/scripts/tests/run-oss-guard-tests.sh`.
+  `npm ci` in `packages/query/server`),
+  `bash packages/query/tests/run-reachouts-readonly.sh` (needs node, same
+  `npm ci`),
+  `bash .claude/scripts/tests/run-oss-guard-tests.sh`, and
+  `bash .claude/scripts/tests/run-gitignore-tests.sh`.
   Open-source guard (data-dir tripwire, secrets/PII scan, never-send lint,
   enrichment denylist): `bash .claude/scripts/oss-guard.sh`.
   Store sanity: `bash packages/core/scripts/validate-store.sh <store-dir>`
