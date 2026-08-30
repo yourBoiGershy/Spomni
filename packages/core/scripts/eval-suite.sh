@@ -40,8 +40,12 @@
 #                          wave of already-in-flight cases may run past the
 #                          cap before it is checked, since cost is only
 #                          knowable once a case's RESULT line is captured.
+#                          At the default RA_EVAL_PARALLEL=9, this means the
+#                          between-wave cap check has coarser granularity
+#                          than at smaller widths — overshoot is bounded by
+#                          one wave of up to 9 in-flight cases, not 4.
 #   RA_EVAL_PARALLEL       number of cases to run concurrently per wave
-#                          (default 4; must be >= 1). Each case in a wave
+#                          (default 9; must be >= 1). Each case in a wave
 #                          runs as a background job with its full runner
 #                          output captured to a private temp file; the
 #                          suite waits for the whole wave, then parses each
@@ -130,7 +134,7 @@ RUN_AGENT="${RA_EVAL_RUNNER_AGENT:-$SCRIPT_DIR/eval-run.sh}"
 RUN_SKILL="${RA_EVAL_RUNNER_SKILL:-$SCRIPT_DIR/eval-run-skill.sh}"
 
 MAX_COST_USD="${RA_EVAL_MAX_COST_USD:-2.00}"
-PARALLEL="${RA_EVAL_PARALLEL:-4}"
+PARALLEL="${RA_EVAL_PARALLEL:-9}"
 SMOKE_ONLY="${RA_EVAL_SMOKE:-0}"
 RERUN_FAILED="${RA_EVAL_RERUN_FAILED:-0}"
 DRY_RUN="${RA_EVAL_DRY_RUN:-0}"
@@ -253,7 +257,7 @@ fi
 
 # Validate/clamp RA_EVAL_PARALLEL: must be a positive integer.
 case "$PARALLEL" in
-  ''|*[!0-9]*) PARALLEL=4 ;;
+  ''|*[!0-9]*) PARALLEL=9 ;;
 esac
 if [ "$PARALLEL" -lt 1 ]; then
   PARALLEL=1
