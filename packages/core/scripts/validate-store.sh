@@ -67,6 +67,13 @@
 # Portable to bash 3.2: no associative arrays, no mapfile.
 
 set -u
+# Force the C locale for every regex/glob/case-class comparison and
+# collation in this script (chunk 38 round-3): measurably cheaper at
+# 10000+ files, and every fixture is plain ASCII so there is no
+# behavior change — verified byte-identical against the original
+# script on fixtures/store, fixtures/corrupted, and a 1000/10000
+# scale store.
+export LC_ALL=C
 
 store_dir="${1:-.}"
 
@@ -82,6 +89,107 @@ report() {
 kebab() {
     # kebab-case a display name, e.g. "Dana Whitfield" -> "dana-whitfield"
     printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+}
+
+# Buckets people slugs by a cheap 2-character hash so check_links_resolve's
+# membership test scans a short per-bucket string instead of one giant
+# "|slug1|slug2|...|" string that grows with the whole store's people count
+# (chunk 38 round-3: at 1000 people that global-string scan was O(people) per
+# link, done once per link in every interactions/wakeups/signals file — the
+# long pole at 1000/10000 scale). PEOPLE_BUCKETS is a plain indexed array
+# (bash 3.2 has no associative arrays), sized generously (37*37 = 1369
+# buckets from two base-37 "digits") so the average chain stays tiny even at
+# 1000+ people. hash_bucket() dispatches on characters via `case` (a
+# printf -v '%d' "'$c" per-character ordinal conversion measured slower at
+# this call volume — ~2000 lookups/file-batch — than plain `case` matching).
+PEOPLE_BUCKETS=()
+
+hash_bucket() {
+    # Sets global HASH_BUCKET to a 0..HASH_BUCKET_COUNT-1 bucket index for
+    # $1, derived from its first two characters via pure-bash `case` pattern
+    # matching (no printf/external-process char-to-ordinal conversion, which
+    # measured as the more expensive approach at this call volume).
+    local s="$1"
+    local c1="${s:0:1}" c2="${s:1:1}" v1 v2
+    case "${c1}" in
+        a) v1=0 ;;
+        b) v1=1 ;;
+        c) v1=2 ;;
+        d) v1=3 ;;
+        e) v1=4 ;;
+        f) v1=5 ;;
+        g) v1=6 ;;
+        h) v1=7 ;;
+        i) v1=8 ;;
+        j) v1=9 ;;
+        k) v1=10 ;;
+        l) v1=11 ;;
+        m) v1=12 ;;
+        n) v1=13 ;;
+        o) v1=14 ;;
+        p) v1=15 ;;
+        q) v1=16 ;;
+        r) v1=17 ;;
+        s) v1=18 ;;
+        t) v1=19 ;;
+        u) v1=20 ;;
+        v) v1=21 ;;
+        w) v1=22 ;;
+        x) v1=23 ;;
+        y) v1=24 ;;
+        z) v1=25 ;;
+        0) v1=26 ;;
+        1) v1=27 ;;
+        2) v1=28 ;;
+        3) v1=29 ;;
+        4) v1=30 ;;
+        5) v1=31 ;;
+        6) v1=32 ;;
+        7) v1=33 ;;
+        8) v1=34 ;;
+        9) v1=35 ;;
+        *) v1=36 ;;
+    esac
+    case "${c2}" in
+        a) v2=0 ;;
+        b) v2=1 ;;
+        c) v2=2 ;;
+        d) v2=3 ;;
+        e) v2=4 ;;
+        f) v2=5 ;;
+        g) v2=6 ;;
+        h) v2=7 ;;
+        i) v2=8 ;;
+        j) v2=9 ;;
+        k) v2=10 ;;
+        l) v2=11 ;;
+        m) v2=12 ;;
+        n) v2=13 ;;
+        o) v2=14 ;;
+        p) v2=15 ;;
+        q) v2=16 ;;
+        r) v2=17 ;;
+        s) v2=18 ;;
+        t) v2=19 ;;
+        u) v2=20 ;;
+        v) v2=21 ;;
+        w) v2=22 ;;
+        x) v2=23 ;;
+        y) v2=24 ;;
+        z) v2=25 ;;
+        0) v2=26 ;;
+        1) v2=27 ;;
+        2) v2=28 ;;
+        3) v2=29 ;;
+        4) v2=30 ;;
+        5) v2=31 ;;
+        6) v2=32 ;;
+        7) v2=33 ;;
+        8) v2=34 ;;
+        9) v2=35 ;;
+        *) v2=36 ;;
+    esac
+    HASH_BUCKET=$(( v1 * 37 + v2 ))
 }
 
 work_dir=$(mktemp -d)
@@ -151,15 +259,26 @@ find_frontmatter_end() {
 
 # Reports malformed key:value / list lines inside the frontmatter block.
 check_frontmatter_lines_parseable() {
+    # (chunk 38 round-3: `case`/parameter-expansion checks instead of
+    # `[[ =~ ]]` regex — measured cheaper at this call volume, since this
+    # runs on every frontmatter line of every file.)
     local file="$1" s="$2" e="$3"
     ensure_file_lines "$file"
-    local i line
+    local i line key
     for ((i = s; i <= e; i++)); do
         line="${FILE_LINES[$i]}"
-        if [[ "$line" =~ ^[A-Za-z0-9_-]+: ]]; then continue; fi
-        if [[ "$line" =~ ^[[:space:]] ]]; then continue; fi
-        if [[ "$line" =~ ^- ]]; then continue; fi
-        if [[ "$line" =~ ^[[:space:]]*$ ]]; then continue; fi
+        # ^[A-Za-z0-9_-]+: — a colon-terminated key made only of those chars
+        key="${line%%:*}"
+        if [ "$key" != "$line" ] && [ -n "$key" ] && [ -z "${key//[A-Za-z0-9_-]/}" ]; then
+            continue
+        fi
+        case "$line" in
+            [[:space:]]*) continue ;;  # ^[[:space:]]
+            -*) continue ;;            # ^-
+        esac
+        if [ -z "${line//[[:space:]]/}" ]; then  # ^[[:space:]]*$ (incl. empty)
+            continue
+        fi
         report "$file" "$i" "malformed frontmatter line (not a key: value or list line)"
     done
 }
@@ -392,10 +511,10 @@ field_links() {
 all_links_in_file() {
     local file="$1"
     ensure_file_lines "$file"
-    local i whole=""
-    for ((i = 1; i <= FILE_LINE_COUNT; i++)); do
-        whole="${whole}${FILE_LINES[$i]}"$'\n'
-    done
+    local whole=""
+    if [ "$FILE_LINE_COUNT" -gt 0 ]; then
+        printf -v whole '%s\n' "${FILE_LINES[@]}"
+    fi
     local seen_pipe="|" slug rest="$whole"
     while [[ "$rest" =~ \[\[([A-Za-z0-9_-]+)\]\] ]]; do
         slug="${BASH_REMATCH[1]}"
@@ -414,17 +533,18 @@ check_links_resolve() {
     # so this whole check runs with zero subshell forks per file.
     local file="$1"
     ensure_file_lines "$file"
-    local i whole=""
-    for ((i = 1; i <= FILE_LINE_COUNT; i++)); do
-        whole="${whole}${FILE_LINES[$i]}"$'\n'
-    done
-    local seen_pipe="|" slug rest="$whole" link_line
+    local whole=""
+    if [ "$FILE_LINE_COUNT" -gt 0 ]; then
+        printf -v whole '%s\n' "${FILE_LINES[@]}"
+    fi
+    local i seen_pipe="|" slug rest="$whole" link_line
     while [[ "$rest" =~ \[\[([A-Za-z0-9_-]+)\]\] ]]; do
         slug="${BASH_REMATCH[1]}"
         rest="${rest#*"${BASH_REMATCH[0]}"}"
         [[ "$seen_pipe" != *"|${slug}|"* ]] || continue
         seen_pipe="${seen_pipe}${slug}|"
-        if [[ "$people_slugs_pipe" != *"|${slug}|"* ]]; then
+        hash_bucket "$slug"
+        if [[ "${PEOPLE_BUCKETS[$HASH_BUCKET]-}" != *"|${slug}|"* ]]; then
             link_line=""
             for ((i = 1; i <= FILE_LINE_COUNT; i++)); do
                 if [[ "${FILE_LINES[$i]}" == *"[[${slug}]]"* ]]; then
@@ -453,7 +573,6 @@ done
 # validate each file.
 # ---------------------------------------------------------------------------
 
-people_slugs_pipe="|"
 people_files=()
 if [ -d "$store_dir/people" ]; then
     for f in "$store_dir/people"/*.md; do
@@ -461,7 +580,8 @@ if [ -d "$store_dir/people" ]; then
         base="${f##*/}"
         base="${base%.md}"
         printf '%s\n' "$base" >> "$people_slugs_file"
-        people_slugs_pipe="${people_slugs_pipe}${base}|"
+        hash_bucket "$base"
+        PEOPLE_BUCKETS[$HASH_BUCKET]="${PEOPLE_BUCKETS[$HASH_BUCKET]:-|}${base}|"
         people_files+=("$f")
     done
 fi
