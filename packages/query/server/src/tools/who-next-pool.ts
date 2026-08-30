@@ -71,6 +71,35 @@ function bulletTexts(sections: { heading: string; raw: string; bullets: string[]
   return section.bullets.map((line) => line.replace(/^- /, ""));
 }
 
+const STALE_MARKER = "[stale]";
+const UNVERIFIED_SINCE_RE = /unverified since (\d{4}-\d{2}-\d{2})/;
+
+/** Facts bullets, "[stale]" ones dropped (packages/ingestion/specs/
+ * currency.md: inferred-* provenance the derived writer has flagged never
+ * surfaces as a talking point) — matches who-next-direct.sh's
+ * `grep -v '\[stale\]'`. */
+function factsBulletTexts(sections: { heading: string; raw: string; bullets: string[] }[]): string[] {
+  return bulletTexts(sections, "Facts").filter((text) => !text.includes(STALE_MARKER));
+}
+
+/** Open-threads bullets, with an "unverified since D" bullet dropped when D
+ * is older than `threshold` (the person's second-most-recent interaction
+ * date, string-compared per packages/ingestion/specs/currency.md's
+ * "Consumers" — it went stale before the touch before last, not just the
+ * latest one). `threshold == null` (fewer than two interactions on file)
+ * keeps everything; bullets without the marker always pass through. */
+function openThreadsBulletTexts(
+  sections: { heading: string; raw: string; bullets: string[] }[],
+  threshold: string | null,
+): string[] {
+  return bulletTexts(sections, "Open threads").filter((text) => {
+    const m = UNVERIFIED_SINCE_RE.exec(text);
+    if (!m) return true;
+    if (threshold == null) return true;
+    return !(m[1] < threshold);
+  });
+}
+
 /** Every non-blank line under a `## <heading>` section, original spacing
  * preserved, joined with " " — matches who-next-direct.sh's `NF > 0` per-line
  * capture for "## Personal details" (prose, not necessarily bullets). */
@@ -103,6 +132,9 @@ function buildRawCandidates(reader: StoreReader): RawCandidate[] {
     const frontmatter = person.frontmatter as Record<string, unknown>;
     const fmName = typeof frontmatter.name === "string" ? frontmatter.name : "";
     const fmTier = typeof frontmatter.tier === "string" && frontmatter.tier !== "" ? frontmatter.tier : null;
+    // stats.json's interactions[] is sorted most-recent-first
+    // (build-stats.sh); index 1 is the second-most-recent interaction date.
+    const threshold = statsEntry?.interactions?.[1]?.date ?? null;
 
     out.push({
       slug,
@@ -114,9 +146,9 @@ function buildRawCandidates(reader: StoreReader): RawCandidate[] {
       open_threads: statsEntry?.open_threads ?? 0,
       commitments_user: statsEntry?.commitments?.user ?? 0,
       tier: statsEntry?.tier ?? fmTier,
-      facts: bulletTexts(person.sections, "Facts"),
+      facts: factsBulletTexts(person.sections),
       personal: nonBlankLinesJoined(person.sections, "Personal details"),
-      open_threads_text: bulletTexts(person.sections, "Open threads").join("; "),
+      open_threads_text: openThreadsBulletTexts(person.sections, threshold).join("; "),
     });
   }
   return out;
@@ -219,11 +251,12 @@ export function registerWhoNextPool(server: McpServer, reader: StoreReader): voi
       title: "Who-next candidate pool",
       description:
         "Read-only, one-call candidate pool for the /who-next skill: same pre-filtered " +
-        "(14-day cooldown, mode rules, transactional/linkedin-outreach exclusions), " +
-        "pre-ranked people as packages/query/scripts/who-next-direct.sh, in the same order. " +
-        "Each candidate carries its facts, personal details, and open-threads text inline " +
-        "(no per-person get_person follow-up needed) — the skill judges from those, never " +
-        "from pool order alone.",
+        "(14-day cooldown, mode rules, transactional/linkedin-outreach exclusions, " +
+        "[stale]-flagged facts dropped, and an \"unverified since D\" open thread dropped " +
+        "once D predates the person's second-most-recent interaction), pre-ranked people " +
+        "as packages/query/scripts/who-next-direct.sh, in the same order. Each candidate " +
+        "carries its facts, personal details, and open-threads text inline (no per-person " +
+        "get_person follow-up needed) — the skill judges from those, never from pool order alone.",
       inputSchema,
     },
     ({ mode, limit, today, include_transactional }) => {

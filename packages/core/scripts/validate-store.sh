@@ -9,7 +9,9 @@
 #   2. Enum fields are valid per contract (wakeup status/origin, signal
 #      confidence, person tier).
 #   3. Every [[slug]] wiki-link (frontmatter or body) resolves to
-#      people/<slug>.md.
+#      people/<slug>.md. Exception: `[[self]]` is a reserved slug for the
+#      user themselves (packages/core/contracts/wakeup.md) and never needs
+#      a people/self.md file.
 #   4. No orphan interactions (every interaction links >=1 existing person).
 #   5. No duplicate person slugs (kebab-cased `name` collisions).
 #   Plus a contract-called-out rule: every person `## Facts` bullet carries a
@@ -31,7 +33,8 @@
 #      present without `kind: event-proposal` is an error; a non-null
 #      `created-event-id` requires both a non-null `confirmed-on` and
 #      `kind: event-proposal`.
-#   8. person.md accepts schema_version 1.0.0, 1.1.0, 1.2.0, and 1.3.0. 1.1.0 kind
+#   8. person.md accepts schema_version 1.0.0, 1.1.0, 1.2.0, 1.3.0, and 1.4.0.
+#      1.1.0 kind
 #      fields (optional, plan 30): when `kind` is present it must be one of
 #      the D3 vocabulary
 #      (friend/family/collaborator/professional/community/scheduling/
@@ -42,7 +45,16 @@
 #      `kind_*` field present without `kind` is an error. 1.2.0 `tier_source`
 #      (optional, plan 31 D4): when present, `tier` must also be present
 #      (else an error), and `tier_source` must be `derived` or
-#      `stated-by-user`.
+#      `stated-by-user`. 1.4.0 currency model (plan 36): an `## Open
+#      threads` bullet ending in a paren group starting `(as-of` must match
+#      `(as-of YYYY-MM-DD[, unverified since YYYY-MM-DD])`; an optional
+#      `## Resolved` section, if present, must sit between Open threads and
+#      Personal details, with bullets ending `(resolved YYYY-MM-DD)`; a
+#      Facts `[stale]` marker is only legal on `inferred-public-web`/
+#      `inferred-from-thread` bullets — `[stale]` on a `told-by-user` fact
+#      is an error. `people/*.md` iteration is a flat, non-recursive glob,
+#      so `people/.merged/` (a later plan 36 unit's tombstone directory) is
+#      never descended into.
 #   9. `user-model.md` (singleton, optional — absence is not an error, per
 #      `contracts/user-model.md`): frontmatter parseable; `schema_version`
 #      present; `status` in draft|provisional|confirmed (plan 31 D6 adds
@@ -543,6 +555,10 @@ check_links_resolve() {
         rest="${rest#*"${BASH_REMATCH[0]}"}"
         [[ "$seen_pipe" != *"|${slug}|"* ]] || continue
         seen_pipe="${seen_pipe}${slug}|"
+        # `self` is reserved for the user themselves
+        # (packages/core/contracts/wakeup.md) and never resolves to a
+        # people/self.md file (plan 36).
+        [ "$slug" = "self" ] && continue
         hash_bucket "$slug"
         if [[ "${PEOPLE_BUCKETS[$HASH_BUCKET]-}" != *"|${slug}|"* ]]; then
             link_line=""
@@ -645,9 +661,11 @@ if [ "${#people_files[@]}" -gt 0 ]; then
     ' "${people_files[@]}" >> "$kebab_map_file"
 
     # Facts provenance-tag findings: replicates the per-file
-    # "## Facts" bullet scan + tag-regex check, emitting the exact report()
-    # arguments (file, line, message) instead of raw bullet text — the
-    # per-file loop below just replays these.
+    # "## Facts" bullet scan + tag-regex check (plus the 1.4.0 [stale]
+    # marker rule, plan 36: [stale] is only legal on inferred-public-web /
+    # inferred-from-thread facts, never on told-by-user), emitting the exact
+    # report() arguments (file, line, message) instead of raw bullet text —
+    # the per-file loop below just replays these.
     facts_findings_file="$work_dir/facts_findings.txt"
     awk '
         FNR==1 { infacts = 0 }
@@ -656,6 +674,8 @@ if [ "${#people_files[@]}" -gt 0 ]; then
         infacts && /^- / {
             if ($0 !~ /^- \*\*\[(told-by-user|inferred-public-web|inferred-from-thread)\]\*\*/) {
                 print FILENAME "\t" FNR "\tFacts bullet missing provenance tag ([told-by-user], [inferred-public-web], or [inferred-from-thread])"
+            } else if ($0 ~ /^- \*\*\[told-by-user\]\*\* \[stale\]/) {
+                print FILENAME "\t" FNR "\ttold-by-user fact marked [stale]"
             }
         }
     ' "${people_files[@]}" > "$facts_findings_file"
@@ -689,7 +709,7 @@ if [ -d "$store_dir/people" ]; then
         if [ -n "$person_sv_line" ]; then
             scalar_value "$f" "$person_sv_line" "schema_version"
             person_sv_val="$SCALAR_VAL"
-            check_enum "$f" "$person_sv_line" "schema_version" "$person_sv_val" "1\.0\.0|1\.1\.0|1\.2\.0|1\.3\.0"
+            check_enum "$f" "$person_sv_line" "schema_version" "$person_sv_val" "1\.0\.0|1\.1\.0|1\.2\.0|1\.3\.0|1\.4\.0"
         fi
         require_field "$f" "$fm_start" "$fm_body_end" "name"
         name_line="$FOUND_FIELD_LINE"
@@ -782,8 +802,10 @@ if [ -d "$store_dir/people" ]; then
             done
         fi
 
-        # Facts section: every bullet must carry a provenance tag. Findings
-        # were precomputed once for all people/*.md files above (see
+        # Facts section: every bullet must carry a provenance tag, and a
+        # [stale] marker (1.4.0, plan 36) is only legal on
+        # inferred-public-web/inferred-from-thread bullets. Findings were
+        # precomputed once for all people/*.md files above (see
         # "One-shot precomputation"); replay this file's share of them here,
         # in the same file-grouped, line-ordered form the old per-file
         # awk+grep scan produced.
@@ -797,6 +819,59 @@ if [ -d "$store_dir/people" ]; then
             report "$f" "$ff_line" "$ff_message"
             facts_idx=$((facts_idx + 1))
         done
+
+        # --- person.md 1.4.0 Open threads as-of / Resolved section (plan 36) ---
+        openthreads_bullets=$(awk '
+            /^## Open threads$/{insec=1; next}
+            /^## /{insec=0}
+            insec && /^- / { print NR":"$0 }
+        ' "$f")
+        if [ -n "$openthreads_bullets" ]; then
+            while IFS= read -r entry; do
+                [ -n "$entry" ] || continue
+                ln="${entry%%:*}"
+                txt="${entry#*:}"
+                if printf '%s' "$txt" | grep -qE '\(as-of'; then
+                    if ! printf '%s' "$txt" | grep -qE '\(as-of [0-9]{4}-[0-9]{2}-[0-9]{2}(, unverified since [0-9]{4}-[0-9]{2}-[0-9]{2})?\)[[:space:]]*$'; then
+                        report "$f" "$ln" "Open threads bullet has malformed as-of suffix"
+                    fi
+                fi
+            done <<EOF
+$openthreads_bullets
+EOF
+        fi
+
+        # `## Resolved` (optional, 1.4.0): must sit between Open threads and
+        # Personal details, and its bullets must end `(resolved YYYY-MM-DD)`.
+        section_headings=$(awk '/^## / { print NR":"$0 }' "$f")
+        resolved_line=$(printf '%s\n' "$section_headings" | awk -F: '$2=="## Resolved" {print; exit}')
+        if [ -n "$resolved_line" ]; then
+            openthreads_hdr=$(printf '%s\n' "$section_headings" | awk -F: '$2=="## Open threads" {print $1; exit}')
+            personaldetails_hdr=$(printf '%s\n' "$section_headings" | awk -F: '$2=="## Personal details" {print $1; exit}')
+            resolved_hdr="${resolved_line%%:*}"
+            if [ -z "$openthreads_hdr" ] || [ -z "$personaldetails_hdr" ] || \
+               [ "$resolved_hdr" -le "$openthreads_hdr" ] || [ "$resolved_hdr" -ge "$personaldetails_hdr" ]; then
+                report "$f" "$resolved_hdr" "## Resolved must sit between Open threads and Personal details"
+            fi
+
+            resolved_bullets=$(awk '
+                /^## Resolved$/{insec=1; next}
+                /^## /{insec=0}
+                insec && /^- / { print NR":"$0 }
+            ' "$f")
+            if [ -n "$resolved_bullets" ]; then
+                while IFS= read -r entry; do
+                    [ -n "$entry" ] || continue
+                    ln="${entry%%:*}"
+                    txt="${entry#*:}"
+                    if ! printf '%s' "$txt" | grep -qE '\(resolved [0-9]{4}-[0-9]{2}-[0-9]{2}\)[[:space:]]*$'; then
+                        report "$f" "$ln" "Resolved bullet has malformed resolved-date suffix"
+                    fi
+                done <<EOF
+$resolved_bullets
+EOF
+            fi
+        fi
 
         check_links_resolve "$f"
     done

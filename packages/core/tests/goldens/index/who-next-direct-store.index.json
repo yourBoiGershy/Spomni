@@ -71,6 +71,18 @@
       "landlord"
     ]
   },
+  "nadia-cho": {
+    "kind": "friend",
+    "kind_expires": null,
+    "kind_source": "stated-by-user",
+    "last-touch": "2026-07-15",
+    "location": "Denver, CO",
+    "org": "Independent",
+    "role": "Potter",
+    "tags": [
+      "friend"
+    ]
+  },
   "priya": {
     "kind": null,
     "kind_expires": null,

@@ -194,6 +194,64 @@ else
   fail "ines-castellano: expected co_attended >= 1 and upcoming=2026-09-03, got co_attended=$ines_co_attended upcoming=$ines_upcoming"
 fi
 
+# --- assertion 8b: store currency (specs/currency.md) — talking_points
+# drops an "unverified since D" Open threads bullet when D predates the
+# person's second-most-recent interaction, keeps a fresh as-of bullet and
+# a bare pre-1.4.0 bullet, and never surfaces a "## Resolved" bullet.
+# dex-morrow's interactions (committed fixture, unedited) are
+# 2026-07-20 / 2026-08-03 / 2026-08-18 -> second-most-recent is
+# 2026-08-03. Edited only in a scratch copy — the committed fixture and
+# its evidence.jsonl golden are untouched. ---
+ev_currency_store="$(fresh_store ev-currency)"
+cat > "$ev_currency_store/people/dex-morrow.md" <<'EOF'
+---
+schema_version: 1.4.0
+name: Dex Morrow
+org: Morrow Growth Partners
+role:
+location:
+tags: []
+birthday:
+how-met: Cold-emailed with a pitch for Morrow Growth Partners' services
+last-touch: 2026-08-18
+---
+
+## Facts
+
+- **[told-by-user]** Keeps sending pitch emails without a reply from me (2026-08-20)
+
+## Open threads
+
+- Wants intro to a portfolio company (as-of 2026-08-18)
+- Asked about doubling the pitch budget (as-of 2026-07-20, unverified since 2026-07-25)
+- No open thread — pitches have gone unanswered so far.
+
+## Resolved
+
+- Sent a follow-up thank-you email (resolved 2026-08-10)
+
+## Personal details
+
+No personal details on file — relationship is limited to unsolicited pitch
+emails.
+EOF
+ev_currency_out="$WORK_DIR/evidence-currency.jsonl"
+"$DERIVE_EVIDENCE" "$ev_currency_store" --person dex-morrow --today "$TODAY" --config "$CONFIG" \
+  >"$ev_currency_out" 2>"$WORK_DIR/ev-currency.err"
+dex_items="$(jq -c '.talking_points.items' "$ev_currency_out")"
+dex_count="$(jq -r '.talking_points.count' "$ev_currency_out")"
+c8b_ok=1
+[ "$dex_count" = "2" ] || c8b_ok=0
+printf '%s' "$dex_items" | grep -q "Wants intro to a portfolio company" || c8b_ok=0
+printf '%s' "$dex_items" | grep -q "No open thread" || c8b_ok=0
+printf '%s' "$dex_items" | grep -q "doubling the pitch budget" && c8b_ok=0
+printf '%s' "$dex_items" | grep -q "thank-you email" && c8b_ok=0
+if [ "$c8b_ok" -eq 1 ]; then
+  pass "derive-evidence.sh: currency rule drops unverified-before-second-touch bullet, keeps fresh as-of + bare bullets, no Resolved leak (dex-morrow, scratch copy)"
+else
+  fail "derive-evidence.sh: currency rule mismatch on dex-morrow (count=$dex_count items=$dex_items)"
+fi
+
 # ==========================================================================
 # SECTION B — derive-user-model.sh
 # ==========================================================================

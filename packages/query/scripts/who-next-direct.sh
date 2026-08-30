@@ -151,11 +151,11 @@ PEOPLE_DIR="${STORE_DIR}/people"
 
 # --- per-person frontmatter/body extraction ------------------------------
 #
-# One awk pass over every people/*.md file (instead of the old ~5 process
+# One awk pass over every people/*.md file (instead of the old ~5+ process
 # spawns per person: two awk/sed calls for frontmatter fields, two more for
 # the Facts/Open threads/Personal details sections, and two jq calls to
 # pull the index/stats entries) emits one JSONL line per slug with the
-# raw per-file fields (name, frontmatter tier, facts[], open_threads_text,
+# raw per-file fields (name, frontmatter tier, facts[], open_threads_raw[],
 # personal). A single follow-up jq call then joins those lines against
 # index.json and stats.json (via --slurpfile) to build the same per-person
 # object shape the unchanged filter/rank jq program below consumes. Files
@@ -163,6 +163,22 @@ PEOPLE_DIR="${STORE_DIR}/people"
 # stable sort matches the old behaviour byte-for-byte; only slugs present
 # in index.json as an object survive the join (mirrors the old loop, which
 # iterated index.json's keys and skipped missing files).
+#
+# Two specs/currency.md "Consumers" rules, ported from the old per-person
+# loop, are folded into this pipeline rather than dropped:
+#   (a) [stale] facts (inferred-* provenance the derived writer has
+#       flagged) never surface as talking points — dropped in the awk
+#       pass, same as the old `grep -v '\[stale\]'`.
+#   (b) an "unverified since D" open thread is dropped when D is older
+#       than the person's second-most-recent interaction date — it went
+#       stale before the touch before last, not just the latest one. Bare
+#       bullets and fresh "as-of" bullets (no "unverified since" marker)
+#       always pass through untouched; threshold="" (fewer than two
+#       interactions on file) keeps everything. The awk pass can't see
+#       stats.json, so it emits the raw, unfiltered Open-threads bullets
+#       as open_threads_raw[]; the join-jq stage below (which has
+#       $se.interactions[1].date) filters and joins them into
+#       open_threads_text with the exact old "; "-joined format.
 
 TMP_RAW="$(mktemp)"
 TMP_AWK="$(mktemp)"
@@ -196,18 +212,18 @@ if [ "${#PEOPLE_FILES[@]}" -gt 0 ]; then
         if (i > 1) out = out ","
         out = out "\"" esc(facts[i]) "\""
       }
-      out = out "]"
-      ot = ""
+      out = out "],\"open_threads_raw\":["
       for (i = 1; i <= nopen; i++) {
-        if (i > 1) ot = ot "; "
-        ot = ot openarr[i]
+        if (i > 1) out = out ","
+        out = out "\"" esc(openarr[i]) "\""
       }
+      out = out "]"
       pers = ""
       for (i = 1; i <= npers; i++) {
         if (i > 1) pers = pers " "
         pers = pers persarr[i]
       }
-      out = out ",\"open_threads_text\":\"" esc(ot) "\",\"personal\":\"" esc(pers) "\"}"
+      out = out ",\"personal\":\"" esc(pers) "\"}"
       print out
     }
     FNR == 1 {
@@ -230,10 +246,13 @@ if [ "${#PEOPLE_FILES[@]}" -gt 0 ]; then
     /^## / { insec = ""; next }
     insec == "facts" && /^- / {
       v = $0; sub(/^- /, "", v)
-      if (length(v) > 0) { nfacts++; facts[nfacts] = v }
+      # (a) [stale] facts never surface as talking points.
+      if (length(v) > 0 && index(v, "[stale]") == 0) { nfacts++; facts[nfacts] = v }
     }
     insec == "open" && /^- / {
       v = $0; sub(/^- /, "", v)
+      # (b) raw bullets — the unverified-since threshold filter runs in
+      # the join-jq stage below, where stats.json is available.
       nopen++; openarr[nopen] = v
     }
     insec == "personal" && NF > 0 { npers++; persarr[npers] = $0 }
@@ -255,6 +274,19 @@ if [ -s "$TMP_AWK" ]; then
     | ($idxmap[.slug]) as $ie
     | select($ie != null and ($ie | type) == "object")
     | ($stmap[.slug] // {}) as $se
+    # (b) unverified-since threshold: stats.json interactions[] is
+    # sorted most-recent-first (build-stats.sh), so index 1 is the
+    # second-most-recent interaction date. Fewer than two interactions on
+    # file means threshold is "" and nothing is dropped.
+    | (($se.interactions[1].date) // "") as $threshold
+    | (
+        (.open_threads_raw // [])
+        | map(
+            ((capture("unverified since (?<d>[0-9][0-9-]*)") // {}).d) as $d
+            | if ($d != null and $threshold != "" and $d < $threshold) then empty else . end
+          )
+        | join("; ")
+      ) as $open_threads_text
     | {
         slug: .slug,
         name: (if .name == "" then .slug else .name end),
@@ -267,7 +299,7 @@ if [ -s "$TMP_AWK" ]; then
         tier: ($se.tier // (if .tier == "" then null else .tier end)),
         facts: .facts,
         personal: .personal,
-        open_threads_text: .open_threads_text,
+        open_threads_text: $open_threads_text,
         today: $today
       }
     ' "$TMP_AWK" > "$TMP_RAW"

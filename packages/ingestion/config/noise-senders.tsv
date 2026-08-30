@@ -1,0 +1,39 @@
+# packages/ingestion/config/noise-senders.tsv
+#
+# Rule 6 (noise-sender) pattern table for
+# packages/ingestion/scripts/triage-inbox.sh, per
+# packages/ingestion/specs/import-triage.md rule 6. Columns are tab-
+# separated: name<TAB>regex<TAB>scope. `scope` is `from` (matched against
+# participant-hints + the body's From: header) or `subject` (matched
+# against the Subject: line only). `regex` is `grep -E -i`. `#`-prefixed
+# and blank lines are ignored.
+#
+# A local override table lives at <data-dir>/noise-senders.local.tsv
+# (same columns, optional). It is appended after these shipped rows; a
+# local row sharing a shipped row's `name` overrides that shipped row
+# entirely (the shipped row is dropped, not both applied).
+#
+# Precision-first (D4, specs/import-triage.md): every pattern is scoped to
+# a specific system/notification local-part or domain — never a bare
+# personal domain. Any doubt falls through to normal debrief judgment.
+#
+# Note: several service local-parts a naive pattern would reach for here
+# (e.g. "notifications@"/"noreply@" at any domain) are already caught by
+# rule 1 (noreply-marketing), which runs before this rule and is not
+# domain-scoped — duplicating them here would be dead code, since
+# first-match-wins means rule 1 always wins that race. The rows below are
+# deliberately scoped to service local-parts rule 1 does *not* already
+# cover (support/team/bot/deploy/ci/billing-style addresses, calendar/
+# accounts/drive-share system mail, etc.).
+
+github	(support|team|actions|dependabot|bot)@github\.com	from
+vercel	(team|deploy|bot)@vercel\.com	from
+slack	(feedback|bot|apps)@slack\.com	from
+google-notifications	(calendar-notification|accounts|drive-shares)@google\.com	from
+ci-sender	(^|[^a-z0-9.])(ci|builds?)@|circleci\.com|buildkite\.com|travis-ci\.	from
+security	(security@|no-?reply@.*security|account-security@)	from
+newsletter	(newsletter@|substack\.com|mailchimp\.com|sendgrid\.net|hubspot\.com)	from
+transactional	(receipts?@|billing@|invoice@|orders?@)	from
+ci-subject	^(re: )?\[?(ci|build) (failed|passed|succeeded)	subject
+verification-code-subject	your verification code	subject
+security-alert-subject	security alert	subject

@@ -68,6 +68,25 @@
 #     "bot", people: []).
 #   claude-results/not-json.json — a claude-result file whose "result"
 #     field is plain prose, not JSON at all.
+#   events/email-fixture.md — a type: email capture (no chatID/messages
+#     body, just Subject: + prose text), synthetic sender at example.net —
+#     thread-summary 1.1.0 --kind email input.
+#   summaries/email.json — thread-summary 1.1.0 output for
+#     email-fixture.md: kind email, chat_type single, chat_id == capture
+#     id (no Gmail thread id on this fixture), one person, one open
+#     thread, no facts/commitments.
+#   claude-results/email.json — a claude -p --output-format json result
+#     whose fenced "result" JSON is schema-valid 1.1.0 kind: email output
+#     matching email-fixture.md's capture id.
+#   events/currency-fixture.md — a single-day (2026-07-20) chat capture
+#     between the user and "Casey Fields" (thread-fixture-casey-001,
+#     chat-casey-fields) — specs/currency.md latest-interaction-wins
+#     input, paired with an inline-built person fixture (see ft currency
+#     case) carrying pre-existing open threads.
+#   summaries/currency-fixture.json — thread-summary 1.1.0 for
+#     currency-fixture.md: kind chat, resolved_threads: ["A"],
+#     open_threads: ["C"], no facts (the person's told-by-user fact must
+#     stay untouched).
 
 set -u
 
@@ -207,13 +226,13 @@ try:
 except Exception as e:
     print("not-json: %s" % e)
     sys.exit(0)
-required = ["schema_version", "capture_id", "chat_id", "chat_type", "skip",
+required = ["schema_version", "capture_id", "chat_id", "chat_type", "kind", "skip",
             "people", "relationship_kind_guess", "gist", "open_threads",
-            "commitments", "facts"]
+            "resolved_threads", "commitments", "facts"]
 missing = [k for k in required if k not in data]
 if missing:
     print("missing: %s" % missing)
-elif len(data.keys()) != 11:
+elif len(data.keys()) != 13:
     print("key-count: %d" % len(data.keys()))
 elif data.get("capture_id") != "thread-fixture-pat-001":
     print("capture_id-mismatch: %r" % data.get("capture_id"))
@@ -366,6 +385,67 @@ else
   fail "case 8: --out path missing or not valid JSON"
 fi
 
+# -----------------------------------------------------------------------
+# Case 9 — --kind email + PARSE_TEST: validates a schema-valid 1.1.0
+# kind: email claude-result, no live model call.
+# -----------------------------------------------------------------------
+
+c9_out="$WORK_DIR/c9-out.txt"
+RA_THREAD_PARSE_TEST="$FIXTURES/claude-results/email.json" "$SUMMARIZE_THREAD" --kind email "$FIXTURES/events/email-fixture.md" > "$c9_out" 2>"$WORK_DIR/c9-err.txt"
+c9_status=$?
+
+if [ "$c9_status" -eq 0 ]; then
+  pass "case 9: --kind email + PARSE_TEST exits 0"
+else
+  fail "case 9: --kind email + PARSE_TEST exited $c9_status: $(cat "$WORK_DIR/c9-err.txt")"
+fi
+
+c9_check=$(python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+except Exception as e:
+    print("not-json: %s" % e)
+    sys.exit(0)
+if data.get("kind") != "email":
+    print("kind-mismatch: %r" % data.get("kind"))
+elif data.get("capture_id") != "thread-fixture-email-001":
+    print("capture_id-mismatch: %r" % data.get("capture_id"))
+elif data.get("chat_type") != "single":
+    print("chat_type-mismatch: %r" % data.get("chat_type"))
+elif "resolved_threads" not in data:
+    print("missing-resolved_threads")
+else:
+    print("ok")
+' "$c9_out")
+
+if [ "$c9_check" = "ok" ]; then
+  pass "case 9: stdout is schema-valid kind: email JSON with matching capture_id/chat_type"
+else
+  fail "case 9: $c9_check"
+fi
+
+# -----------------------------------------------------------------------
+# Case 10 — --kind email dry run: prompt contains the Subject line.
+# -----------------------------------------------------------------------
+
+c10_out="$WORK_DIR/c10-out.txt"
+RA_THREAD_DRY_RUN=1 "$SUMMARIZE_THREAD" --kind email "$FIXTURES/events/email-fixture.md" > "$c10_out" 2>"$WORK_DIR/c10-err.txt"
+c10_status=$?
+
+if [ "$c10_status" -eq 0 ]; then
+  pass "case 10: --kind email dry run exits 0"
+else
+  fail "case 10: --kind email dry run exited $c10_status: $(cat "$WORK_DIR/c10-err.txt")"
+fi
+
+if grep -qF 'Subject: Quick follow up on the proposal timeline' "$c10_out"; then
+  pass "case 10: --kind email dry run prompt contains the Subject line"
+else
+  fail "case 10: --kind email dry run prompt missing the Subject line, got: $(cat "$c10_out")"
+fi
+
 # =============================================================================
 # --- file-thread.sh ---
 # =============================================================================
@@ -401,7 +481,7 @@ ft1_out="$WORK_DIR/ft1-out.txt"
 "$FILE_THREAD" "$ft1_store" "$ft1_store/inbox/chat-fixture.md" "$FIXTURES/summaries/three-day.json" --data-dir "$ft1_data" > "$ft1_out" 2>"$WORK_DIR/ft1-err.txt"
 ft1_status=$?
 
-if [ "$ft1_status" -eq 0 ] && grep -q '^file-thread: thread-fixture-pat-001 people_new=1 people_touched=1 interactions=3 days=3 dedup_ids=1$' "$ft1_out"; then
+if [ "$ft1_status" -eq 0 ] && grep -Eq '^file-thread: thread-fixture-pat-001 people_new=1 people_touched=1 interactions=3 days=3 dedup_ids=1( resolved=[0-9]+ unverified=[0-9]+)?$' "$ft1_out"; then
   pass "ft case 1: prints the expected summary line and exits 0"
 else
   fail "ft case 1: exited $ft1_status, got: $(cat "$ft1_out") $(cat "$WORK_DIR/ft1-err.txt")"
@@ -471,7 +551,7 @@ cp "$FIXTURES/events/chat-fixture-subset.md" "$ft2_store/inbox/"
 ft2_out="$WORK_DIR/ft2-out.txt"
 "$FILE_THREAD" "$ft2_store" "$ft2_store/inbox/chat-fixture.md" "$FIXTURES/summaries/three-day.json" --data-dir "$ft2_data" > "$ft2_out" 2>"$WORK_DIR/ft2-err.txt"
 
-if grep -q 'dedup_ids=2$' "$ft2_out"; then
+if grep -Eq 'dedup_ids=2( resolved=[0-9]+ unverified=[0-9]+)?$' "$ft2_out"; then
   pass "ft case 2: dedup_ids=2 with a same-chatID subset capture present"
 else
   fail "ft case 2: expected dedup_ids=2, got: $(cat "$ft2_out")"
@@ -497,7 +577,7 @@ cp "$FIXTURES/events/reaction-only.md" "$ft3_store/inbox/"
 ft3_out="$WORK_DIR/ft3-out.txt"
 "$FILE_THREAD" "$ft3_store" "$ft3_store/inbox/reaction-only.md" "$FIXTURES/summaries/reaction-only.json" --data-dir "$ft3_data" > "$ft3_out" 2>"$WORK_DIR/ft3-err.txt"
 
-if grep -q '^file-thread: thread-fixture-reaction-only people_new=0 people_touched=0 interactions=0 days=0 dedup_ids=1$' "$ft3_out"; then
+if grep -Eq '^file-thread: thread-fixture-reaction-only people_new=0 people_touched=0 interactions=0 days=0 dedup_ids=1( resolved=[0-9]+ unverified=[0-9]+)?$' "$ft3_out"; then
   pass "ft case 3: a REACTION-only day + empty-text row produce no interaction"
 else
   fail "ft case 3: expected all-zero interactions/days, got: $(cat "$ft3_out")"
@@ -526,7 +606,7 @@ ft4_int_before="$(ls "$ft4_store/interactions" 2>/dev/null | wc -l | tr -d ' ')"
 ft4_rerun_out="$WORK_DIR/ft4-rerun-out.txt"
 "$FILE_THREAD" "$ft4_store" "$ft4_store/inbox/chat-fixture.md" "$FIXTURES/summaries/three-day.json" --data-dir "$ft4_data" > "$ft4_rerun_out" 2>"$WORK_DIR/ft4-rerun-err.txt"
 
-if grep -q '^file-thread: thread-fixture-pat-001 people_new=0 people_touched=0 interactions=0 days=0 dedup_ids=0$' "$ft4_rerun_out"; then
+if grep -Eq '^file-thread: thread-fixture-pat-001 people_new=0 people_touched=0 interactions=0 days=0 dedup_ids=0( resolved=0 unverified=0)?$' "$ft4_rerun_out"; then
   pass "ft case 4: rerun prints all zeros"
 else
   fail "ft case 4: rerun did not print all zeros, got: $(cat "$ft4_rerun_out")"
@@ -641,7 +721,7 @@ cp "$FIXTURES/events/chat-fixture.md" "$ft7_store/inbox/"
 ft7_out="$WORK_DIR/ft7-out.txt"
 "$FILE_THREAD" "$ft7_store" "$ft7_store/inbox/chat-fixture.md" "$FIXTURES/summaries/three-day.json" --data-dir "$ft7_data" --dry-run > "$ft7_out" 2>"$WORK_DIR/ft7-err.txt"
 
-if grep -q '^file-thread: thread-fixture-pat-001 people_new=1 people_touched=1 interactions=3 days=3 dedup_ids=1$' "$ft7_out"; then
+if grep -Eq '^file-thread: thread-fixture-pat-001 people_new=1 people_touched=1 interactions=3 days=3 dedup_ids=1( resolved=[0-9]+ unverified=[0-9]+)?$' "$ft7_out"; then
   pass "ft case 7: --dry-run still prints the summary line"
 else
   fail "ft case 7: --dry-run summary line missing/wrong: $(cat "$ft7_out")"
@@ -721,7 +801,7 @@ cp "$FIXTURES/events/chat-fixture-legacy.md" "$ft10_store/inbox/"
 ft10_out="$WORK_DIR/ft10-out.txt"
 "$FILE_THREAD" "$ft10_store" "$ft10_store/inbox/chat-fixture.md" "$FIXTURES/summaries/three-day.json" --data-dir "$ft10_data" > "$ft10_out" 2>"$WORK_DIR/ft10-err.txt"
 
-if grep -q 'dedup_ids=2$' "$ft10_out"; then
+if grep -Eq 'dedup_ids=2( resolved=[0-9]+ unverified=[0-9]+)?$' "$ft10_out"; then
   pass "ft case 10: dedup_ids=2 with a legacy (type: other, source: beeper) same-chatID capture present"
 else
   fail "ft case 10: expected dedup_ids=2, got: $(cat "$ft10_out")"
@@ -755,7 +835,7 @@ ft11_out="$WORK_DIR/ft11-out.txt"
 "$FILE_THREAD" "$ft11_store" "$ft11_store/inbox/chat-fixture-group.md" "$FIXTURES/summaries/group-partial.json" --data-dir "$ft11_data" > "$ft11_out" 2>"$WORK_DIR/ft11-err.txt"
 ft11_status=$?
 
-if [ "$ft11_status" -eq 0 ] && grep -q '^file-thread: thread-fixture-group-001 people_new=1 people_touched=1 interactions=2 days=2 dedup_ids=1$' "$ft11_out"; then
+if [ "$ft11_status" -eq 0 ] && grep -Eq '^file-thread: thread-fixture-group-001 people_new=1 people_touched=1 interactions=2 days=2 dedup_ids=1( resolved=[0-9]+ unverified=[0-9]+)?$' "$ft11_out"; then
   pass "ft case 11: group fixture prints interactions=2 days=2 (no dropped day)"
 else
   fail "ft case 11: exited $ft11_status, got: $(cat "$ft11_out") $(cat "$WORK_DIR/ft11-err.txt")"
@@ -778,6 +858,193 @@ if ! grep -q 'WARN: days=' "$WORK_DIR/ft11-err.txt" 2>/dev/null; then
   pass "ft case 11: no days!=interactions WARN assertion fired"
 else
   fail "ft case 11: unexpected WARN in stderr: $(cat "$WORK_DIR/ft11-err.txt")"
+fi
+
+# -----------------------------------------------------------------------
+# Case 12 — kind: email: exactly one interaction + one person filed, the
+# new person's Open threads bullet carries an (as-of ...) suffix, no
+# chatID union (single capture -> single interaction), idempotent rerun.
+# -----------------------------------------------------------------------
+
+ft12_store="$WORK_DIR/ft12-store"
+ft12_data="$WORK_DIR/ft12-data"
+ft_new_store "$ft12_store"
+cp "$FIXTURES/events/email-fixture.md" "$ft12_store/inbox/"
+
+ft12_out="$WORK_DIR/ft12-out.txt"
+"$FILE_THREAD" "$ft12_store" "$ft12_store/inbox/email-fixture.md" "$FIXTURES/summaries/email.json" --data-dir "$ft12_data" > "$ft12_out" 2>"$WORK_DIR/ft12-err.txt"
+ft12_status=$?
+
+ft12_people_count="$(ls "$ft12_store/people" 2>/dev/null | wc -l | tr -d ' ')"
+ft12_int_count="$(ls "$ft12_store/interactions" 2>/dev/null | wc -l | tr -d ' ')"
+
+if [ "$ft12_status" -eq 0 ] && [ "$ft12_people_count" = "1" ] && [ "$ft12_int_count" = "1" ]; then
+  pass "ft case 12: kind email files exactly one person and one interaction"
+else
+  fail "ft case 12: exited $ft12_status, people=$ft12_people_count interactions=$ft12_int_count: $(cat "$ft12_out") $(cat "$WORK_DIR/ft12-err.txt")"
+fi
+
+ft12_person_file="$(ls "$ft12_store/people"/*.md 2>/dev/null | head -1)"
+if [ -n "$ft12_person_file" ] && grep -qE '^- confirm proposal timeline \(as-of [0-9]{4}-[0-9]{2}-[0-9]{2}\)$' "$ft12_person_file"; then
+  pass "ft case 12: new person's Open threads bullet carries an (as-of ...) suffix"
+else
+  fail "ft case 12: expected an (as-of ...) open-thread bullet, got: $(cat "$ft12_person_file" 2>/dev/null)"
+fi
+
+ft12_rerun_out="$WORK_DIR/ft12-rerun-out.txt"
+"$FILE_THREAD" "$ft12_store" "$ft12_store/inbox/email-fixture.md" "$FIXTURES/summaries/email.json" --data-dir "$ft12_data" > "$ft12_rerun_out" 2>"$WORK_DIR/ft12-rerun-err.txt"
+ft12_people_after="$(ls "$ft12_store/people" 2>/dev/null | wc -l | tr -d ' ')"
+ft12_int_after="$(ls "$ft12_store/interactions" 2>/dev/null | wc -l | tr -d ' ')"
+
+if [ "$ft12_people_count" = "$ft12_people_after" ] && [ "$ft12_int_count" = "$ft12_int_after" ]; then
+  pass "ft case 12: rerun over the same email capture is a no-op (file counts unchanged)"
+else
+  fail "ft case 12: rerun changed file counts: people $ft12_people_count->$ft12_people_after, interactions $ft12_int_count->$ft12_int_after"
+fi
+
+# -----------------------------------------------------------------------
+# Case 13 — store currency (specs/currency.md, plan 36): an existing
+# person with two open threads (one carrying an as-of date, one bare
+# pre-1.4.0 bullet) and a told-by-user fact is filed against with
+# resolved_threads: ["A"], open_threads: ["C"]. A resolves into
+# ## Resolved; the bare bullet B demotes to "unverified since" the filed
+# date (as-of taken from the person's PREVIOUS last-touch); C is added
+# fresh; the told-by-user fact is untouched; a rerun is a true no-op.
+# -----------------------------------------------------------------------
+
+ft13_store="$WORK_DIR/ft13-store"
+ft13_data="$WORK_DIR/ft13-data"
+ft_new_store "$ft13_store"
+cp "$FIXTURES/events/currency-fixture.md" "$ft13_store/inbox/"
+cat > "$ft13_store/people/casey-fields.md" <<'PERSONEOF'
+---
+schema_version: 1.4.0
+name: Casey Fields
+org:
+role:
+location:
+tags: []
+birthday:
+how-met:
+last-touch: 2026-07-05
+---
+
+## Facts
+
+- **[told-by-user]** keep me
+
+## Open threads
+
+- A (as-of 2026-07-01)
+- B
+
+## Personal details
+
+_none_
+PERSONEOF
+
+ft13_out="$WORK_DIR/ft13-out.txt"
+"$FILE_THREAD" "$ft13_store" "$ft13_store/inbox/currency-fixture.md" "$FIXTURES/summaries/currency-fixture.json" --data-dir "$ft13_data" > "$ft13_out" 2>"$WORK_DIR/ft13-err.txt"
+ft13_status=$?
+
+if [ "$ft13_status" -eq 0 ] && grep -Eq 'resolved=1 unverified=1[[:space:]]*$' "$ft13_out"; then
+  pass "ft case 13: summary line ends resolved=1 unverified=1"
+else
+  fail "ft case 13: exited $ft13_status, got: $(cat "$ft13_out") $(cat "$WORK_DIR/ft13-err.txt")"
+fi
+
+ft13_person="$ft13_store/people/casey-fields.md"
+
+if grep -Eq '^- A \(resolved 2026-07-20\)$' "$ft13_person"; then
+  pass "ft case 13: A moves to (resolved 2026-07-20)"
+else
+  fail "ft case 13: A not resolved as expected: $(cat "$ft13_person" 2>/dev/null)"
+fi
+
+ft13_resolved_bullets="$(awk '
+  /^## Resolved$/ { insec = 1; next }
+  /^## / { insec = 0 }
+  insec && /^- / { print }
+' "$ft13_person")"
+if printf '%s\n' "$ft13_resolved_bullets" | grep -Eq '^- A \(resolved 2026-07-20\)$'; then
+  pass "ft case 13: ## Resolved section created, carrying the A bullet"
+else
+  fail "ft case 13: ## Resolved section missing/wrong content: $ft13_resolved_bullets"
+fi
+
+if grep -Eq '^- B \(as-of 2026-07-05, unverified since 2026-07-20\)$' "$ft13_person"; then
+  pass "ft case 13: bare bullet B demotes using the person's PREVIOUS last-touch as as-of"
+else
+  fail "ft case 13: B not demoted as expected: $(cat "$ft13_person" 2>/dev/null)"
+fi
+
+if grep -Eq '^- C \(as-of 2026-07-20\)$' "$ft13_person"; then
+  pass "ft case 13: C added fresh with (as-of <filed date>)"
+else
+  fail "ft case 13: C not added as expected: $(cat "$ft13_person" 2>/dev/null)"
+fi
+
+if grep -qxF -e '- **[told-by-user]** keep me' "$ft13_person"; then
+  pass "ft case 13: told-by-user fact byte-identical, untouched"
+else
+  fail "ft case 13: told-by-user fact bullet changed: $(grep 'told-by-user' "$ft13_person" 2>/dev/null)"
+fi
+
+# Section order: ## Open threads < ## Resolved < ## Personal details.
+ft13_open_ln="$(grep -n '^## Open threads$' "$ft13_person" | head -1 | cut -d: -f1)"
+ft13_resolved_ln="$(grep -n '^## Resolved$' "$ft13_person" | head -1 | cut -d: -f1)"
+ft13_personal_ln="$(grep -n '^## Personal details$' "$ft13_person" | head -1 | cut -d: -f1)"
+if [ -n "$ft13_open_ln" ] && [ -n "$ft13_resolved_ln" ] && [ -n "$ft13_personal_ln" ] \
+  && [ "$ft13_open_ln" -lt "$ft13_resolved_ln" ] && [ "$ft13_resolved_ln" -lt "$ft13_personal_ln" ]; then
+  pass "ft case 13: ## Resolved sits between ## Open threads and ## Personal details"
+else
+  fail "ft case 13: section order wrong: open=$ft13_open_ln resolved=$ft13_resolved_ln personal=$ft13_personal_ln"
+fi
+
+# derive-evidence.sh's open-thread extraction (packages/ingestion/scripts/
+# derive-evidence.sh: `/^## Open threads/ { insec = 1; next } /^## / { insec
+# = 0 } insec && /^- /`) stops at the next `## ` heading, so `## Resolved`'s
+# bullets are excluded from the open-thread count without any change to
+# that script — asserted here at grep-level directly against the filed
+# person file per the brief (no derive-evidence.sh invocation, which needs
+# a full stats.json pipeline out of scope for this suite).
+ft13_openthread_bullets="$(awk '
+  /^## Open threads/ { insec = 1; next }
+  /^## / { insec = 0 }
+  insec && /^- / { print }
+' "$ft13_person")"
+if ! printf '%s\n' "$ft13_openthread_bullets" | grep -q 'resolved' \
+  && printf '%s\n' "$ft13_openthread_bullets" | grep -q '^- B ' \
+  && printf '%s\n' "$ft13_openthread_bullets" | grep -q '^- C '; then
+  pass "ft case 13: derive-evidence.sh's Open-threads awk scan excludes the Resolved bullet"
+else
+  fail "ft case 13: derive-evidence.sh-style scan picked up a resolved bullet or missed B/C: $ft13_openthread_bullets"
+fi
+
+"$BUILD_INDEX" "$ft13_store" >/dev/null 2>&1
+ft13_validate_out="$("$VALIDATE_STORE" "$ft13_store" 2>&1)"
+if [ $? -eq 0 ]; then
+  pass "ft case 13: validate-store.sh clean after build-index"
+else
+  fail "ft case 13: validate-store.sh not clean: $ft13_validate_out"
+fi
+
+ft13_snapshot="$WORK_DIR/ft13-person-snapshot.md"
+cp "$ft13_person" "$ft13_snapshot"
+
+ft13_rerun_out="$WORK_DIR/ft13-rerun-out.txt"
+"$FILE_THREAD" "$ft13_store" "$ft13_store/inbox/currency-fixture.md" "$FIXTURES/summaries/currency-fixture.json" --data-dir "$ft13_data" > "$ft13_rerun_out" 2>"$WORK_DIR/ft13-rerun-err.txt"
+
+if diff -q "$ft13_snapshot" "$ft13_person" >/dev/null 2>&1; then
+  pass "ft case 13: rerun leaves the person file byte-identical (idempotent)"
+else
+  fail "ft case 13: rerun changed the person file: $(diff "$ft13_snapshot" "$ft13_person")"
+fi
+
+if grep -Eq 'resolved=0 unverified=0[[:space:]]*$' "$ft13_rerun_out"; then
+  pass "ft case 13: rerun summary line ends resolved=0 unverified=0"
+else
+  fail "ft case 13: rerun summary line wrong, got: $(cat "$ft13_rerun_out")"
 fi
 
 fi

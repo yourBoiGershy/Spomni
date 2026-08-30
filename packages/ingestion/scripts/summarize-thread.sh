@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
 # summarize-thread.sh — one headless model call per chat thread, strict
-# JSON out (packages/ingestion/specs/thread-summary.md 1.0.0, plan 32 D1).
+# JSON out (packages/ingestion/specs/thread-summary.md 1.1.0, plan 32 D1 /
+# plan 36 A2).
 #
 # Usage:
-#   summarize-thread.sh <event-file> [--model <m>] [--out <path>]
+#   summarize-thread.sh <event-file> [--kind chat|email] [--model <m>]
+#                        [--out <path>] [--open-threads <file>]
 #
-# <event-file> is a chat-message capture event (capture-event 1.2.0):
-# YAML frontmatter followed by a single-line JSON body ({"chatID",
-# "accountID","network","title","chatType","messages":[...]}). This script
-# reads the whole thread once, prompts a headless `claude -p` call for a
-# structured summary (people, gist, open threads, commitments, provenance-
-# tagged facts), validates the result against thread-summary.md's schema,
-# and prints it (or writes it to --out).
+# <event-file> is, by default (--kind chat), a chat-message capture event
+# (capture-event 1.2.0): YAML frontmatter followed by a single-line JSON
+# body ({"chatID","accountID","network","title","chatType",
+# "messages":[...]}). With --kind email, <event-file> is an email capture
+# instead (frontmatter type: email, body Subject:/headers/text, no chatID).
+# This script reads the whole thread/email once, prompts a headless
+# `claude -p` call for a structured summary (people, gist, open threads,
+# resolved threads, commitments, provenance-tagged facts), validates the
+# result against thread-summary.md's schema, and prints it (or writes it to
+# --out). --open-threads <file> (one bullet per line, text only, no `- `
+# prefix or `(as-of ...)` suffix) injects a person's existing open threads
+# into the prompt so the model can echo back any it closes in
+# resolved_threads; omitted -> no list shown, resolved_threads always [].
 #
 # Env:
 #   RA_THREAD_MODEL          model override (default: sonnet -- faster and
@@ -41,6 +49,8 @@ set -u
 # -----------------------------------------------------------------------
 build_prompt() {
     local event_file="$1"
+    local kind="$2"
+    local open_threads_file="$3"
 
     python3 -c '
 import json
@@ -48,11 +58,13 @@ import re
 import sys
 
 path = sys.argv[1]
+kind = sys.argv[2]
+open_threads_path = sys.argv[3]
 
 with open(path) as f:
     raw = f.read()
 
-# Split frontmatter (--- ... ---) from the single-line JSON body.
+# Split frontmatter (--- ... ---) from the body text.
 m = re.match(r"^---\n(.*?)\n---\n(.*)$", raw, re.DOTALL)
 if not m:
     sys.stderr.write("summarize-thread.sh: event file missing frontmatter block\n")
@@ -71,6 +83,136 @@ if not capture_id:
     sys.stderr.write("summarize-thread.sh: event file frontmatter missing id field\n")
     sys.exit(2)
 
+def truthy(v):
+    return v is True or (isinstance(v, str) and v.strip().lower() == "true")
+
+open_threads = []
+if open_threads_path:
+    try:
+        with open(open_threads_path) as otf:
+            open_threads = [l.rstrip("\n") for l in otf if l.strip()]
+    except Exception as e:
+        sys.stderr.write("summarize-thread.sh: cannot read --open-threads file: %s\n" % e)
+        sys.exit(2)
+
+open_threads_block = ""
+if open_threads:
+    bullets = "\n".join("- %s" % t for t in open_threads)
+    open_threads_block = """
+
+Existing open threads (from this person'"'"'s file -- list verbatim in \
+resolved_threads any of these this thread closes; never invent or \
+paraphrase one you were not shown here):
+%s""" % bullets
+
+schema = """{
+  "schema_version": "1.1.0",
+  "capture_id": "<id from frontmatter>",
+  "chat_id": "<chatID>",
+  "chat_type": "single|group",
+  "kind": "chat|email",
+  "skip": null | {"reason": "bot|broadcast|self-note|security-notice|empty"},
+  "people": [{"display_name": str, "sender_ids": [str], "is_self": bool,
+              "role_guess": "friend|family|colleague|client|collaborator|acquaintance|unsolicited|unknown",
+              "message_count": int (optional, >= 0)}],
+  "relationship_kind_guess": "friend|family|colleague|client|collaborator|acquaintance|unsolicited|unknown|group",
+  "gist": str,
+  "open_threads": [str],
+  "resolved_threads": [str],
+  "commitments": [{"owner": "user|<display_name>", "what": str, "by": str|null}],
+  "facts": [{"about": "<display_name>|user", "text": str, "provenance": "told-by-user|inferred-from-thread"}]
+}"""
+
+if kind == "email":
+    # Non-chat capture: From/To/Subject/body, participant-hints as the
+    # counterpart names. chat_id is a Gmail thread id header if the capture
+    # carries one, else the capture'"'"'s own id. chat_type is always single.
+    hint_names = []
+    in_hints = False
+    for line in frontmatter_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("participant-hints:"):
+            in_hints = True
+            continue
+        if in_hints:
+            if stripped.startswith("-"):
+                hint_names.append(stripped[1:].strip().strip(chr(34)))
+                continue
+            else:
+                in_hints = False
+
+    thread_id = None
+    for line in frontmatter_text.splitlines():
+        stripped = line.strip()
+        m_tid = re.match(r"^(Thread-Id|thread_id|thread-id)\s*:\s*(.+)$", stripped, re.IGNORECASE)
+        if m_tid:
+            thread_id = m_tid.group(2).strip().strip(chr(34))
+            break
+    if thread_id is None:
+        for line in body_text.splitlines():
+            m_tid = re.match(r"^(Thread-Id|thread_id|thread-id)\s*:\s*(.+)$", line.strip(), re.IGNORECASE)
+            if m_tid:
+                thread_id = m_tid.group(2).strip().strip(chr(34))
+                break
+
+    chat_id = thread_id if thread_id else capture_id
+    chat_type = "single"
+    title = ""
+    for line in body_text.splitlines():
+        if line.strip().lower().startswith("subject:"):
+            title = line.split(":", 1)[1].strip()
+            break
+
+    if not body_text.strip():
+        prompt = (
+            "This email capture has no body content. Respond with ONLY "
+            "this JSON object (no prose, no markdown fence), filling "
+            "capture_id and chat_id/chat_type exactly as given:\n\n"
+            "{\"schema_version\": \"1.1.0\", \"capture_id\": \"%s\", \"chat_id\": \"%s\", "
+            "\"chat_type\": \"%s\", \"kind\": \"email\", \"skip\": {\"reason\": \"empty\"}, "
+            "\"people\": [], \"relationship_kind_guess\": \"unknown\", \"gist\": \"\", "
+            "\"open_threads\": [], \"resolved_threads\": [], \"commitments\": [], \"facts\": []}"
+            % (capture_id, chat_id, chat_type)
+        )
+    else:
+        hints_text = ", ".join(hint_names) if hint_names else "(none given)"
+        prompt = """You are analyzing one email (or email thread) to produce a \
+structured, provenance-tagged summary, the same contract used for chat \
+threads. The account owner (the person whose inbox this is) appears as \
+"To"/"From: self" -- they are "the user". Participant hints for the \
+counterpart(s): %s
+
+Email:
+%s
+
+Rules:
+- Never invent facts. Use provenance "told-by-user" ONLY for things the \
+user literally wrote about themselves or the other person. Everything else \
+you conclude from tone/context/behavior is "inferred-from-thread".
+- "skip" is ONLY for emails with no person on the other end: a bot, a \
+broadcast/announcement sender, a self-note, or a security/OTP notice. A \
+cold pitch from a real stranger is NOT a skip -- it is a person with \
+role_guess "unsolicited". A noreply/automated sender IS a skip -- reason \
+"security-notice" for an actual security/OTP notice, or treat other \
+automated/bot senders as reason "bot".
+- "gist" is 2-4 sentences on what this email is about and where it stands \
+now -- never a message-by-message narration.
+- relationship_kind_guess mirrors the single other person'"'"'s role_guess \
+("chat_type" is always "single" for email).
+- List the one counterpart in people[].%s
+
+Respond with ONLY this JSON object (no prose, no markdown fence), with \
+capture_id "%s", chat_id "%s", chat_type "%s", kind "email" filled in \
+exactly as given:
+
+%s""" % (hints_text, body_text, open_threads_block, capture_id, chat_id, chat_type, schema)
+
+    sys.stdout.write(prompt)
+    sys.stderr.write("%s\t%s\t%s\n" % (capture_id, chat_id, chat_type))
+    sys.exit(0)
+
+# --- chat path (kind == "chat"), unchanged behaviour ---
+
 try:
     body = json.loads(body_text.splitlines()[0]) if body_text else {}
 except Exception as e:
@@ -81,9 +223,6 @@ chat_id = body.get("chatID", "")
 chat_type = body.get("chatType", "single")
 title = body.get("title", "")
 messages = body.get("messages", []) or []
-
-def truthy(v):
-    return v is True or (isinstance(v, str) and v.strip().lower() == "true")
 
 lines = []
 for msg in messages:
@@ -101,32 +240,16 @@ for msg in messages:
     who = "self" if truthy(msg.get("isSender", False)) else "other"
     lines.append("[%s] %s (%s): %s" % (ts, sender, who, text))
 
-schema = """{
-  "schema_version": "1.0.0",
-  "capture_id": "<id from frontmatter>",
-  "chat_id": "<chatID>",
-  "chat_type": "single|group",
-  "skip": null | {"reason": "bot|broadcast|self-note|security-notice|empty"},
-  "people": [{"display_name": str, "sender_ids": [str], "is_self": bool,
-              "role_guess": "friend|family|colleague|client|collaborator|acquaintance|unsolicited|unknown",
-              "message_count": int (optional, >= 0)}],
-  "relationship_kind_guess": "friend|family|colleague|client|collaborator|acquaintance|unsolicited|unknown|group",
-  "gist": str,
-  "open_threads": [str],
-  "commitments": [{"owner": "user|<display_name>", "what": str, "by": str|null}],
-  "facts": [{"about": "<display_name>|user", "text": str, "provenance": "told-by-user|inferred-from-thread"}]
-}"""
-
 if not lines:
     prompt = (
         "This chat thread has no content messages after dropping system "
         "rows, deleted messages, and empty-text rows. Respond with ONLY "
         "this JSON object (no prose, no markdown fence), filling capture_id "
         "and chat_id/chat_type exactly as given:\n\n"
-        "{\"schema_version\": \"1.0.0\", \"capture_id\": \"%s\", \"chat_id\": \"%s\", "
-        "\"chat_type\": \"%s\", \"skip\": {\"reason\": \"empty\"}, \"people\": [], "
+        "{\"schema_version\": \"1.1.0\", \"capture_id\": \"%s\", \"chat_id\": \"%s\", "
+        "\"chat_type\": \"%s\", \"kind\": \"chat\", \"skip\": {\"reason\": \"empty\"}, \"people\": [], "
         "\"relationship_kind_guess\": \"unknown\", \"gist\": \"\", "
-        "\"open_threads\": [], \"commitments\": [], \"facts\": []}"
+        "\"open_threads\": [], \"resolved_threads\": [], \"commitments\": [], \"facts\": []}"
         % (capture_id, chat_id, chat_type)
     )
 else:
@@ -149,23 +272,24 @@ you conclude from tone/context/behavior is "inferred-from-thread".
 broadcast/announcement channel, a self-chat ("Note to self"), or a \
 security/OTP notice channel. A cold pitch from a real stranger is NOT a \
 skip -- it is a person with role_guess "unsolicited".
-- "gist" is 2-4 sentences on what this thread is about and where it \
-stands now -- never a message-by-message narration.
+- "gist" is 2-4 sentences on where things stand NOW; earlier history only \
+as context -- never a message-by-message narration.
 - relationship_kind_guess mirrors the single other persons role_guess for \
 a "single" chat, or is the literal string "group" for a "group" chat.
 - For chat_type "group", list EVERY non-self participant who sent 2 or \
 more messages (name + sender_ids), each with their own role_guess; \
 participants with only a single message may be omitted. For a "single" \
-chat, list the one counterpart.
+chat, list the one counterpart.%s
 
 Respond with ONLY this JSON object (no prose, no markdown fence), with \
-capture_id "%s", chat_id "%s", chat_type "%s" filled in exactly as given:
+capture_id "%s", chat_id "%s", chat_type "%s", kind "chat" filled in \
+exactly as given:
 
-%s""" % (title, chat_type, thread_text, capture_id, chat_id, chat_type, schema)
+%s""" % (title, chat_type, thread_text, open_threads_block, capture_id, chat_id, chat_type, schema)
 
 sys.stdout.write(prompt)
 sys.stderr.write("%s\t%s\t%s\n" % (capture_id, chat_id, chat_type))
-' "$event_file"
+' "$event_file" "$kind" "$open_threads_file"
 }
 
 # -----------------------------------------------------------------------
@@ -196,6 +320,23 @@ missing = [k for k in required_top if k not in data]
 if missing:
     sys.stderr.write("summarize-thread.sh: missing required field(s): %s\n" % ", ".join(missing))
     sys.exit(4)
+
+schema_version = data.get("schema_version")
+if schema_version not in ("1.0.0", "1.1.0"):
+    sys.stderr.write("summarize-thread.sh: unsupported schema_version: %r\n" % (schema_version,))
+    sys.exit(4)
+
+kind = data.get("kind", "chat")
+if kind not in ("chat", "email"):
+    sys.stderr.write("summarize-thread.sh: invalid kind: %r\n" % (kind,))
+    sys.exit(4)
+data["kind"] = kind
+
+resolved_threads = data.get("resolved_threads", [])
+if not isinstance(resolved_threads, list) or not all(isinstance(t, str) for t in resolved_threads):
+    sys.stderr.write("summarize-thread.sh: resolved_threads must be a list of strings\n")
+    sys.exit(4)
+data["resolved_threads"] = resolved_threads
 
 skip = data["skip"]
 skip_reasons = {"bot", "broadcast", "self-note", "security-notice", "empty"}
@@ -334,6 +475,8 @@ fi
 event_file=""
 model="${RA_THREAD_MODEL:-sonnet}"
 out_path=""
+kind="chat"
+open_threads_file=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -343,6 +486,14 @@ while [ $# -gt 0 ]; do
             ;;
         --out)
             out_path="${2:-}"
+            shift 2
+            ;;
+        --kind)
+            kind="${2:-}"
+            shift 2
+            ;;
+        --open-threads)
+            open_threads_file="${2:-}"
             shift 2
             ;;
         -*)
@@ -361,12 +512,22 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$event_file" ]; then
-    echo "usage: summarize-thread.sh <event-file> [--model <m>] [--out <path>]" >&2
+    echo "usage: summarize-thread.sh <event-file> [--kind chat|email] [--model <m>] [--out <path>] [--open-threads <file>]" >&2
     exit 2
 fi
 
 if [ ! -f "$event_file" ]; then
     echo "summarize-thread.sh: event file not found: $event_file" >&2
+    exit 2
+fi
+
+if [ "$kind" != "chat" ] && [ "$kind" != "email" ]; then
+    echo "summarize-thread.sh: --kind must be chat or email" >&2
+    exit 2
+fi
+
+if [ -n "$open_threads_file" ] && [ ! -f "$open_threads_file" ]; then
+    echo "summarize-thread.sh: --open-threads file not found: $open_threads_file" >&2
     exit 2
 fi
 
@@ -376,7 +537,7 @@ meta_file=$(mktemp)
 prompt_file=$(mktemp)
 trap 'rm -f "$meta_file" "$prompt_file"' EXIT
 
-build_prompt "$event_file" > "$prompt_file" 2> "$meta_file"
+build_prompt "$event_file" "$kind" "$open_threads_file" > "$prompt_file" 2> "$meta_file"
 build_status=$?
 if [ "$build_status" -ne 0 ]; then
     exit 2
@@ -414,10 +575,12 @@ cat > "$json_schema_path" <<'SCHEMA_EOF'
         }
       }
     },
+    "kind": {"type": "string", "enum": ["chat", "email"]},
     "people": {"type": "array"},
     "relationship_kind_guess": {"type": "string"},
     "gist": {"type": "string"},
     "open_threads": {"type": "array"},
+    "resolved_threads": {"type": "array"},
     "commitments": {"type": "array"},
     "facts": {"type": "array"}
   },

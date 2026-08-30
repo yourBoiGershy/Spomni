@@ -4,7 +4,7 @@
 #
 # Usage: demo-store.sh <dest-dir> [--force]
 #
-# Copies packages/core/fixtures/store/ (30 synthetic people, 47 interactions,
+# Copies packages/core/fixtures/store/ (31 synthetic people, 47 interactions,
 # wakeups; no real relationships, no real accounts) into <dest-dir>, ensures
 # inbox/ exists, builds index.json + stats.json, validates the result, and
 # writes <dest-dir>/DEMO-STORE.md marking it as synthetic/regeneratable.

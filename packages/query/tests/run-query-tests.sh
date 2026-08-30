@@ -2,7 +2,7 @@
 # packages/query/tests/run-query-tests.sh
 #
 # Runs the golden tests for the MCP query tool surface
-# (packages/query/tests/test-tools.mjs) against the 30-persona fixture store
+# (packages/query/tests/test-tools.mjs) against the 31-persona fixture store
 # (packages/core/fixtures/store/), plus the personalization-overlay goldens
 # (packages/query/tests/test-personalization.mjs), the upcoming_meetings
 # tool tests (packages/query/tests/test-upcoming-meetings.mjs), and the

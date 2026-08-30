@@ -46,6 +46,15 @@
 #     last-touch 2026-07-11 (50 days before --today) -> dropped in --mode
 #     coffee and --mode all by default; kept only with
 #     --include-transactional.
+#   people/nadia-cho.md     — (i) schema_version 1.4.0, store-currency
+#     (specs/currency.md) coverage: two interactions (2026-06-01,
+#     2026-07-15) -> second-most-recent = 2026-06-01. Three Open threads
+#     bullets: a fresh "(as-of 2026-07-15)" (kept), an "(as-of 2026-06-01,
+#     unverified since 2026-05-01)" (2026-05-01 < 2026-06-01 -> dropped),
+#     and a bare pre-1.4.0 bullet with no parenthetical (kept, read as
+#     as-of last-touch). Also carries a "## Resolved" section that must
+#     never surface in open_threads_text, and an "[inferred-public-web]
+#     [stale]" fact that must never surface in facts.
 #
 # Each person has one interactions/YYYY-MM-DD-<slug>.md. index.json/
 # stats.json are NOT shipped in the fixture — the missing-index path
@@ -350,6 +359,32 @@ if [ "$c14_ok" -eq 1 ]; then
   pass "14: (h) kind:transactional dropped in coffee/all, kept with --include-transactional"
 else
   fail "14: (h) kind:transactional dropped in coffee/all, kept with --include-transactional"
+fi
+
+# ---------------------------------------------------------------------------
+# Case 15: (i) nadia-cho open_threads_text keeps the fresh as-of bullet and
+# the bare pre-1.4.0 bullet, drops the unverified-before-the-second-most-
+# recent-interaction bullet, and never surfaces the "## Resolved" bullet
+# ---------------------------------------------------------------------------
+
+nadia_line=$(grep '"slug":"nadia-cho"' "$WORK_DIR/primary.out")
+if [ -n "$nadia_line" ]; then
+  nadia_threads=$(printf '%s' "$nadia_line" | jq -r '.open_threads_text')
+  c15_ok=1
+  printf '%s' "$nadia_threads" | grep -q "Wants recommendations for a good sourdough recipe" || c15_ok=0
+  printf '%s' "$nadia_threads" | grep -q "Mentioned wanting to try the new taco place" || c15_ok=0
+  printf '%s' "$nadia_threads" | grep -q "Asked about the trip to Portugal" && c15_ok=0
+  printf '%s' "$nadia_threads" | grep -q "Borrowed a book" && c15_ok=0
+  nadia_facts=$(printf '%s' "$nadia_line" | jq -c '.facts')
+  printf '%s' "$nadia_facts" | grep -q "pottery studio" || c15_ok=0
+  printf '%s' "$nadia_facts" | grep -q '\[stale\]' && c15_ok=0
+  if [ "$c15_ok" -eq 1 ]; then
+    pass "15: (i) nadia-cho keeps fresh as-of + bare bullets, drops the unverified-before-second-touch bullet, no Resolved/[stale] leak"
+  else
+    fail "15: (i) nadia-cho open_threads_text/facts mismatch (threads: $nadia_threads, facts: $nadia_facts)"
+  fi
+else
+  fail "15: (i) nadia-cho not found in primary output"
 fi
 
 echo ""

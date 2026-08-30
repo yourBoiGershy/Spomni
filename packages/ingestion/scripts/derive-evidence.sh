@@ -244,6 +244,25 @@ if [ -d "$PEOPLE_DIR" ]; then
       insec && /^- / { sub(/^- /, ""); print }
     ' "$f")"
 
+    # packages/ingestion/specs/currency.md "Consumers": drop an
+    # "unverified since D" bullet when D is older than the person's
+    # second-most-recent interaction date (stats.json people[slug].
+    # interactions[] is sorted most-recent-first by build-stats.sh; index 1
+    # is that date). Fewer than two interactions on file -> threshold empty,
+    # nothing dropped (staleness can't be judged off a single touch). Bare
+    # bullets and fresh "as-of" bullets (no "unverified since" marker) are
+    # untouched. "## Resolved" bullets never reach here — the awk above
+    # already stops the section at the next "## " heading.
+    threshold_date="$(jq -r --arg slug "$slug" '(.people[$slug].interactions[1].date // empty)' "$STATS_JSON")"
+    bullets="$(printf '%s\n' "$bullets" | while IFS= read -r bline; do
+      [ -n "$bline" ] || continue
+      unverified_date="$(printf '%s\n' "$bline" | sed -n 's/.*unverified since \([0-9][0-9-]*\).*/\1/p')"
+      if [ -n "$unverified_date" ] && [ -n "$threshold_date" ] && [[ "$unverified_date" < "$threshold_date" ]]; then
+        continue
+      fi
+      printf '%s\n' "$bline"
+    done)"
+
     items_json="$(printf '%s\n' "$bullets" | jq -Rn '
       [inputs | select(length > 0) | .[0:80]]
     ')"

@@ -177,7 +177,13 @@ store (the private store's 2.8 interactions-per-person ratio), and the remaining
 bash interpreter time (per-line `read`, `[[ =~ ]]` link extraction), not process
 spawns; two fix rounds spent. Open decision for the user: accept 8.75 s at 10k
 interactions (re-baseline the `run-perf.sh` target to ≤ 10 s) or schedule a third
-pass (single-pass frontmatter map per file, awk-side link extraction). **Unit E (incremental index) skipped** — full rebuild is under target;
+pass (single-pass frontmatter map per file, awk-side link extraction).
+**Post-merge note (chunk 36 merged first, PR #41):** its person 1.4.0 checks
+(Open threads `as-of`, `## Resolved`) were written against the old script and spawn
+2–4 `awk`/`grep` per person; after porting them onto the single-pass version the 127
+store measures 1.4 s (still ≤ 1.5 s; main's un-rewritten script measures 15.9 s on
+the same checks). Folding those checks into the precomputed awk pass is the natural
+first step of any third pass. **Unit E (incremental index) skipped** — full rebuild is under target;
 recorded as decision `full-rebuild-is-cheap-enough`.
 
 ## 6. Out of scope
