@@ -1,6 +1,6 @@
 # package: core
 
-version: 0.4.0
+version: 0.5.0
 
 ## Purpose
 
@@ -29,7 +29,11 @@ nothing.
   the user-configurable onboarding-backfill window + self-identity config, per
   plan 24),
   `contracts/import-pipeline.md` (the five-stage fetch/normalize/triage/
-  judgment/file pipeline spanning connectors + ingestion, per plan 26)
+  judgment/file pipeline spanning connectors + ingestion, per plan 26),
+  `contracts/week-plan.md` (`signals/week-plan.json`, the capacity-model
+  weekly nudge budget artifact, per plan 12 — this is the RENUMBERED cadence
+  plan, docs/plans/2026-08-29-12-cadence-capacity.md, not the earlier plan 12
+  eval-harness numbering)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
   `templates/profile.md`, `templates/sync-lanes.tsv`
 - Store scripts: `scripts/build-index.sh` (people/ → index.json),
@@ -74,3 +78,4 @@ event-proposal creation flags are a later work unit of the same plan.
 (docs/plans/2026-08-29-24-onboarding-backfill-priority-seeding.md).
 `contracts/import-pipeline.md` by plan 26
 (docs/plans/2026-08-29-26-standard-import-pipeline.md).
+`contracts/week-plan.md` by plan 12 (docs/plans/2026-08-29-12-cadence-capacity.md).
