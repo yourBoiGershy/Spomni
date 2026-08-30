@@ -14,6 +14,15 @@ includes it in detector order). Timing rule addition: scheduling intent is
 time-sensitive — promoted proposals are due within 1–2 days, not the
 +2–3-week job-change pattern.
 
+**Amended by Plan 12** (docs/plans/2026-08-29-12-cadence-capacity.md):
+capacity tier becomes a ranking INPUT, not an output. The fixed ~5-nudge cap
+becomes a capacity-derived daily/weekly budget (busy → 1–2/week, normal →
+2–3, open → 3–5), read from `signals/week-plan.json` per
+`packages/core/contracts/week-plan.md`. Tie-strength preference inverts with
+capacity: busy weeks rank strong/frequent ties up; open weeks rank
+dormant/weak ties with the longest silence up, and reactivation drafts are
+allowed.
+
 Read docs/PROJECT-CONTEXT.md first. Decisions that bind this plan:
 - **ToS-clean signals only** — no scraping, no enrichment APIs, no RSS bridges; LinkedIn data only via emails LinkedIn itself sends the user.
 - **Wake-up queue over digests** — ranked signals become dated queue entries, nothing else.
@@ -30,12 +39,12 @@ Read docs/PROJECT-CONTEXT.md first. Decisions that bind this plan:
   - posts: belled-contact `linkedin-notification` events
   - debrief harvesting: `needs-follow-up` facts Plan 03 marks
   - **Amended by Plan 21**: `scheduling-intent` — see the Context note above
-- Ranking spec: warmth (tier + recency + interaction density) × rarity; the two-signal rule; the 5-nudge cap with overflow held, not dropped
+- Ranking spec: warmth (tier + recency + interaction density) × rarity; the two-signal rule; the 5-nudge cap with overflow held, not dropped. **Amended by Plan 12**: capacity tier becomes a ranking input and the fixed cap becomes a capacity-derived budget — see the Context note above.
 - `packages/attention/fixtures/signals/` — seeded signal scenarios wired to fixture personas
 
 ## Work units
 Wave A (parallel):
-1. [worker] Ranking spec + warmth definition (documented in the skill; deterministic enough that a checker can verify a ranking by hand).
+1. [worker] Ranking spec + warmth definition (documented in the skill; deterministic enough that a checker can verify a ranking by hand). **Amended by Plan 12**: warmth's tie-strength preference now inverts with capacity tier, per the Context note above.
 2. [worker] `packages/attention/fixtures/signals/` content: a birthday 5 days out, a LinkedIn job-change email, a co-attendance link, a funding-news search result, a low-warmth post event — each with expected rank and expected wake-up (or expected suppression).
 3. [worker] Detector specs: birthdays + co-attendance + debrief harvesting (the cheap three).
 
