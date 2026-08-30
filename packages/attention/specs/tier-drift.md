@@ -22,58 +22,124 @@ frontmatter (`packages/core/contracts/person.md`):
 - Prior `wakeups/*.md` history for the person (rate limit + declined-pairing
   suppression, below).
 
-## Expected-cadence table (per tier)
+## Prefilter (deterministic, per kind)
 
-Defines what "on cadence" means for the QUIET-drift direction. A tier is
-quiet-drifting when the person's `median_gap_days` from `stats.json` exceeds
-the tier's threshold, **and** the most recent interaction (`interactions[0].date`)
-is at least that many days before the sweep's run date (avoids firing off a
-stale median right after a catch-up).
+Plan 30 replaces the old per-tier global cadence table with a per-**kind**
+prefilter (`packages/core/contracts/relationship-scoring.md` "Kind
+vocabulary" / "Drift prefilter" — this section transcribes that contract's
+numbers; it is not a second source of truth for them). The prefilter is
+mechanical — no judgment call — and only *narrows the candidate set*; it
+never decides drift on its own.
 
-| Tier | Expected max gap (days) | Quiet-drift threshold |
+A person is a QUIET-drift **candidate** iff **all** of:
+
+1. `kind` (from `people/<slug>.md`, `contracts/person.md` 1.1.0) is a
+   **RHYTHMED** kind — one whose soft horizon in the vocabulary table below
+   is not `none`. A person with no `kind` on file is treated as
+   `professional` (horizon 120) for prefilter purposes only, and the
+   resulting proposal must disclose the substitution in its why-line/context
+   verbatim: `"no kind on file — professional horizon assumed"`.
+2. Not expired: `kind_expires` is absent, or is `>= today`. An expired kind
+   (`kind_expires` in the past) never enters the prefilter — that state
+   surfaces via `person.md`'s own expiry read-state, not via this detector.
+3. `days_since_last` (from `packages/ingestion/scripts/derive-evidence.sh`
+   output when available, else `stats.json`'s `last_interaction`) exceeds
+   the kind's soft horizon (row below).
+
+| kind | soft horizon (days) | enters prefilter? |
 |---|---|---|
-| `inner-circle` | 21 | `median_gap_days` > 35 (i.e. > ~5 weeks) |
-| `close` | 45 | `median_gap_days` > 75 |
-| `active` | 90 | `median_gap_days` > 150 |
-| `dormant` | n/a | quiet-drift never fires for `dormant` (already the floor) |
+| `friend` | 30 | yes |
+| `family` | 30 | yes |
+| `collaborator` | 14 | yes |
+| `professional` | 120 | yes |
+| `community` | none | **no** — no-rhythm kind |
+| `scheduling` | none | **no** — no-rhythm kind (also carries `kind_expires`; see rule 2) |
+| `transactional` | none | **no** — no-rhythm kind |
+| `unsolicited` | none | **no** — no-rhythm kind |
+| `unknown` | none | **no** — no-rhythm kind |
+| *(expired kind, any value)* | — | **no** — expiry check (rule 2) wins regardless of kind |
 
-Only `inner-circle` and `close` produce a QUIET-drift nudge (per the brief:
-"QUIET drift for inner-circle/close"). `active` quiet-drift and `dormant`
-quiet-drift are out of scope for this detector — no cadence-invention per
-plan 05's out-of-scope list.
+`dormant` tier is still the floor: even when a `dormant`-tagged person
+clears the kind-horizon prefilter, `dormant` never quiet-drifts (unchanged
+guardrail from the prior tier-based table — dormant has nowhere quieter to
+go).
 
-## Divergence definitions
+The horizon is a **prefilter, never a verdict and never a score** — clearing
+a kind's horizon only admits a person to the judgment pass below; it does
+not by itself produce a wake-up. The prior global 21/45/90-day per-tier
+cadence table is **retired** — no code path or spec section computes
+`median_gap_days` against a flat per-tier threshold anymore.
 
-### UPWARD drift (contact more frequent than tier implies)
+### UPWARD drift prefilter
 
-Fires when **both**:
+Mirrors the QUIET shape: a person is an UPWARD-drift **candidate** iff their
+`kind` is RHYTHMED (unkinded → `professional`, same disclosure rule) and,
+in the trailing 90 days (`interactions[].date` within `[today-90, today]`),
+their touchpoint count is above what their **current tier** implies — the
+"implies" comparison itself is a judgment call (below), not a fixed `N` per
+tier; the prefilter only requires that the raw trailing-90-day count be
+non-trivially elevated for a rhythmed kind so the judgment pass has
+something worth evaluating (implementation detail, not a new fixed
+threshold — see `## Judgment verdict`). `inner-circle` and `close` are
+still eligible for UPWARD candidacy under this shape (unlike the retired
+tier table, which hard-excluded them) — the never-demote guardrail (below)
+is the only asymmetry that survives.
 
-1. `tier` is `dormant` or `active`, and
-2. In the trailing 90 days (`interactions[].date` within `[today-90, today]`),
-   the touchpoint count is `>= N` for the current tier:
-   - `dormant` → `N = 3`
-   - `active` → `N = 6` (i.e. roughly twice the `active` expected cadence of
-     one per ~45 days)
+## Judgment verdict
 
-Concrete example (matches the brief's why-line): a person tagged `dormant`
-with 5 interactions in the trailing 90 days triggers UPWARD drift.
+Every candidate that clears its direction's prefilter is handed to the
+model judgment pass — the same judgment record shape defined in
+`packages/core/contracts/relationship-scoring.md` "## Judgment record"
+(`attention_warrant`, `suggested_tier`, `kind`, `kind_note`, `rationale`,
+`confidence`; the full record also carries `kind_expires` when relevant per
+that contract — reproduced by reference, not restated field-by-field here).
 
-`inner-circle` and `close` never trigger UPWARD drift — there is no tier
-above `inner-circle` to bump into, and `close` bumping to `inner-circle` on
-frequency alone is judgment the detector should not make unprompted; it's
-covered by the general "seems closer than tagged" case being left to the
-user via the same UPWARD math applied only at `dormant`/`active` per this
-spec (do not extend without a fixture proving the `close`→`inner-circle`
-case behaves sanely).
+The judgment asks, in effect: **"has this gone quiet for this kind of
+relationship, for this user?"** (QUIET direction) or the symmetric upward
+question (UPWARD direction), reading:
 
-### QUIET drift (contact quieter than tier implies)
+- The candidate's evidence inputs (`## Evidence inputs`,
+  `relationship-scoring.md`) — `touchpoints`, `median_gap_days`,
+  `days_since_last`, `meetings`, `chat_days`, `emails`,
+  `user_initiated_share`, `participation`, `co_attended`, `upcoming`,
+  `talking_points`, `tier`, `kind`.
+- The confirmed user model (`data/store/user-model.md`) — **draft models are
+  never read**; a person whose user-model is still `status: draft` is
+  judged with no user-model priors, same as if the file didn't exist.
+- Priors from `ranking-weights.json`'s `kinds` and `evidence` dimensions
+  (`packages/core/contracts/ranking-weights.md` 1.1.0 "Priors, not
+  multipliers"), plus neighbor priors from `index/embeddings.jsonl` when
+  that file exists, resolved via
+  `packages/ingestion/scripts/nearest-confirmed.sh` (read-only; attention
+  never writes the embeddings index).
 
-Fires when **both**:
+The judgment resolves to exactly one of:
 
-1. `tier` is `inner-circle` or `close`, and
-2. `median_gap_days` exceeds that tier's quiet-drift threshold in the table
-   above, and the most recent interaction is at least that many days old
-   (see table note).
+- **Quiet-drift / upward-drift proposal** — the judgment record above, with
+  the full breakdown string (format: `relationship-scoring.md`'s "##
+  Breakdown string" section — quoted once there; this spec does not
+  re-litigate the format) attached to the resulting signal event and
+  wake-up.
+- **`no-drift`** — a one-line reason is logged (run log, not a store
+  artifact) and no signal event is written for this person this sweep.
+
+### UPWARD drift, judgment
+
+Same shape as QUIET: the prefilter (above) admits rhythmed-kind candidates
+with an elevated trailing-90-day touchpoint count; the judgment then decides
+whether that count is actually elevated *relative to what the current tier
+implies for this kind and this user* (reading the same evidence/user-model/
+priors inputs) and, if so, drafts the upward-drift proposal via the same
+judgment record and breakdown string. The **never-demote guardrail is
+unchanged**: this detector only ever proposes moving a person to a *more*
+attentive tier in the UPWARD direction — it never proposes a demotion as a
+side effect of an UPWARD judgment call.
+
+### QUIET drift, judgment
+
+Same shape: the kind-horizon prefilter (above) admits a candidate; the
+judgment reads evidence + user-model + priors and either drafts the
+quiet-drift proposal or returns `no-drift`.
 
 ## Signal event
 
@@ -82,45 +148,49 @@ On divergence, write one `wakeups/signals/<id>.md`
 
 ```yaml
 schema_version: 1.0.0
-id: 20260829T090000Z-tier-drift-<slug>
+id: 20260830T090000Z-tier-drift-<slug>
 type: tier-drift
 person: ["[[<slug>]]"]
 evidence: >
-  tier=dormant; 5 interactions in trailing 90 days (stats.json
-  touchpoints, median_gap_days=12); tagged dormant on 2026-04-01.
+  kind=friend (horizon 30); days_since_last=47 (derive-evidence.sh);
+  tier=close; tagged close on 2026-04-01.
 confidence: medium
-detected_at: 2026-08-29T09:00:00Z
+detected_at: 2026-08-30T09:00:00Z
 ```
 
-`confidence` is always `medium` for this detector (single-source: internal
-interaction counts, not corroborated by a second independent signal per the
-two-signal rule) unless a fixture later demonstrates a case warranting `high`
-— do not hand-wave a `high` confidence without that evidence.
+`confidence` is the judgment record's own `confidence` field
+(`relationship-scoring.md` "## Judgment record" — `low`, `medium`, or
+`high`), carried verbatim from the judgment verdict into the signal event.
+It is not a fixed per-detector constant: the judgment pass sets it per
+candidate based on how much evidence + user-model + prior signal it had to
+work with, same as any other judgment record. A `high` confidence still
+requires the judgment to actually have corroborating evidence (e.g. a
+confirmed user-model axis plus a clear evidence gap) — the detector does not
+hand-wave `high` without that basis.
 
 ## Wake-up promotion
 
 ### UPWARD drift → proposal wake-up
 
 `origin: signal`, `source-signal` = the signal event id above. `why` line
-names the count and current tag, e.g.:
+names the count, the kind, and current tag, e.g.:
 
 ```
-why: "talked 5× this quarter but tagged dormant — bump to active?"
+why: "talked 5× this quarter (collaborator, horizon 14) but tagged dormant — bump to active?"
 ```
 
-`## Context` states the proposed new tier explicitly (`dormant` → `active`;
-`active` → `close` is NOT proposed by this detector's `N` thresholds above —
-only the one-step bump the trailing-90-day math actually supports) and links
-back to the signal event id. No `## Draft` section (this is a
-self-classification prompt, not an outreach draft).
+`## Context` states the proposed new tier explicitly (per the judgment's
+`suggested_tier`) and links back to the signal event id, plus the breakdown
+string (`relationship-scoring.md` "## Breakdown string"). No `## Draft`
+section (this is a self-classification prompt, not an outreach draft).
 
-### QUIET drift (inner-circle/close) → reach-out nudge
+### QUIET drift → reach-out nudge
 
-Same wake-up shape, `origin: signal`, but the `why` line frames it as the
-brief specifies:
+Same wake-up shape, `origin: signal`, but the `why` line names the kind and
+horizon, e.g.:
 
 ```
-why: "haven't connected with [[dana-whitfield]] in 11 weeks despite inner-circle — reach out, or reclassify?"
+why: "haven't connected with [[dana-whitfield]] in 47 days (friend, horizon 30) despite close — reach out, or reclassify?"
 ```
 
 **Guardrail (verbatim, binding):**
@@ -195,29 +265,41 @@ opt-outs act at the detector, never as a `ranking-weights.json` zero weight.
 
 ## Deterministic fixture-checkability
 
-Given a fixture person's frontmatter `tier` plus a fixture `stats.json`
-rollup (`touchpoints`, `median_gap_days`, `interactions[].date`) and a sweep
-run-date, a checker can hand-verify:
+The **prefilter** is fully deterministic and fixture-checkable without any
+model call: given a fixture person's `kind`, `kind_expires`, and
+`days_since_last` (from `derive-evidence.sh` output or `stats.json`), a
+checker can hand-verify:
 
-1. Which table row/threshold applies.
-2. Whether the UPWARD or QUIET condition's boolean expression evaluates true.
-3. The exact `why` line and proposed tier the promotion step should produce.
-4. Whether the declined-pairing or quarterly-rate-limit suppression should
-   apply, given a seeded `wakeups/` history in the fixture.
+1. Which kind-horizon table row applies, and whether the kind is RHYTHMED.
+2. Whether the expiry check passes (`kind_expires` absent or `>= today`).
+3. Whether `days_since_last` exceeds the kind's horizon (QUIET), or whether
+   the trailing-90-day touchpoint count is elevated for a rhythmed kind
+   (UPWARD) — i.e. whether the person is admitted to the judgment pass at
+   all.
 
-No field in this spec depends on judgment calls outside the tables and
-thresholds above — a `close` person with `median_gap_days: 80` and a
-last-interaction 90 days ago is unambiguously QUIET-drifting (80 > 75
-threshold from the table); a `dormant` person with 2 interactions in the
-trailing 90 days is unambiguously NOT UPWARD-drifting (2 < 3 threshold).
+The **judgment verdict** is, by design, not independently hand-computable
+from a fixed table (that is the point of moving from a flat cadence table to
+model judgment per plan 30) — a checker instead verifies the judgment
+record's shape (all required fields present, `rationale` cites a named
+evidence field and the `kind`, `confidence` is one of `low`/`medium`/`high`)
+and that the breakdown string cross-references the priors it claims to have
+read, per `relationship-scoring.md`'s validation rule (a rejected record is
+re-judged once; on a second failure the person is left `kind: unknown` with
+no tier suggestion — same rule as ingestion's judgment pass).
 
-## Out of scope (per plan 05/11)
+Suppression checks (declined-pairing, quarterly-rate-limit — below) remain
+fully deterministic given a seeded `wakeups/` history in the fixture,
+independent of the judgment step.
+
+## Out of scope (per plan 05/11, amended by plan 30)
 
 - Any tier write from this detector or from attention generally — permanent,
   per `docs/DECISIONS.md#preference-provenance`.
-- `active`/`dormant` quiet-drift, and any `close`→`inner-circle` UPWARD case
-  not covered by the trailing-90-day thresholds above — extend only with a
-  fixture proving the behavior.
+- `active`/`dormant` quiet-drift (dormant remains the floor; `active`
+  quiet-drift still requires clearing the kind-horizon prefilter and the
+  judgment pass like any other tier) — no cadence-invention beyond the kind
+  vocabulary's horizons.
 - Cadence-based "keep in touch every N months" reminders unrelated to a
-  tier's stated meaning (plan 05 out-of-scope: the engine never invents
-  cadence reminders beyond what a person's own tier implies).
+  kind's stated horizon (plan 05 out-of-scope, carried forward: the engine
+  never invents cadence reminders beyond what a person's own kind and tier
+  imply).
