@@ -782,6 +782,27 @@ else
 fi
 
 # =============================================================================
+# Reindex freshness (plan 38 D2) — wired in as a sub-suite; its own
+# PASS/FAIL lines print inline, its SUMMARY counts fold into this
+# runner's totals below rather than being reported twice.
+# =============================================================================
+
+REINDEX_TEST="$SCRIPT_DIR/test-reindex-freshness.sh"
+if [ -x "$REINDEX_TEST" ]; then
+  reindex_out="$("$REINDEX_TEST")"
+  echo "$reindex_out"
+  reindex_summary_line="$(printf '%s\n' "$reindex_out" | grep '^SUMMARY:')"
+  reindex_pass="$(printf '%s\n' "$reindex_summary_line" | sed -E 's/^SUMMARY: ([0-9]+) passed.*/\1/')"
+  reindex_fail="$(printf '%s\n' "$reindex_summary_line" | sed -E 's/^SUMMARY: [0-9]+ passed, ([0-9]+) failed.*/\1/')"
+  case "$reindex_pass" in ''|*[!0-9]*) reindex_pass=0 ;; esac
+  case "$reindex_fail" in ''|*[!0-9]*) reindex_fail=0 ;; esac
+  PASS_COUNT=$((PASS_COUNT + reindex_pass))
+  FAIL_COUNT=$((FAIL_COUNT + reindex_fail))
+else
+  fail "reindex freshness: $REINDEX_TEST missing or not executable"
+fi
+
+# =============================================================================
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 

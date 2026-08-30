@@ -6,9 +6,15 @@
 # Usage:
 #   person-set-kind.sh <store-dir> <slug> --kind <kind> --note <text> \
 #       --source <derived|stated-by-user> [--expires <YYYY-MM-DD>] \
-#       [--today <YYYY-MM-DD>] \
+#       [--today <YYYY-MM-DD>] [--no-index] \
 #       [--feedback-text "<words>"] [--feedback-channel <c>] \
 #       [--feedback-source reply|session]
+#
+# Reindex (plan 38 D2): on a successful write, this script calls
+# packages/core/scripts/reindex.sh <store-dir> --quiet so index.json and
+# stats.json are fresh at return. --no-index skips this — for batch
+# callers (e.g. review-tiers' per-person loop) that reindex once themselves
+# after the whole batch instead of once per person.
 #
 # Feedback ledger (plan 34):
 #   - --feedback-text / --feedback-channel / --feedback-source are only
@@ -53,7 +59,7 @@ die() {
 }
 
 if [ "$#" -lt 2 ]; then
-    die "usage: person-set-kind.sh <store-dir> <slug> --kind <k> --note <text> --source <derived|stated-by-user> [--expires <YYYY-MM-DD>] [--today <YYYY-MM-DD>]" 1
+    die "usage: person-set-kind.sh <store-dir> <slug> --kind <k> --note <text> --source <derived|stated-by-user> [--expires <YYYY-MM-DD>] [--today <YYYY-MM-DD>] [--no-index]" 1
 fi
 
 store_dir="$1"; shift
@@ -64,6 +70,7 @@ new_note=""
 new_source=""
 new_expires=""
 today=""
+no_index=0
 feedback_text=""
 feedback_channel=""
 feedback_source="session"
@@ -75,6 +82,7 @@ while [ "$#" -gt 0 ]; do
         --source) new_source="${2:-}"; shift 2 ;;
         --expires) new_expires="${2:-}"; shift 2 ;;
         --today) today="${2:-}"; shift 2 ;;
+        --no-index) no_index=1; shift ;;
         --feedback-text) feedback_text="${2:-}"; shift 2 ;;
         --feedback-channel) feedback_channel="${2:-}"; shift 2 ;;
         --feedback-source) feedback_source="${2:-}"; shift 2 ;;
@@ -217,6 +225,11 @@ awk -v fm_end="$fm_end" \
 
 mv "$tmp_file" "$person_file"
 trap - EXIT
+
+# --- reindex (plan 38 D2): keep index.json/stats.json fresh at return ---
+if [ "$no_index" -ne 1 ]; then
+    bash "$(dirname "$0")/reindex.sh" "$store_dir" --quiet
+fi
 
 # --- feedback ledger (plan 34): only a stated-by-user write earns an entry ---
 if [ "$new_source" != "stated-by-user" ]; then

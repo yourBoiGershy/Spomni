@@ -73,7 +73,8 @@
 # only — no Facts bullets, ever, per D2), last-touch bumps on existing
 # people (only forward in time), interactions/<date>-<slug>[--n].md, and
 # appends to debrief-filed.log (filed) or structured-held.log (held).
-# Unless --dry-run or --no-index, ends with one build-index.sh run.
+# Unless --dry-run or --no-index, ends with one reindex.sh run (index.json
+# + stats.json, plan 38 D2).
 #
 # --dry-run prints the summary line plus one "would-file <id> -> <slugs>"
 # line per event that would have been filed; writes nothing.
@@ -1561,7 +1562,7 @@ EOF_UT
 done < "$CANDIDATE_IDS"
 
 if [ "$DRY_RUN" -ne 1 ] && [ "$NO_INDEX" -ne 1 ]; then
-  bash "$(dirname "$0")/../../core/scripts/build-index.sh" "$STORE_DIR" >/dev/null
+  bash "$(dirname "$0")/../../core/scripts/reindex.sh" "$STORE_DIR" --quiet
 fi
 
 if [ "$BOOTSTRAP_RAN" -eq 1 ]; then

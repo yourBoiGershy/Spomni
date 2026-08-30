@@ -229,8 +229,8 @@ for j in <data-dir>/ingestion/thread-summaries/*.json; do
 done
 ```
 
-Then one `build-index.sh` + `validate-store.sh` for this sub-step, same as
-any other filing pass.
+Then one `reindex.sh` + `validate-store.sh` for this sub-step, same as any
+other filing pass.
 
 - `file-thread.sh` unions captures sharing a chatID (D3) so duplicates never
   double-file — a rerun over the same capture(s) is a true no-op once every
