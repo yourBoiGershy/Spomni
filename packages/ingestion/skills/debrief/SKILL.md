@@ -307,6 +307,44 @@ rule):
   requires that an obvious, plainly-stated commitment lands in this
   section with the right owner.
 
+### 5b-episodes. Multi-day chat-message events — episode split
+
+Exception to 5b's "exactly one interaction file per event": a backfilled
+`type: chat-message` event whose genuine `messages[]` (per the existing
+bot/system-notice judgment used elsewhere in this skill) span **more than
+one UTC calendar day** (by `timestamp`) files as **one interaction per
+active day**, not one interaction total. A single-day chat-message event is
+unaffected — it still files exactly per 5b, zero behavior change for
+incremental sweeps.
+
+1. **Group into episodes.** Bucket genuine messages by the UTC calendar
+   date of `timestamp`. Every date with at least one genuine message is one
+   episode.
+2. **One interaction file per episode.** For each episode: `date` = that
+   day; filename = `<that-date>-<primary-person-slug>.md` (same primary-
+   slug rule as 5b); `people` = the participants active in that day's
+   messages (same resolution as 5b); `source-capture` = the one originating
+   capture-event `id`, the same value on every episode from this event (the
+   interaction contract allows many interactions to cite one capture).
+   `## Summary` covers only that day's exchange, not the whole thread.
+3. **Facts/commitments attach to their own day.** A fact, commitment, or
+   reminder-ask lands on the episode (day) where it was actually stated,
+   not lumped into one summary interaction.
+4. **Person-file effects run once, anchored to the latest episode.** §5a's
+   `last-touch` update and any open-thread/needs-confirmation logic for
+   this event run a single time across the whole event, using the latest
+   episode's date as the effective touch date — not once per episode.
+5. **Same-day collision.** If an interaction file for that date + primary
+   slug already exists (e.g. two separate chats with the same person on one
+   day), append a numeric suffix to the filename: `-2`, `-3`, etc., per
+   5b's existing same-day duplicate convention.
+6. **Explosion guard.** A chat with more than 20 active days in the backfill
+   window still gets one interaction file per active day — frequency
+   fidelity is the point of this rule — but keep each episode's `##
+   Summary` to 1-2 sentences rather than the fuller prose a normal
+   single-event summary gets, so a long-running chat doesn't balloon filing
+   time.
+
 ### 5c. After filing
 
 Once every person file and the interaction file for this event are

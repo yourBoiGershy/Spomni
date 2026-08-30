@@ -110,7 +110,7 @@ packages/query/evals/cases/draft-never-send-read-only
 
 `eval-suite.sh` reads one or more manifests, dispatches each case to the
 runner matching its `tier` in waves of `RA_EVAL_PARALLEL` concurrent
-cases (default 4; `RA_EVAL_PARALLEL=1` reproduces the original strictly
+cases (default 9; `RA_EVAL_PARALLEL=1` reproduces the original strictly
 serial behavior), and prints a summary. RESULT lines are always emitted
 in manifest order regardless of wave finish order. Parallel dispatch is
 safe because both runners (`eval-run.sh`, `eval-run-skill.sh`) mktemp
@@ -189,7 +189,7 @@ noted default.
 | Variable | Honored by | Effect |
 |---|---|---|
 | `RA_EVAL_MAX_COST_USD` | `eval-suite.sh` | Suite-wide cost cap in USD. Checked between waves (see `RA_EVAL_PARALLEL`); once the running total exceeds it, not-yet-dispatched cases are marked `RESULT SKIP reason=cost-cap` without running — up to one full wave of already in-flight cases may complete past the cap before it's checked. Default `2.00`. |
-| `RA_EVAL_PARALLEL` | `eval-suite.sh` | Number of cases dispatched concurrently per wave. Default `4`; `1` reproduces the original serial per-case dispatch. |
+| `RA_EVAL_PARALLEL` | `eval-suite.sh` | Number of cases dispatched concurrently per wave. Default `9`; `1` reproduces the original serial per-case dispatch. At the default width, the between-wave cost-cap check (see `RA_EVAL_MAX_COST_USD`) has coarser granularity — overshoot is bounded by one wave of up to 9 in-flight cases. |
 | `RA_EVAL_SMOKE` | `eval-suite.sh` | Set to `1` to run only manifest lines carrying an inline trailing `# smoke` tag. A manifest with zero tagged lines prints a `SUITE NOTE:` and is skipped; if every manifest yields zero smoke lines the suite exits `2`. |
 | `RA_EVAL_RERUN_FAILED` | `eval-suite.sh` | Set to `1` to filter each manifest's case lines down to only those whose last recorded outcome (in that manifest's `.last-run.tsv` sidecar — see State file below) was `FAIL`, `ERROR`, or `XPASS`, plus any case with no recorded outcome yet (never run before — included, not silently skipped). Composes with `RA_EVAL_SMOKE` as an intersection. A manifest with no `.last-run.tsv` yet has its filter skipped entirely (all its cases run) and gets a `SUITE NOTE:`. If filtering leaves zero cases across every manifest, the suite prints `SUITE NOTE: nothing to re-run — last recorded run has no failures` and exits `0` (a success state, not the zero-cases `exit 2`). |
 | `RA_EVAL_RUNNER_AGENT` / `RA_EVAL_RUNNER_SKILL` | `eval-suite.sh` | Test hooks: absolute paths overriding the `eval-run.sh` / `eval-run-skill.sh` runner script paths. Default unchanged. |
