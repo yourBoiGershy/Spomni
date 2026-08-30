@@ -45,7 +45,7 @@ feedback	900	true	/bin/bash {{REPO_ROOT}}/packages/ingestion/scripts/feedback-pa
 # writes user-model.md). Deterministic shell, no model session; must run
 # after the feedback lane so this tick's parsed replies are already in the
 # ledger. Ships enabled; a 3-line digest lands in logs/learn.log.
-learn	900	true	/bin/bash <ABS-REPO-ROOT>/packages/attention/scripts/learn-sweep.sh <ABS-STORE-DIR> --data-dir <ABS-PRIVATE-DATA-ROOT>/data
+learn	900	true	/bin/bash {{REPO_ROOT}}/packages/attention/scripts/learn-sweep.sh {{STORE_DIR}} --data-dir {{PRIVATE_DATA_ROOT}}/data
 
 # MCP lanes (plan 28) — gmail/calendar sync runs as a headless Claude
 # session per tick, via packages/connectors/scripts/mcp-lane-tick.sh. These

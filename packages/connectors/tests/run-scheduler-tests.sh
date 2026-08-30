@@ -526,23 +526,30 @@ EOF
   assert_eq "sync_run_lane + mcp-lane-tick: ok lane state last_exit=0" "$mcp_ok_state_exit" "0"
 
   # --- (viii) core template parses under sync_lanes_list ---
+  # The template ships {{...}} placeholders (sync-lanes 1.1.0), resolved per
+  # tick via sync_resolve_command — not the old <ABS-...> literal markers, so
+  # this reads the template as-is and resolves the learn row's command the
+  # same way sync_run_lane does (see section 10 below).
   template_src="$REPO_ROOT/packages/core/templates/sync-lanes.tsv"
   template_copy_dir="$SANDBOX/template-check"
-  mkdir -p "$template_copy_dir"
-  template_copy="$template_copy_dir/lanes.tsv"
-  sed -e "s#<ABS-REPO-ROOT>#$REPO_ROOT#g" -e "s#<ABS-CLAUDE-BIN>#$STUB_CLAUDE#g" \
-      -e "s#<ABS-STORE-DIR>#$template_copy_dir/store#g" \
-      -e "s#<ABS-PRIVATE-DATA-ROOT>#$template_copy_dir#g" "$template_src" > "$template_copy"
+  template_data_dir="$template_copy_dir/data"
+  mkdir -p "$template_data_dir"
 
-  template_rows="$(sync_lanes_list "$template_copy")"
+  template_rows="$(sync_lanes_list "$template_src")"
   template_rc=$?
   assert_eq "core template sync-lanes.tsv: parses cleanly under sync_lanes_list" "$template_rc" "0"
   template_row_count="$(printf '%s\n' "$template_rows" | grep -c .)"
   assert_eq "core template sync-lanes.tsv: exactly 6 rows" "$template_row_count" "6"
   assert_contains "core template sync-lanes.tsv: feedback lane row present" "$template_rows" "feedback"
   template_learn_row="$(printf '%s\n' "$template_rows" | grep -E "^learn	900	true	")"
-  assert_contains "core template sync-lanes.tsv: learn lane row present (learn-sweep.sh)" "$template_learn_row" "learn-sweep.sh"
-  assert_contains "core template sync-lanes.tsv: learn lane row present (--data-dir)" "$template_learn_row" "--data-dir $template_copy_dir/data"
+  template_learn_cmd="$(printf '%s' "$template_learn_row" | awk -F'\t' '{
+    out = $4
+    for (i = 5; i <= NF; i++) out = out "\t" $i
+    print out
+  }')"
+  template_learn_resolved="$(SYNC_REPO_ROOT="$REPO_ROOT" sync_resolve_command "$template_data_dir" "$template_learn_cmd")"
+  assert_contains "core template sync-lanes.tsv: learn lane row present (learn-sweep.sh)" "$template_learn_resolved" "learn-sweep.sh"
+  assert_contains "core template sync-lanes.tsv: learn lane row present (--data-dir)" "$template_learn_resolved" "--data-dir $template_copy_dir/data"
 
   # --- (ix) tick/subcommand argument errors ---
   "$MCP_TICK" tick --claude-bin "$STUB_CLAUDE" --allowed-tools "Bash" >/dev/null 2>/dev/null
