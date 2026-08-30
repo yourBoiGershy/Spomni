@@ -1,0 +1,94 @@
+{
+  "schema_version": "1.1.0",
+  "weights": {
+    "evidence": {
+      "chat_day": {
+        "rationale": "seeded from user-model revision 1",
+        "updated": "2026-08-30",
+        "weight": 0.8
+      },
+      "co_attended": {
+        "rationale": "seeded from user-model revision 1",
+        "updated": "2026-08-30",
+        "weight": 1.3
+      },
+      "email": {
+        "rationale": "seeded from user-model revision 1",
+        "updated": "2026-08-30",
+        "weight": 1
+      },
+      "meeting": {
+        "rationale": "seeded from user-model revision 1",
+        "updated": "2026-08-30",
+        "weight": 1.5
+      },
+      "talking_point": {
+        "rationale": "seeded from user-model revision 1",
+        "updated": "2026-08-30",
+        "weight": 1.2
+      },
+      "user_initiated": {
+        "rationale": "seeded from user-model revision 1",
+        "updated": "2026-08-30",
+        "weight": 1.2
+      }
+    },
+    "kinds": {
+      "collaborator": {
+        "rationale": "seeded from user-model revision 1",
+        "updated": "2026-08-30",
+        "weight": 1
+      },
+      "community": {
+        "rationale": "seeded from user-model revision 1",
+        "updated": "2026-08-30",
+        "weight": 0.7
+      },
+      "family": {
+        "rationale": "seeded from user-model revision 1",
+        "updated": "2026-08-30",
+        "weight": 1.1
+      },
+      "friend": {
+        "rationale": "seeded from user-model revision 1",
+        "updated": "2026-08-30",
+        "weight": 1.2
+      },
+      "professional": {
+        "rationale": "acted on 6 of 7 fired nudges",
+        "updated": "2026-08-15",
+        "weight": 1.4
+      },
+      "scheduling": {
+        "rationale": "seeded from user-model revision 1",
+        "updated": "2026-08-30",
+        "weight": 0.6
+      },
+      "transactional": {
+        "rationale": "seeded from user-model revision 1",
+        "updated": "2026-08-30",
+        "weight": 0.6
+      },
+      "unsolicited": {
+        "rationale": "seeded from user-model revision 1",
+        "updated": "2026-08-30",
+        "weight": 0.6
+      }
+    },
+    "signal-types": {
+      "birthday": {
+        "rationale": "3 of 4 birthday nudges dismissed not-this-signal-type in 90d",
+        "updated": "2026-08-29",
+        "weight": 0.85
+      }
+    },
+    "tags": {
+      "college-friend": {
+        "rationale": "acted on 3 of 4 fired nudges",
+        "updated": "2026-08-29",
+        "weight": 1.15
+      }
+    }
+  },
+  "generated_at": "2026-08-29T09:00:00Z"
+}

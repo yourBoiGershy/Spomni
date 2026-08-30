@@ -269,7 +269,7 @@ if [ "${SEED_MODE}" -eq 1 ]; then
 
   NEW_KINDS_JSON="{"
   first=1
-  for k in friend family collaborator professional community scheduling transactional unsolicited unknown; do
+  for k in friend family collaborator professional community scheduling transactional unsolicited; do
     kw="$(kind_weight "${k}")"
     if [ "${first}" -eq 0 ]; then NEW_KINDS_JSON="${NEW_KINDS_JSON},"; fi
     NEW_KINDS_JSON="${NEW_KINDS_JSON}\"${k}\":${kw}"

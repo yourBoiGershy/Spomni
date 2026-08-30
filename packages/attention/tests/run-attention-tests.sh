@@ -317,4 +317,297 @@ S3D_DIR="$TMP_ROOT/s3d-decline-invalid-reason"
 build_theo_store "$S3D_DIR"
 assert_refusal "decline with an invalid reason" "$S3D_DIR" decline 2026-08-31-theo-bramwell --reason not-a-real-reason
 
+# =============================================================================
+# Scenarios 4-10: calibrate.sh --seed-from-user-model and --rescale
+# (packages/attention/specs/calibration.md "Seeding from user-model" /
+# "Rescale"), against packages/attention/tests/fixtures/calibration-seed/.
+#
+# All runs pin --today 2026-08-30 for determinism; `generated_at` is still
+# wall-clock (calibrate.sh does not let --today override it), so comparisons
+# against expected-*.json normalize it away with `jq -S 'del(.generated_at)'`
+# and separately assert it looks like a real UTC timestamp.
+# =============================================================================
+
+CALIBRATE="$REPO_ROOT/packages/attention/scripts/calibrate.sh"
+SEED_FIXTURES="$REPO_ROOT/packages/attention/tests/fixtures/calibration-seed"
+
+if [ ! -x "$CALIBRATE" ]; then
+  fail "calibrate.sh missing or not executable at $CALIBRATE"
+else
+
+# --- fixture-normalized-diff helper: strip the non-deterministic
+#     generated_at field via jq -S before diffing two ranking-weights.json
+#     files (key order in the file is otherwise deterministic since
+#     calibrate.sh writes via `jq -S`). ---
+normalized_diff() {
+  # $1 = expected path, $2 = actual path
+  diff <(jq -S 'del(.generated_at)' "$1") <(jq -S 'del(.generated_at)' "$2") 2>&1
+}
+
+assert_generated_at_is_utc_timestamp() {
+  # $1 = description, $2 = ranking-weights.json path
+  if jq -e '.generated_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")' "$2" >/dev/null 2>&1; then
+    pass "$1: generated_at is a UTC timestamp"
+  else
+    fail "$1: generated_at is not a UTC timestamp: $(jq -r '.generated_at' "$2" 2>&1)"
+  fi
+}
+
+# =============================================================================
+# Scenario 4: seed on a confirmed user-model -> byte-equals (mod generated_at)
+# the hand-derived expected-seeded.json
+# =============================================================================
+
+S4_DIR="$TMP_ROOT/s4-seed-confirmed"
+mkdir -p "$S4_DIR"
+cp "$SEED_FIXTURES/user-model.md" "$S4_DIR/user-model.md"
+cp "$SEED_FIXTURES/ranking-weights.before.json" "$S4_DIR/ranking-weights.json"
+
+s4_output="$("$CALIBRATE" "$S4_DIR" --seed-from-user-model --today 2026-08-30 2>&1)"
+s4_status=$?
+
+if [ "$s4_status" -eq 0 ]; then
+  pass "seed on confirmed user-model exits 0"
+else
+  fail "seed on confirmed user-model exited $s4_status (expected 0): $s4_output"
+fi
+
+s4_diff="$(normalized_diff "$SEED_FIXTURES/expected-seeded.json" "$S4_DIR/ranking-weights.json")"
+if [ -z "$s4_diff" ]; then
+  pass "seed on confirmed user-model matches expected-seeded.json (mod generated_at)"
+else
+  fail "seed on confirmed user-model did not match expected-seeded.json:"
+  echo "$s4_diff"
+fi
+
+assert_generated_at_is_utc_timestamp "seed on confirmed user-model" "$S4_DIR/ranking-weights.json"
+
+# =============================================================================
+# Scenario 5: seed on a draft user-model -> refuses exit 3, no file touch
+# =============================================================================
+
+S5_DIR="$TMP_ROOT/s5-seed-draft"
+mkdir -p "$S5_DIR"
+cp "$SEED_FIXTURES/user-model.draft.md" "$S5_DIR/user-model.md"
+cp "$SEED_FIXTURES/ranking-weights.before.json" "$S5_DIR/ranking-weights.json"
+S5_PRE="$TMP_ROOT/s5-pre-image.json"
+cp "$S5_DIR/ranking-weights.json" "$S5_PRE"
+
+s5_output="$("$CALIBRATE" "$S5_DIR" --seed-from-user-model --today 2026-08-30 2>&1)"
+s5_status=$?
+
+if [ "$s5_status" -eq 3 ]; then
+  pass "seed on a draft user-model refuses with exit 3"
+else
+  fail "seed on a draft user-model exited $s5_status (expected 3): $s5_output"
+fi
+
+s5_diff="$(diff "$S5_PRE" "$S5_DIR/ranking-weights.json" 2>&1)"
+if [ -z "$s5_diff" ]; then
+  pass "seed on a draft user-model leaves ranking-weights.json byte-identical"
+else
+  fail "seed on a draft user-model touched ranking-weights.json:"
+  echo "$s5_diff"
+fi
+
+# =============================================================================
+# Scenario 6: signal-types/tags are never touched by seed mode
+# =============================================================================
+
+s6_sig="$(jq -S '.weights["signal-types"]' "$S4_DIR/ranking-weights.json")"
+s6_sig_expected="$(jq -S '.weights["signal-types"]' "$SEED_FIXTURES/ranking-weights.before.json")"
+s6_tags="$(jq -S '.weights.tags' "$S4_DIR/ranking-weights.json")"
+s6_tags_expected="$(jq -S '.weights.tags' "$SEED_FIXTURES/ranking-weights.before.json")"
+
+if [ "$s6_sig" = "$s6_sig_expected" ] && [ "$s6_tags" = "$s6_tags_expected" ]; then
+  pass "seed mode leaves signal-types/tags untouched"
+else
+  fail "seed mode touched signal-types/tags (should never write them)"
+fi
+
+# =============================================================================
+# Scenario 7: revision-aware re-seed — bumped revision re-seeds
+# rationale-matched keys (friend et al.) but leaves a user-tuned key
+# (kinds.professional, whose rationale doesn't match the seed pattern) alone
+# =============================================================================
+
+S7_DIR="$TMP_ROOT/s7-reseed"
+mkdir -p "$S7_DIR"
+cp "$SEED_FIXTURES/user-model.revision2.md" "$S7_DIR/user-model.md"
+cp "$SEED_FIXTURES/ranking-weights.reseed-before.json" "$S7_DIR/ranking-weights.json"
+
+s7_output="$("$CALIBRATE" "$S7_DIR" --seed-from-user-model --today 2026-08-30 2>&1)"
+s7_status=$?
+
+if [ "$s7_status" -eq 0 ]; then
+  pass "re-seed against a bumped revision exits 0"
+else
+  fail "re-seed against a bumped revision exited $s7_status (expected 0): $s7_output"
+fi
+
+s7_friend_rationale="$(jq -r '.weights.kinds.friend.rationale' "$S7_DIR/ranking-weights.json")"
+s7_friend_weight="$(jq -r '.weights.kinds.friend.weight' "$S7_DIR/ranking-weights.json")"
+if [ "$s7_friend_rationale" = "seeded from user-model revision 2" ] && [ "$s7_friend_weight" = "1.2" ]; then
+  pass "re-seed rewrites a rationale-matched key (kinds.friend) to the new revision"
+else
+  fail "re-seed did not rewrite kinds.friend as expected (rationale='$s7_friend_rationale' weight='$s7_friend_weight')"
+fi
+
+s7_prof_rationale="$(jq -r '.weights.kinds.professional.rationale' "$S7_DIR/ranking-weights.json")"
+s7_prof_weight="$(jq -r '.weights.kinds.professional.weight' "$S7_DIR/ranking-weights.json")"
+s7_prof_updated="$(jq -r '.weights.kinds.professional.updated' "$S7_DIR/ranking-weights.json")"
+if [ "$s7_prof_rationale" = "acted on 6 of 7 fired nudges" ] && [ "$s7_prof_weight" = "1.4" ] && [ "$s7_prof_updated" = "2026-08-15" ]; then
+  pass "re-seed leaves a user-tuned key (kinds.professional) untouched"
+else
+  fail "re-seed clobbered the user-tuned kinds.professional entry (rationale='$s7_prof_rationale' weight='$s7_prof_weight' updated='$s7_prof_updated')"
+fi
+
+# =============================================================================
+# Scenario 8: rescale clamp — an entry that would land outside [0.25, 2.0]
+# after the geometric-mean divide is clamped to the bound
+# =============================================================================
+
+S8_DIR="$TMP_ROOT/s8-rescale-clamp"
+mkdir -p "$S8_DIR"
+cp "$SEED_FIXTURES/ranking-weights.rescale-clamp.json" "$S8_DIR/ranking-weights.json"
+
+s8_output="$("$CALIBRATE" "$S8_DIR" --rescale evidence --today 2026-08-30 2>&1)"
+s8_status=$?
+
+if [ "$s8_status" -eq 0 ]; then
+  pass "rescale with clamp-triggering inputs exits 0"
+else
+  fail "rescale with clamp-triggering inputs exited $s8_status (expected 0): $s8_output"
+fi
+
+s8_meeting="$(jq -r '.weights.evidence.meeting.weight' "$S8_DIR/ranking-weights.json")"
+s8_co="$(jq -r '.weights.evidence.co_attended.weight' "$S8_DIR/ranking-weights.json")"
+s8_chat="$(jq -r '.weights.evidence.chat_day.weight' "$S8_DIR/ranking-weights.json")"
+if [ "$s8_meeting" = "2" ] && [ "$s8_co" = "2" ] && [ "$s8_chat" = "0.25" ]; then
+  pass "rescale clamps out-of-bound post-divide weights to [0.25, 2.0] (meeting=2, co_attended=2, chat_day=0.25)"
+else
+  fail "rescale clamp mismatch (meeting=$s8_meeting co_attended=$s8_co chat_day=$s8_chat, expected 2/2/0.25)"
+fi
+
+s8_out_of_bounds="$(jq '[.weights.evidence[].weight | select(. > 2.0 or . < 0.25)] | length' "$S8_DIR/ranking-weights.json")"
+if [ "$s8_out_of_bounds" = "0" ]; then
+  pass "rescale never leaves any entry outside [0.25, 2.0]"
+else
+  fail "rescale left $s8_out_of_bounds entry/entries outside [0.25, 2.0]"
+fi
+
+# =============================================================================
+# Scenario 9: rescale kinds — geometric mean lands at 1.0, ratios preserved,
+# rationale/updated stamped on every entry, other dimensions untouched, and a
+# second run is a no-op
+# =============================================================================
+
+S9_DIR="$TMP_ROOT/s9-rescale-kinds"
+mkdir -p "$S9_DIR"
+cp "$SEED_FIXTURES/ranking-weights.rescale-kinds.json" "$S9_DIR/ranking-weights.json"
+S9_SIG_BEFORE="$(jq -S '.weights["signal-types"]' "$S9_DIR/ranking-weights.json")"
+S9_TAGS_BEFORE="$(jq -S '.weights.tags' "$S9_DIR/ranking-weights.json")"
+S9_EVIDENCE_BEFORE="$(jq -S '.weights.evidence' "$S9_DIR/ranking-weights.json")"
+
+s9_output="$("$CALIBRATE" "$S9_DIR" --rescale kinds --today 2026-08-30 2>&1)"
+s9_status=$?
+
+if [ "$s9_status" -eq 0 ]; then
+  pass "rescale kinds exits 0"
+else
+  fail "rescale kinds exited $s9_status (expected 0): $s9_output"
+fi
+
+s9_geomean_diff="$(jq -r '
+  (.weights.kinds | to_entries | map(.value.weight) ) as $ws
+  | ($ws | length) as $n
+  | (($ws | map(log) | add / $n) | exp) as $gm
+  | (($gm - 1.0) | if . < 0 then -. else . end)
+' "$S9_DIR/ranking-weights.json")"
+s9_geomean_ok="$(awk -v d="$s9_geomean_diff" 'BEGIN { print (d <= 0.01) ? "1" : "0" }')"
+if [ "$s9_geomean_ok" = "1" ]; then
+  pass "rescale kinds: result's geometric mean is within 0.01 of 1.0 (diff=$s9_geomean_diff)"
+else
+  fail "rescale kinds: result's geometric mean is off by $s9_geomean_diff (expected <= 0.01)"
+fi
+
+# ratio checks: friend/family were equal (1.6/1.6) and collaborator/professional
+# was 0.8/1.2 = 0.6667 before rescale — both ratios must survive the divide.
+s9_friend="$(jq -r '.weights.kinds.friend.weight' "$S9_DIR/ranking-weights.json")"
+s9_family="$(jq -r '.weights.kinds.family.weight' "$S9_DIR/ranking-weights.json")"
+s9_collab="$(jq -r '.weights.kinds.collaborator.weight' "$S9_DIR/ranking-weights.json")"
+s9_prof="$(jq -r '.weights.kinds.professional.weight' "$S9_DIR/ranking-weights.json")"
+s9_ratio1_ok="$(awk -v a="$s9_friend" -v b="$s9_family" 'BEGIN { d = a - b; if (d < 0) d = -d; print (d <= 0.01) ? "1" : "0" }')"
+s9_ratio2_ok="$(awk -v a="$s9_collab" -v b="$s9_prof" -v want="0.6667" 'BEGIN { r = a / b; d = r - want; if (d < 0) d = -d; print (d <= 0.01) ? "1" : "0" }')"
+if [ "$s9_ratio1_ok" = "1" ] && [ "$s9_ratio2_ok" = "1" ]; then
+  pass "rescale kinds preserves pairwise ratios (friend==family, collaborator:professional≈0.667)"
+else
+  fail "rescale kinds did not preserve ratios (friend=$s9_friend family=$s9_family collaborator=$s9_collab professional=$s9_prof)"
+fi
+
+s9_rationale_mismatches="$(jq -r '[.weights.kinds[] | select(.rationale | test("^rescaled 2026-08-30: dimension mean [0-9.]+ → 1\\.0$") | not)] | length' "$S9_DIR/ranking-weights.json")"
+s9_updated_mismatches="$(jq -r '[.weights.kinds[] | select(.updated != "2026-08-30")] | length' "$S9_DIR/ranking-weights.json")"
+if [ "$s9_rationale_mismatches" = "0" ] && [ "$s9_updated_mismatches" = "0" ]; then
+  pass "rescale kinds stamps every entry's rationale/updated"
+else
+  fail "rescale kinds left $s9_rationale_mismatches entries with a bad rationale and $s9_updated_mismatches with a stale updated"
+fi
+
+S9_SIG_AFTER="$(jq -S '.weights["signal-types"]' "$S9_DIR/ranking-weights.json")"
+S9_TAGS_AFTER="$(jq -S '.weights.tags' "$S9_DIR/ranking-weights.json")"
+S9_EVIDENCE_AFTER="$(jq -S '.weights.evidence' "$S9_DIR/ranking-weights.json")"
+if [ "$S9_SIG_BEFORE" = "$S9_SIG_AFTER" ] && [ "$S9_TAGS_BEFORE" = "$S9_TAGS_AFTER" ] && [ "$S9_EVIDENCE_BEFORE" = "$S9_EVIDENCE_AFTER" ]; then
+  pass "rescale kinds leaves signal-types/tags/evidence untouched"
+else
+  fail "rescale kinds touched a dimension other than kinds"
+fi
+
+S9_POST_FIRST="$TMP_ROOT/s9-post-first.json"
+cp "$S9_DIR/ranking-weights.json" "$S9_POST_FIRST"
+
+s9b_output="$("$CALIBRATE" "$S9_DIR" --rescale kinds --today 2026-08-30 2>&1)"
+s9b_status=$?
+s9b_diff="$(diff "$S9_POST_FIRST" "$S9_DIR/ranking-weights.json" 2>&1)"
+if [ "$s9b_status" -eq 0 ] && [ -z "$s9b_diff" ]; then
+  pass "a second rescale kinds run (already near mean 1.0) is a no-op"
+else
+  fail "a second rescale kinds run was not a no-op (status=$s9b_status):"
+  echo "$s9b_diff"
+fi
+
+# =============================================================================
+# Scenario 10: sabotage proof — a broken revision-aware re-seed check (always
+# re-seeds, never checking the prior rationale's revision number) IS caught by
+# scenario 7's user-tuned-entry assertion. Demonstrates the assertion has
+# teeth; not counted as a real regression in this script (the sabotaged copy
+# is thrown away after).
+# =============================================================================
+
+S10_SABOTAGE="$TMP_ROOT/calibrate-sabotage.sh"
+cp "$CALIBRATE" "$S10_SABOTAGE"
+chmod +x "$S10_SABOTAGE"
+sed -i.bak 's/if (\$cap != null) and ((\$cap.n | tonumber) < \$revision) then/if true then/' "$S10_SABOTAGE"
+
+if grep -q 'if true then' "$S10_SABOTAGE" && ! grep -q '\$cap != null' "$S10_SABOTAGE"; then
+  pass "sabotage proof: revision-aware re-seed check patched out of the sabotaged copy"
+else
+  fail "sabotage proof setup: sed did not patch the re-seed check as expected"
+fi
+
+S10_DIR="$TMP_ROOT/s10-sabotage-run"
+mkdir -p "$S10_DIR"
+cp "$SEED_FIXTURES/user-model.revision2.md" "$S10_DIR/user-model.md"
+cp "$SEED_FIXTURES/ranking-weights.reseed-before.json" "$S10_DIR/ranking-weights.json"
+"$S10_SABOTAGE" "$S10_DIR" --seed-from-user-model --today 2026-08-30 >/dev/null 2>&1
+
+s10_prof_rationale="$(jq -r '.weights.kinds.professional.rationale' "$S10_DIR/ranking-weights.json")"
+if [ "$s10_prof_rationale" != "acted on 6 of 7 fired nudges" ]; then
+  echo "FAIL (expected): sabotaged calibrate.sh clobbered the user-tuned kinds.professional entry (rationale is now '$s10_prof_rationale')"
+  pass "sabotage proof: scenario 7's user-tuned-entry assertion would catch a broken revision-aware re-seed check"
+else
+  fail "sabotage proof: the sabotaged copy did NOT clobber kinds.professional — sed patch had no effect, sabotage proof is void"
+fi
+
+fi # calibrate.sh executable guard
+
 summary_and_exit

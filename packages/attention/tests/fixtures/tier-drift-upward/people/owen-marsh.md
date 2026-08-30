@@ -1,5 +1,5 @@
 ---
-schema_version: 1.0.0
+schema_version: 1.1.0
 name: Owen Marsh
 org: Harborline Logistics
 role: Regional Sales Director
@@ -8,6 +8,10 @@ tags: [work]
 how-met: Met at an industry conference in 2021
 last-touch: 2026-08-25
 tier: dormant
+kind: professional
+kind_note: Regional Sales Director contact; occasional webinar collaboration
+kind_source: stated-by-user
+kind_updated: 2026-08-25
 ---
 
 ## Facts

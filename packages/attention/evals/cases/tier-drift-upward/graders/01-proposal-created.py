@@ -7,12 +7,17 @@ $2 = path to eval-run-skill.sh's result.json (unused by this grader; the
 
 Hand-derived expectation (from
 packages/attention/tests/fixtures/tier-drift-upward/expected-proposal.md and
-people/owen-marsh.md, per packages/attention/specs/tier-drift.md's UPWARD
-table): owen-marsh is tagged `tier: dormant` with 5 interactions in the
-trailing 90 days (>= the dormant threshold of 3), so the detector must write
-exactly one new wakeup proposing a `dormant` -> `active` bump for
-`[[owen-marsh]]`, with `origin: signal` and `status: pending`. The fixture's
-`wakeups/` starts empty, so "new" here means "any file at all".
+people/owen-marsh.md, per packages/attention/specs/tier-drift.md's
+kind-horizon prefilter + judgment-verdict shape — the old flat per-tier
+"dormant fires at N>=3" cadence table is retired, plan 30): owen-marsh is
+tagged `tier: dormant` and `kind: professional` (a RHYTHMED, not-expired
+kind), with 5 interactions in the trailing 90 days -- a raw count the
+prefilter treats as non-trivially elevated for a dormant-tagged
+professional-kind person, admitting the candidate to judgment, which
+verdicts UPWARD drift. So the detector must write exactly one new wakeup
+proposing a `dormant` -> `active` bump for `[[owen-marsh]]`, with
+`origin: signal` and `status: pending`. The fixture's `wakeups/` starts
+empty, so "new" here means "any file at all".
 
 We deliberately do NOT require byte-identity against expected-proposal.md:
 the real detector generates its own `id`/`due`/`source-signal` values from
