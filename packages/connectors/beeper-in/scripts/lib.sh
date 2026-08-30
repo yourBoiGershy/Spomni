@@ -162,17 +162,14 @@ cursor_set() {
 # beeper-sweep.sh on that chat's first successful incremental capture, never
 # advanced afterward, never written or read by --backfill for anything other
 # than as its start bound.
+#
+# Delegates to cursor_get's identical awk lookup (same last-match-wins scan);
+# distinguishable from first-match only on a file with duplicate rows for one
+# chatID, which coverage_floor_set's write-once contract (below) never
+# produces, so the delegation is behavior-preserving for this file.
 # ---------------------------------------------------------------------------
 coverage_floor_get() {
-  chat_id="$1"
-  file="${2:-$COVERAGE_FLOOR_FILE}"
-
-  [ -f "$file" ] || return 1
-
-  awk -F'\t' -v id="$chat_id" '
-    $1 == id { c = $2; found = 1 }
-    END { if (found) { print c; exit 0 } else { exit 1 } }
-  ' "$file"
+  cursor_get "$1" "${2:-$COVERAGE_FLOOR_FILE}"
 }
 
 # ---------------------------------------------------------------------------

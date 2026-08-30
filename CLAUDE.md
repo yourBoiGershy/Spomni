@@ -114,6 +114,9 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   `bash packages/connectors/tests/run-capture-tests.sh`,
   `bash packages/connectors/tests/run-beeper-capture-tests.sh`,
   `bash packages/connectors/tests/run-scheduler-tests.sh`,
+  `bash packages/ingestion/tests/run-seed-tests.sh`,
+  `bash packages/ingestion/tests/run-triage-tests.sh`,
+  `bash packages/ingestion/tests/run-shard-tests.sh`,
   `bash packages/attention/tests/run-attention-tests.sh`,
   `bash packages/attention/tests/run-capacity-tests.sh`, and
   `bash packages/attention/tests/run-queue-tests.sh`.

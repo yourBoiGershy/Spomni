@@ -1,0 +1,29 @@
+{
+  "alex-rivera": {
+    "last-touch": "2026-07-15",
+    "location": null,
+    "org": "Brightline Supply",
+    "role": "Vendor Manager",
+    "tags": [
+      "vendor"
+    ]
+  },
+  "dana-kowalski": {
+    "last-touch": "2026-08-01",
+    "location": null,
+    "org": "Meridian Fintech",
+    "role": "Partnerships Lead",
+    "tags": [
+      "partner"
+    ]
+  },
+  "jamie-torres": {
+    "last-touch": "2026-07-20",
+    "location": null,
+    "org": "Northfield Audit Group",
+    "role": "Senior Auditor",
+    "tags": [
+      "vendor"
+    ]
+  }
+}

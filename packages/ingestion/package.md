@@ -29,7 +29,11 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   `scripts/triage-inbox.sh` (read-only over `<store-dir>`; sole writer of
   the `data/ingestion/triage-held.log` ledger — deterministic, no-model
   pre-judgment hold pass over `inbox/`, applying `specs/import-triage.md`'s
-  five rule classes, plan 26)
+  five rule classes, plan 26), `scripts/shard-filing-batch.sh` (read-only
+  over `<store-dir>`; writes only its `--out-dir` — deterministic,
+  no-model person-sharded pre-pass over the eligible filing batch,
+  applying `specs/parallel-filing.md`'s D1 connected-components rule, plan
+  27)
 - Specs: `specs/stated-preference-filing.md` — how tier utterances, signal opt-outs,
   priorities, and cadence wishes file into `person.md`/`profile.md`, including the
   tier-change confirmation path (amends plan 03's filing-engine brief; plan 03 is
@@ -38,13 +42,20 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   runs (plan 11 unit 13, amended by plan 24 for the 6-month configurable window +
   participation-signal scoring); `specs/import-triage.md` — the five
   deterministic, precision-first junk-hold rule classes and the D3
-  held-by-rule ledger convention (plan 26)
+  held-by-rule ledger convention (plan 26); `specs/parallel-filing.md` —
+  the shard pre-pass's connected-components semantics, `skills/debrief/`'s
+  shard mode deviations, and the wave protocol a parallel filing run
+  follows end to end (plan 27)
 - Ledger: `data/ingestion/triage-held.log` (sole writer:
   `scripts/triage-inbox.sh`) — append-only, tab-separated
   `<capture-id>\t<rule-name>\t<held-at ISO 8601 Z>`, one line per held
   event; read by `skills/debrief/` batch mode (excluded alongside
   `debrief-filed.log`) and by humans directly, per `specs/import-triage.md`
-  D3 (plan 26)
+  D3 (plan 26); `data/ingestion/debrief-filed.shard-<k>.log` (one per
+  active shard worker, sole writer: `skills/debrief/` shard mode) —
+  same shape as `debrief-filed.log`, merged into it by the wave
+  orchestrator (never by a shard worker itself) before the post-wave index
+  rebuild, per `specs/parallel-filing.md` D2/D3 (plan 27)
 - Conventions: `needs-confirmation` and `needs-follow-up` markers, met-at /
   will-meet-at / same-event-as links
 - Evals: `evals/cases/` — 16 T3 (skill-tier) cases (`eval-case@1`,
@@ -90,3 +101,6 @@ Plans 03 (filing engine) and 04 (matching half). `skills/onboarding-seed/`,
 `scripts/triage-inbox.sh`, `specs/import-triage.md`, the
 `data/ingestion/triage-held.log` ledger, and `skills/debrief/`'s
 triage-held batch-mode exclusion by plan 26 (standard import pipeline).
+`scripts/shard-filing-batch.sh`, `specs/parallel-filing.md`, the
+`data/ingestion/debrief-filed.shard-<k>.log` ledger convention, and
+`skills/debrief/`'s shard mode by plan 27 (import speed & scaling).
