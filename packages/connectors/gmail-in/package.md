@@ -60,6 +60,8 @@ explicitly as banned in the skill file (never called, not even to test).
 | fetch | Yes (`import-pipeline@1.0.0`, D5) | `search_threads`/`get_thread` requested at max page size so results land on disk as a saved tool-result file; session handles the file path only (archive via `cp`, classify/hints/body extraction via jq + `scripts/extract-email-body.sh`). Inline residual (small final page) written verbatim to a temp file and counted as `inline-spilled` in the run summary. See `skills/gmail-sweep/SKILL.md` step 2. |
 | normalize | Yes (`import-pipeline@1.0.0`) | `packages/connectors/scripts/normalize-capture.sh --file <body-file>`, where `<body-file>` is written by `scripts/extract-email-body.sh` — never model stdin. |
 
+Scheduling (plan 28): this lane runs headless under the sync scheduler via `packages/connectors/scripts/mcp-lane-tick.sh tick --prompt "/gmail-sweep pages=N" …`; sweep semantics unchanged — see `packages/core/templates/sync-lanes.tsv`.
+
 ## Owned paths
 
 `packages/connectors/gmail-in/**`; at runtime: `inbox/` (writes, shared with

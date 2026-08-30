@@ -41,6 +41,10 @@ window from `<data-dir>/config/onboarding-backfill.tsv` for all lane backfill mo
 - The shared sync scheduler (`scripts/sync-scheduler.sh` + `scripts/sync-lib.sh`,
   plan 19) — one configurable, restart-safe launchd runner for all input-lane
   sweeps, replacing per-lane bespoke installers (e.g. beeper-in's plan-13 one)
+- The headless MCP-lane tick wrapper (`scripts/mcp-lane-tick.sh`, plan 28) —
+  runs a capped `claude -p` session per scheduled tick so gmail-in/calendar-in
+  (first-party MCP fetch) can be lanes in `lanes.tsv`; `preflight` verifies
+  connector tools before a lane is enabled.
 
 ## Consumes
 
