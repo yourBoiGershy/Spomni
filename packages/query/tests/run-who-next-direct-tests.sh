@@ -55,6 +55,16 @@
 #     as-of last-touch). Also carries a "## Resolved" section that must
 #     never surface in open_threads_text, and an "[inferred-public-web]
 #     [stale]" fact that must never surface in facts.
+#   people/quinn-bramwell.md — (j) kind: unsolicited (cold-pitch contact),
+#     last-touch 2026-07-10 (51 days before --today) -> excluded from every
+#     mode by the non-relational-kind rule (relationship-scoring.md D3).
+#   people/dana-whitfield.md — (k) kind: scheduling, kind_expires:
+#     2026-08-01 (past --today -> effective_kind "expired"), last-touch
+#     2026-07-15 -> excluded from every mode.
+#   people/felix-marsh.md   — (l) kind: professional, kind_expires:
+#     2026-08-01 (past --today -> effective_kind "expired", even though
+#     "professional" itself is not in the non-relational set), last-touch
+#     2026-07-18 -> excluded from every mode.
 #
 # Each person has one interactions/YYYY-MM-DD-<slug>.md. index.json/
 # stats.json are NOT shipped in the fixture — the missing-index path
@@ -385,6 +395,75 @@ if [ -n "$nadia_line" ]; then
   fi
 else
   fail "15: (i) nadia-cho not found in primary output"
+fi
+
+# ---------------------------------------------------------------------------
+# Case 16: (j) quinn-bramwell (kind: unsolicited) never appears, in any
+# mode — not friends, not coffee, not all (with or without
+# --include-transactional).
+# ---------------------------------------------------------------------------
+
+UNSOLICITED_DIR="$(fresh_copy unsolicited)"
+c16_ok=1
+for m in friends coffee all; do
+  bash "$WHO_NEXT_DIRECT" "$UNSOLICITED_DIR" --mode "$m" --today "$TODAY" >"$WORK_DIR/unsolicited_$m.out" 2>"$WORK_DIR/unsolicited_$m.err"
+  grep -q '"slug":"quinn-bramwell"' "$WORK_DIR/unsolicited_$m.out" && c16_ok=0
+done
+bash "$WHO_NEXT_DIRECT" "$UNSOLICITED_DIR" --mode all --today "$TODAY" --include-transactional >"$WORK_DIR/unsolicited_all_inc.out" 2>"$WORK_DIR/unsolicited_all_inc.err"
+grep -q '"slug":"quinn-bramwell"' "$WORK_DIR/unsolicited_all_inc.out" && c16_ok=0
+if [ "$c16_ok" -eq 1 ]; then
+  pass "16: (j) kind:unsolicited never appears in any mode, with or without --include-transactional"
+else
+  fail "16: (j) kind:unsolicited never appears in any mode, with or without --include-transactional"
+fi
+
+# ---------------------------------------------------------------------------
+# Case 17: (k) dana-whitfield (kind: scheduling, kind_expires: 2026-08-01,
+# past --today -> effective_kind "expired") never appears in any mode.
+# ---------------------------------------------------------------------------
+
+EXPIRED_SCHED_DIR="$(fresh_copy expired-scheduling)"
+c17_ok=1
+for m in friends coffee all; do
+  bash "$WHO_NEXT_DIRECT" "$EXPIRED_SCHED_DIR" --mode "$m" --today "$TODAY" >"$WORK_DIR/expsched_$m.out" 2>"$WORK_DIR/expsched_$m.err"
+  grep -q '"slug":"dana-whitfield"' "$WORK_DIR/expsched_$m.out" && c17_ok=0
+done
+bash "$WHO_NEXT_DIRECT" "$EXPIRED_SCHED_DIR" --mode all --today "$TODAY" --include-transactional >"$WORK_DIR/expsched_all_inc.out" 2>"$WORK_DIR/expsched_all_inc.err"
+grep -q '"slug":"dana-whitfield"' "$WORK_DIR/expsched_all_inc.out" && c17_ok=0
+if [ "$c17_ok" -eq 1 ]; then
+  pass "17: (k) expired kind:scheduling (kind_expires past) never appears in any mode"
+else
+  fail "17: (k) expired kind:scheduling (kind_expires past) never appears in any mode"
+fi
+
+# ---------------------------------------------------------------------------
+# Case 18: (l) felix-marsh (kind: professional, kind_expires: 2026-08-01,
+# past --today -> effective_kind "expired") never appears in any mode, even
+# though "professional" alone is not in the non-relational kind set.
+# ---------------------------------------------------------------------------
+
+EXPIRED_PRO_DIR="$(fresh_copy expired-professional)"
+c18_ok=1
+for m in friends coffee all; do
+  bash "$WHO_NEXT_DIRECT" "$EXPIRED_PRO_DIR" --mode "$m" --today "$TODAY" >"$WORK_DIR/exppro_$m.out" 2>"$WORK_DIR/exppro_$m.err"
+  grep -q '"slug":"felix-marsh"' "$WORK_DIR/exppro_$m.out" && c18_ok=0
+done
+bash "$WHO_NEXT_DIRECT" "$EXPIRED_PRO_DIR" --mode all --today "$TODAY" --include-transactional >"$WORK_DIR/exppro_all_inc.out" 2>"$WORK_DIR/exppro_all_inc.err"
+grep -q '"slug":"felix-marsh"' "$WORK_DIR/exppro_all_inc.out" && c18_ok=0
+if [ "$c18_ok" -eq 1 ]; then
+  pass "18: (l) expired kind:professional (kind_expires past) never appears in any mode"
+else
+  fail "18: (l) expired kind:professional (kind_expires past) never appears in any mode"
+fi
+
+# ---------------------------------------------------------------------------
+# Case 19: kind_expires never leaks into an emitted candidate object
+# ---------------------------------------------------------------------------
+
+if ! grep -q 'kind_expires' "$WORK_DIR/primary.out"; then
+  pass "19: kind_expires never appears in emitted candidates"
+else
+  fail "19: kind_expires never appears in emitted candidates"
 fi
 
 echo ""

@@ -14,6 +14,10 @@ export interface IndexEntry {
   role: string | null;
   location: string | null;
   "last-touch": string | null;
+  /** Optional — older indexes (pre chunk 36) lack kind fields. See
+   * packages/core/contracts/relationship-scoring.md and kind-semantics.ts. */
+  kind?: string | null;
+  kind_expires?: string | null;
 }
 
 /** Flat, keyed by slug — matches index.json's shape exactly (no envelope). */

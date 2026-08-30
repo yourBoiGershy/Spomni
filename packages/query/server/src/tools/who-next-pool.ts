@@ -15,6 +15,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { StoreReader } from "../store/reader.ts";
+import { effectiveKind, warrantsProactiveSuggestion } from "../store/kind-semantics.ts";
 
 const DEFAULT_LIMIT = 20;
 const MIN_LIMIT = 1;
@@ -28,6 +29,7 @@ interface RawCandidate {
   name: string;
   tags: string[];
   kind: string | null;
+  kind_expires: string | null;
   last_interaction: string | null;
   touchpoints: number;
   open_threads: number;
@@ -141,6 +143,7 @@ function buildRawCandidates(reader: StoreReader): RawCandidate[] {
       name: fmName === "" ? slug : fmName,
       tags: indexEntry.tags ?? [],
       kind: (frontmatter.kind as string | undefined) ?? null,
+      kind_expires: (frontmatter.kind_expires as string | undefined) ?? null,
       last_interaction: statsEntry?.last_interaction ?? indexEntry["last-touch"] ?? null,
       touchpoints: statsEntry?.touchpoints ?? 0,
       open_threads: statsEntry?.open_threads ?? 0,
@@ -187,11 +190,25 @@ export function whoNextPool(reader: StoreReader, args: WhoNextPoolArgs): object 
   }
 
   if (mode !== "friends") {
-    filtered = filtered.filter((c) => includeTransactional || c.kind !== "transactional");
+    // Non-relational kinds (scheduling/transactional/unsolicited) and any
+    // expired kind (kind_expires in the past) have no relationship rhythm
+    // worth proactively surfacing (relationship-scoring.md D3; person.md's
+    // kind_expires read-state rule) — routed through the shared
+    // kind-semantics module so this stays identical to
+    // who-next-direct.sh's reference jq. include_transactional re-admits
+    // ONLY effective kind "transactional" — an expired transactional stays
+    // dropped.
+    const keep = includeTransactional ? new Set(["transactional"]) : undefined;
+    filtered = filtered.filter((c) => warrantsProactiveSuggestion(c, today, keep));
   }
 
   if (mode === "friends") {
-    filtered = filtered.filter((c) => c.kind === null || c.kind === "friend" || c.kind === "family");
+    // friends mode keeps its own allowlist (null/friend/family); an expired
+    // kind never resolves to one of those values, so it's excluded too.
+    filtered = filtered.filter((c) => {
+      const k = effectiveKind(c, today);
+      return k === null || k === "friend" || k === "family";
+    });
   }
 
   const ranked = filtered
@@ -209,7 +226,12 @@ export function whoNextPool(reader: StoreReader, args: WhoNextPoolArgs): object 
       return daysB - daysA;
     })
     .slice(0, limit)
-    .map((entry) => entry.candidate);
+    .map((entry) => {
+      // kind_expires is filter-only fuel (kind-semantics.ts) — never part
+      // of the emitted candidate shape (test-who-next-pool.mjs pins it).
+      const { kind_expires: _kindExpires, ...rest } = entry.candidate;
+      return rest;
+    });
 
   return {
     generated_at: reader.generatedAt,
@@ -224,9 +246,11 @@ const inputSchema = {
   mode: z
     .enum(["friends", "coffee", "all"])
     .optional()
-    .describe('Filter mode (default "all"): "friends" keeps kind in {null, friend, family}; ' +
-      '"coffee" also drops linkedin-outreach-tagged people; "coffee"/"all" drop kind: transactional ' +
-      "unless include_transactional is set."),
+    .describe('Filter mode (default "all"): "friends" keeps kind in {null, friend, family} (an expired ' +
+      'kind never qualifies); "coffee" also drops linkedin-outreach-tagged people; "coffee"/"all" drop ' +
+      "non-relational kinds (scheduling, transactional, unsolicited) and any expired kind " +
+      "(kind_expires in the past) unless include_transactional is set (which re-admits only kind: " +
+      "transactional — an expired transactional stays dropped)."),
   limit: z
     .number()
     .int()
@@ -241,7 +265,9 @@ const inputSchema = {
   include_transactional: z
     .boolean()
     .optional()
-    .describe("Keep kind: transactional people (landlords, mail, closed one-offs) — dropped by default."),
+    .describe("Keep kind: transactional people (landlords, mail, closed one-offs) — dropped by default " +
+      "in coffee/all modes along with scheduling/unsolicited kinds and any expired kind; an expired " +
+      "transactional person stays dropped even with this set."),
 };
 
 export function registerWhoNextPool(server: McpServer, reader: StoreReader): void {
@@ -251,7 +277,8 @@ export function registerWhoNextPool(server: McpServer, reader: StoreReader): voi
       title: "Who-next candidate pool",
       description:
         "Read-only, one-call candidate pool for the /who-next skill: same pre-filtered " +
-        "(14-day cooldown, mode rules, transactional/linkedin-outreach exclusions, " +
+        "(14-day cooldown, mode rules, non-relational-kind [scheduling/transactional/unsolicited] " +
+        "and expired-kind exclusions, linkedin-outreach exclusion, " +
         "[stale]-flagged facts dropped, and an \"unverified since D\" open thread dropped " +
         "once D predates the person's second-most-recent interaction), pre-ranked people " +
         "as packages/query/scripts/who-next-direct.sh, in the same order. Each candidate " +

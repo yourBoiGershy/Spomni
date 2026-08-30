@@ -209,6 +209,64 @@ async function main() {
       assertEqual("who_next_pool: default limit is 20", r.limit, 20);
     }
 
+    // -----------------------------------------------------------------
+    // who_next_pool: kind-semantics exclusions (non-relational/expired
+    // kinds) — explicit absence assertions naming slugs, so equivalence
+    // with who-next-direct.sh can't mask a shared bug. Fixture cast: (j)
+    // quinn-bramwell (kind: unsolicited), (k) dana-whitfield (kind:
+    // scheduling, kind_expires: 2026-08-01 -> expired), (l) felix-marsh
+    // (kind: professional, kind_expires: 2026-08-01 -> expired), (h)
+    // morris-vance (kind: transactional) — see
+    // run-who-next-direct-tests.sh's header for the full cast.
+    // -----------------------------------------------------------------
+    const EXCLUDED_SLUGS = ["quinn-bramwell", "dana-whitfield", "felix-marsh"];
+    for (const mode of ["all", "friends", "coffee"]) {
+      const toolResult = await callTool(client, "who_next_pool", { mode, limit: 20, today: TODAY });
+      const slugs = toolResult.candidates.map((c) => c.slug);
+      for (const excluded of EXCLUDED_SLUGS) {
+        assertTrue(
+          `who_next_pool: mode=${mode} never surfaces ${excluded}`,
+          !slugs.includes(excluded),
+          slugs,
+        );
+      }
+      assertTrue(
+        `who_next_pool: mode=${mode} never emits kind_expires on any candidate`,
+        toolResult.candidates.every((c) => !("kind_expires" in c)),
+        toolResult.candidates,
+      );
+    }
+
+    {
+      const withoutTx = await callTool(client, "who_next_pool", { mode: "all", limit: 20, today: TODAY });
+      assertTrue(
+        "who_next_pool: mode=all without include_transactional never surfaces morris-vance",
+        !withoutTx.candidates.some((c) => c.slug === "morris-vance"),
+        withoutTx.candidates,
+      );
+
+      const withTx = await callTool(client, "who_next_pool", {
+        mode: "all",
+        limit: 20,
+        today: TODAY,
+        include_transactional: true,
+      });
+      assertTrue(
+        "who_next_pool: mode=all with include_transactional=true surfaces morris-vance",
+        withTx.candidates.some((c) => c.slug === "morris-vance"),
+        withTx.candidates,
+      );
+      // Expired kinds are never re-admitted by include_transactional, even
+      // for the effective-kind "expired" cases above.
+      for (const excluded of EXCLUDED_SLUGS) {
+        assertTrue(
+          `who_next_pool: mode=all with include_transactional=true still never surfaces ${excluded}`,
+          !withTx.candidates.some((c) => c.slug === excluded),
+          withTx.candidates,
+        );
+      }
+    }
+
   } finally {
     await client.close();
     fs.rmSync(cacheDir, { recursive: true, force: true });

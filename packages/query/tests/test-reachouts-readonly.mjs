@@ -256,6 +256,122 @@ async function assertionFallbackMode() {
   }
 }
 
+/** Writes a minimal person.md + one interaction into `storeDir`, entirely
+ * synthetic PII, never touching the committed fixture on disk. */
+function writeSyntheticPerson(storeDir, { slug, name, kind, lastTouch, tags }) {
+  const kindLines = kind
+    ? `kind: ${kind}\nkind_note: Synthetic fixture person for kind-semantics test coverage\nkind_source: stated-by-user\nkind_updated: ${lastTouch}\n`
+    : "";
+  const tagsLine = tags && tags.length > 0 ? `[${tags.join(", ")}]` : "[misc]";
+  const personMd = `---
+schema_version: 1.1.0
+name: ${name}
+tags: ${tagsLine}
+how-met: Synthetic fixture person for kind-semantics test coverage
+last-touch: ${lastTouch}
+${kindLines}---
+
+## Facts
+
+- **[told-by-user]** Synthetic fact so this person is not a stub (${lastTouch})
+
+## Open threads
+
+## Personal details
+
+Not much known — synthetic fixture person.
+`;
+  fs.writeFileSync(path.join(storeDir, "people", `${slug}.md`), personMd);
+
+  const interactionMd = `---
+schema_version: 1.0.0
+date: ${lastTouch}
+people: ["[[${slug}]]"]
+calendar-event: null
+source-capture: null
+---
+
+## Summary
+
+Synthetic fixture interaction for kind-semantics test coverage.
+
+## Commitments
+
+_none_
+`;
+  fs.writeFileSync(path.join(storeDir, "interactions", `${lastTouch}-${slug}.md`), interactionMd);
+}
+
+/**
+ * Kind-semantics exclusion coverage for the heuristic fallback (per
+ * kind-semantics.ts's warrantsProactiveSuggestion, routed through
+ * suggest-reachouts.ts's fallbackCandidates). Builds a temp copy of the
+ * fixture store (wakeups/ emptied, same as assertion 2) with three
+ * synthetic additions, none of them touching the committed fixture:
+ *
+ *   - victor-ledger (kind: transactional, last-touch 2018-01-01 — ~3900
+ *     days stale, which would score far above every other candidate if
+ *     the kind exclusion were not applied) -> must NEVER appear.
+ *   - priscilla-fromemail (tags: [name-from-email], last-touch also very
+ *     stale) -> must NEVER appear (stub-contact exclusion).
+ *   - oskar-baseline (kind: professional, not expired, last-touch
+ *     2018-06-01, comparably stale to victor-ledger) -> a normal person in
+ *     the same staleness range MUST still appear, proving the exclusion is
+ *     kind-specific rather than an accidental blanket drop of stale people.
+ */
+async function assertionKindSemanticsExclusions() {
+  console.log("\n-- assertion kind-semantics: fallback excludes non-relational kind + stub, keeps a normal stale person --");
+  const storeDir = mkTmpDir("ra-reachouts-kindsem-store-");
+  fs.cpSync(FIXTURE_STORE, storeDir, { recursive: true });
+  const wakeupsDir = path.join(storeDir, "wakeups");
+  for (const f of fs.readdirSync(wakeupsDir)) {
+    if (f.endsWith(".md")) fs.rmSync(path.join(wakeupsDir, f));
+  }
+
+  writeSyntheticPerson(storeDir, {
+    slug: "victor-ledger",
+    name: "Victor Ledger",
+    kind: "transactional",
+    lastTouch: "2018-01-01",
+  });
+  writeSyntheticPerson(storeDir, {
+    slug: "priscilla-fromemail",
+    name: "Priscilla Fromemail",
+    kind: null,
+    lastTouch: "2018-01-01",
+    tags: ["name-from-email"],
+  });
+  writeSyntheticPerson(storeDir, {
+    slug: "oskar-baseline",
+    name: "Oskar Baseline",
+    kind: "professional",
+    lastTouch: "2018-06-01",
+  });
+
+  const cacheDir = mkTmpDir("ra-reachouts-kindsem-cache-");
+  const { client, transport } = await startClient(storeDir, cacheDir);
+  try {
+    const result = await callSuggestReachouts(client, { limit: 10 });
+    const suggestions = result.suggestions ?? [];
+    const slugs = suggestions.map((s) => s.slug);
+
+    ok(
+      !slugs.includes("victor-ledger"),
+      `kind: transactional (victor-ledger) never appears among heuristic-fallback suggestions (got ${JSON.stringify(slugs)})`,
+    );
+    ok(
+      !slugs.includes("priscilla-fromemail"),
+      `name-from-email tagged stub (priscilla-fromemail) never appears among heuristic-fallback suggestions (got ${JSON.stringify(slugs)})`,
+    );
+    ok(
+      slugs.includes("oskar-baseline"),
+      `a normal, comparably-stale professional (oskar-baseline) still appears (got ${JSON.stringify(slugs)})`,
+    );
+  } finally {
+    await client.close();
+  }
+}
+
 async function assertionMixed() {
   console.log("\n-- assertion 3: mixed (limit=10 on the full store) --");
   const cacheDir = mkTmpDir("ra-reachouts-mixed-cache-");
@@ -367,6 +483,7 @@ async function main() {
   try {
     await assertionAttentionMode();
     await assertionFallbackMode();
+    await assertionKindSemanticsExclusions();
     await assertionMixed();
     await assertionReadOnly();
   } catch (err) {
