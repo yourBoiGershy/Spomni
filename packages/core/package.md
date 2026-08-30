@@ -51,7 +51,9 @@ nothing.
   `contracts/week-plan.md` (`signals/week-plan.json`, the capacity-model
   weekly nudge budget artifact, per plan 12 — this is the RENUMBERED cadence
   plan, docs/plans/2026-08-29-12-cadence-capacity.md, not the earlier plan 12
-  eval-harness numbering)
+  eval-harness numbering),
+  `contracts/answer-style.md` 1.0.0 — render rules for every user-facing
+  answer/card (action-first, ≤2 lines/item, cap 5, draft on demand, no-guilt)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
   `templates/profile.md`, `templates/sync-lanes.tsv`, `templates/user-model.md`
 - Store scripts: `scripts/build-index.sh` (people/ → index.json; projects the

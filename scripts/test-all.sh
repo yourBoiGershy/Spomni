@@ -29,6 +29,7 @@ packages/ingestion/tests/run-thread-tests.sh
 packages/attention/tests/run-attention-tests.sh
 packages/attention/tests/run-capacity-tests.sh
 packages/attention/tests/run-queue-tests.sh
+packages/query/tests/run-who-next-direct-tests.sh
 .claude/scripts/tests/run-oss-guard-tests.sh
 .claude/scripts/oss-guard.sh
 "
