@@ -20,6 +20,17 @@
 # (no associative arrays used as arrays are fine in 3.2; no mapfile, no
 # `readlink -f`, no `${var,,}` case folding).
 #
+# Every content-scanning check excludes the guard's own files (this script
+# and .claude/scripts/tests/) via the SELF_EXCLUDE pathspec below — its
+# source necessarily contains the literal strings it hunts for (e.g. the
+# secrets pattern's own "sk-ant-" literal, and the test suite's synthetic-
+# violation fixtures). This only bites once these files are *tracked*:
+# `git grep` (no revision given) only scans tracked content, so an untracked
+# working copy is invisible to it — don't mistake a locally-clean run for
+# proof the exclusion works; verify against a repo where these files are
+# actually committed (see the self-exclusion test in
+# .claude/scripts/tests/run-oss-guard-tests.sh).
+#
 # Checks (see .claude/scripts/tests/run-oss-guard-tests.sh for the fixture
 # that trips each one):
 #   1. tracked-data        — data/ tracks nothing but data/README.md
@@ -61,6 +72,12 @@ if [ -z "$REPO_ROOT" ]; then
     exit 2
 fi
 cd "$REPO_ROOT" || exit 2
+
+# The guard's own source necessarily contains the literal strings it hunts
+# for (secret-pattern definitions, and the test suite's synthetic-violation
+# fixtures printf'd inline) — exclude its own files from every git-grep-based
+# check so it doesn't trip on itself once tracked.
+SELF_EXCLUDE=(':!.claude/scripts/oss-guard.sh' ':!.claude/scripts/tests/')
 
 FINDINGS=0
 
@@ -145,7 +162,7 @@ check_tracked_symlinks() {
 # ---------------------------------------------------------------------------
 check_personal_paths() {
     local matches
-    matches="$(git grep -n -I -E '/Users/[a-z]' -- . 2>/dev/null)"
+    matches="$(git grep -n -I -E '/Users/[a-z]' -- . "${SELF_EXCLUDE[@]}" 2>/dev/null)"
     [ -z "$matches" ] && return 0
     local line
     while IFS= read -r line; do
@@ -206,7 +223,7 @@ domain_allowed() {
 check_personal_emails() {
     local matches
     matches="$(git grep -n -I -E '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' \
-        -- 'packages/**' 'docs/**' '*.md' 2>/dev/null)"
+        -- 'packages/**' 'docs/**' '*.md' "${SELF_EXCLUDE[@]}" 2>/dev/null)"
     [ -z "$matches" ] && return 0
     local line email domain lower
     while IFS= read -r line; do
@@ -250,7 +267,7 @@ phone_match_is_reserved_555() {
 check_phone_numbers() {
     local matches
     matches="$(git grep -n -I -E '\+?[0-9][0-9 ()-]{8,}[0-9]' \
-        -- 'packages/**/fixtures/**' 'packages/**/goldens/**' 'packages/**/evals/**' 2>/dev/null)"
+        -- 'packages/**/fixtures/**' 'packages/**/goldens/**' 'packages/**/evals/**' "${SELF_EXCLUDE[@]}" 2>/dev/null)"
     [ -z "$matches" ] && return 0
     local line content m keep
     while IFS= read -r line; do
@@ -286,7 +303,7 @@ EOF
 check_secrets() {
     local matches
     matches="$(git grep -n -I -E 'sk-ant-|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|xox[bapr]-|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----' \
-        -- . 2>/dev/null)"
+        -- . "${SELF_EXCLUDE[@]}" 2>/dev/null)"
     [ -z "$matches" ] && return 0
     local line
     while IFS= read -r line; do
@@ -302,7 +319,7 @@ check_never_send() {
     local pattern='send_message|send_email|gmail__send|slack_send_message|mcp__beeper__send_message|messages\.send|chat\.postMessage'
     local matches
     matches="$(git grep -n -I -E "$pattern" \
-        -- 'packages/connectors/**' 'packages/attention/**' 2>/dev/null)"
+        -- 'packages/connectors/**' 'packages/attention/**' "${SELF_EXCLUDE[@]}" 2>/dev/null)"
     [ -z "$matches" ] && return 0
     local line path
     while IFS= read -r line; do
@@ -336,7 +353,7 @@ EOF
 check_no_enrichment() {
     local pattern='clearbit|apollo\.io|hunter\.io|rocketreach|zoominfo|peopledatalabs|fullcontact|pipl\.com|linkedin\.com/in/'
     local matches
-    matches="$(git grep -n -I -E "$pattern" -- 'packages/**' 2>/dev/null)"
+    matches="$(git grep -n -I -E "$pattern" -- 'packages/**' "${SELF_EXCLUDE[@]}" 2>/dev/null)"
     [ -z "$matches" ] && return 0
     local line path
     while IFS= read -r line; do

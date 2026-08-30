@@ -418,6 +418,29 @@ fi
 rm -rf "$REPO"
 
 # ===========================================================================
+# 10. self-exclusion: the guard must not trip on its own tracked source
+#     (secret-pattern literals in oss-guard.sh, synthetic-violation fixture
+#     strings in this test file) once those files are committed and tracked
+#     — this is exactly the gap that let a "clean" local run (where these
+#     files were still untracked, so `git grep` never saw them) diverge from
+#     a CI run against a fresh clone where they're committed.
+# ===========================================================================
+REPO="$(new_repo)"
+mkdir -p "$REPO/.claude/scripts/tests"
+cp "$GUARD" "$REPO/.claude/scripts/oss-guard.sh"
+cp "$SCRIPT_DIR/run-oss-guard-tests.sh" "$REPO/.claude/scripts/tests/run-oss-guard-tests.sh"
+chmod +x "$REPO/.claude/scripts/oss-guard.sh" "$REPO/.claude/scripts/tests/run-oss-guard-tests.sh"
+commit_extra "$REPO"
+out="$(run_guard "$REPO")"
+status=$?
+if [ "$status" -eq 0 ] && printf '%s' "$out" | grep -q '^OK: oss-guard clean$'; then
+    pass "self-exclusion: guard passes on a scratch repo tracking a copy of itself + its tests"
+else
+    fail "self-exclusion: expected exit 0 + OK line, got status=$status output=$out"
+fi
+rm -rf "$REPO"
+
+# ===========================================================================
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 if [ "$FAIL_COUNT" -gt 0 ]; then
