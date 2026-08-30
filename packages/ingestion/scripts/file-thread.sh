@@ -16,7 +16,10 @@
 # skip (thread-summary.md's `skip` field non-null): the capture id is
 # appended to the ledger, nothing else is written.
 #
-# Dedup (D3): every other inbox/*.md `chat-message` capture sharing the
+# Dedup (D3): every other inbox/*.md capture whose BODY parses as chat JSON
+# (a `chatID` key plus a `messages` array — regardless of its `type` field,
+# so legacy `source: beeper` / `type: other` captures carrying the same chat
+# body as a `type: chat-message` capture are folded in too) sharing the
 # summary's chat_id is folded in — messages unioned by message `id`, filed
 # once, EVERY contributing capture id appended to the ledger (ids already
 # there are left alone). This makes a rerun over the same capture(s) a
@@ -168,6 +171,18 @@ def truthy(v):
     return v is True or (isinstance(v, str) and v.strip().lower() == "true")
 
 
+def is_chat_body(body):
+    """A capture is a chat capture iff its body parses as JSON with a
+    `chatID` key and a `messages` array — regardless of its `type` field
+    (legacy `source: beeper` / `type: other` captures carry the same chat
+    body as `type: chat-message` captures)."""
+    return (
+        isinstance(body, dict)
+        and body.get("chatID") is not None
+        and isinstance(body.get("messages"), list)
+    )
+
+
 # ---------------------------------------------------------------------------
 # 1. Parse the primary event + its summary.
 # ---------------------------------------------------------------------------
@@ -216,16 +231,14 @@ chat_type = summary.get("chat_type") or (primary_body or {}).get("chatType") or 
 contributing = {}  # capture_id -> messages list
 for path in sorted(glob.glob(os.path.join(inbox_dir, "*.md"))):
     fm, body = read_capture(path)
-    if fm.get("type") != "chat-message":
-        continue
-    if body is None:
+    if not is_chat_body(body):
         continue
     if body.get("chatID") != chat_id:
         continue
     cap_id = fm.get("id") or os.path.splitext(os.path.basename(path))[0]
     contributing[cap_id] = body.get("messages") or []
 
-if primary_id not in contributing:
+if primary_id not in contributing and is_chat_body(primary_body):
     contributing[primary_id] = (primary_body or {}).get("messages") or []
 
 contributing_ids = sorted(contributing.keys())

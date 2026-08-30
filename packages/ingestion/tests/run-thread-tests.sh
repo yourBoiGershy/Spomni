@@ -29,6 +29,10 @@
 #     thread-fixture-pat-002), same chatID, carrying only the first 2 of
 #     chat-fixture.md's messages verbatim (same message ids) — file-thread
 #     dedup test.
+#   events/chat-fixture-legacy.md — a third capture (different id,
+#     thread-fixture-pat-legacy), legacy shape (source: beeper, type:
+#     other), same chatID, carrying the same 2-message subset as
+#     chat-fixture-subset.md — file-thread dedup-by-body-shape test.
 #   events/reaction-only.md — one REACTION-type row and one empty-text
 #     TEXT row on the same day, same chatID/thread as neither content row
 #     survives file-thread's activity filter.
@@ -690,6 +694,35 @@ if grep -q "inferred-from-thread" "$VALIDATE_STORE"; then
   fi
 else
   echo "SKIP: ft guarded case — validate-store.sh does not yet enumerate inferred-from-thread (core 1.3.0 pending)"
+fi
+
+# -----------------------------------------------------------------------
+# Case 10 — legacy beeper capture (source: beeper, type: other) carrying the
+# same chatID chat-JSON body as a 2-message subset: dedup by BODY shape
+# (chatID+messages), not by type — the legacy id must be folded in and
+# ledgered same as chat-fixture-subset.md in case 2.
+# -----------------------------------------------------------------------
+
+ft10_store="$WORK_DIR/ft10-store"
+ft10_data="$WORK_DIR/ft10-data"
+ft_new_store "$ft10_store"
+cp "$FIXTURES/events/chat-fixture.md" "$ft10_store/inbox/"
+cp "$FIXTURES/events/chat-fixture-legacy.md" "$ft10_store/inbox/"
+
+ft10_out="$WORK_DIR/ft10-out.txt"
+"$FILE_THREAD" "$ft10_store" "$ft10_store/inbox/chat-fixture.md" "$FIXTURES/summaries/three-day.json" --data-dir "$ft10_data" > "$ft10_out" 2>"$WORK_DIR/ft10-err.txt"
+
+if grep -q 'dedup_ids=2$' "$ft10_out"; then
+  pass "ft case 10: dedup_ids=2 with a legacy (type: other, source: beeper) same-chatID capture present"
+else
+  fail "ft case 10: expected dedup_ids=2, got: $(cat "$ft10_out")"
+fi
+
+if grep -qx "thread-fixture-pat-001" "$ft10_data/ingestion/debrief-filed.log" 2>/dev/null \
+  && grep -qx "thread-fixture-pat-legacy" "$ft10_data/ingestion/debrief-filed.log" 2>/dev/null; then
+  pass "ft case 10: both capture ids (including the legacy one) land in the ledger"
+else
+  fail "ft case 10: ledger missing one or both capture ids: $(cat "$ft10_data/ingestion/debrief-filed.log" 2>/dev/null)"
 fi
 
 fi

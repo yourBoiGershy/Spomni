@@ -182,8 +182,10 @@ episode-split model pass — a running-cost cut only (one summarize call and
 one script pass replace a per-day agentic filing task per thread).
 
 ```sh
-# ids still eligible (not in debrief-filed.log / triage-held.log) whose type is chat-message:
-for f in $(<eligible chat-message capture files>); do
+# every eligible capture (not in debrief-filed.log / triage-held.log) whose body is chat JSON
+# (has chatID + messages) -- type: chat-message or legacy type: other from source: beeper:
+# e.g. grep -l '"chatID":' <candidates> or a python3 json.loads check on the body line
+for f in $(<eligible chat-json capture files>); do
   bash packages/ingestion/scripts/summarize-thread.sh "$f" --out <data-dir>/ingestion/thread-summaries/$(basename "$f" .md).json
 done   # run with xargs -P 6; ~10–30 s per thread, dominated by CLI startup; RA_THREAD_MODEL=haiku default
 for j in <data-dir>/ingestion/thread-summaries/*.json; do

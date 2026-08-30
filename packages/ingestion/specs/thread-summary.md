@@ -182,7 +182,10 @@ constraints on the model, never the source of truth.
 
 - Filing the summary into `people/`/`interactions/` — a separate unit
   (`file-thread.sh`) consumes this script's output; this spec only covers
-  producing it.
+  producing it. That unit's dedup pass identifies a capture as chat-eligible
+  by its BODY shape (a `chatID` key plus a `messages` array), not by its
+  `type` field, so legacy `source: beeper`/`type: other` captures carrying
+  the same chat body are folded in too.
 - Any model call other than the single summarization call per thread.
 - Threads over the ~75 KB size the beeper lane already caps chat exports
   at — no chunking/pagination here.
