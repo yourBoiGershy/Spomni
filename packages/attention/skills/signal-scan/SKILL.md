@@ -238,6 +238,7 @@ bash packages/core/scripts/wakeup-add.sh <store-dir> \
   --why "<trigger, never bare cadence>" \
   --origin signal \
   --source-signal <signal-id> \
+  --signal-type <signal's type> \
   --context "<ammunition>" \
   [--draft "<text>"]
 ```
@@ -255,17 +256,14 @@ bash packages/core/scripts/wakeup-add.sh <store-dir> \
   evidence quoted from the signal event, then what the user already knows
   — open threads and a one-line summary of the last interaction, read
   from `stats.json`/`people/<slug>.md`.
-- **`signal-type` on the promoted wake-up.** `wakeup-add.sh`'s usage block
-  (`packages/core/scripts/wakeup-add.sh:5-21`) offers no
-  `--signal-type`/equivalent flag, and the script itself never writes a
-  `signal-type` line — grep of the script confirms no reference. Per
-  `packages/core/contracts/wakeup.md`, `signal-type` is supposed to mirror
-  the promoting signal event's `type` on every `origin: signal` entry;
-  today, `wakeup-add.sh` does not set it, so this skill cannot populate it
-  either. **This is a known gap**, not something to work around here (core
-  is another package, out of scope for this skill to patch) — flag it in
-  this skill's completion report and leave `signal-type` unset until
-  `wakeup-add.sh` grows the flag.
+- **`signal-type` on the promoted wake-up.** Always pass
+  `--signal-type <signal's type>` on every promotion — the exact `type`
+  field from the signal event being promoted (e.g. `job-change`,
+  `co-attendance`, `birthday`). `wakeup-add.sh` writes this straight
+  through to the wake-up's `signal-type` field, mirroring the promoting
+  signal event's `type` on every `origin: signal` entry per
+  `packages/core/contracts/wakeup.md`. Never omit it and never pass a
+  value other than the signal event's own `type`.
 - **Drafts** (`--draft`) are allowed and optional, always surfaced for
   human review — draft-never-send holds; this skill never sends anything.
 

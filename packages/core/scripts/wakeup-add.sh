@@ -6,6 +6,7 @@
 #   wakeup-add.sh <store-dir> --due YYYY-MM-DD --person <slug> [--person <slug> ...] \
 #       --why "<one-liner>" --origin user-ask|signal|standing \
 #       [--context "<text>"] [--draft "<text>"] [--source-signal <id>] \
+#       [--signal-type <kebab-type>] \
 #       [--kind event-proposal --event-title "<s>" --event-start <iso-datetime> \
 #        --event-end <iso-datetime> --event-attendee <slug> [--event-attendee <slug> ...] \
 #        [--event-location "<s>"]]
@@ -29,6 +30,7 @@ usage() {
 Usage: ${SCRIPT_NAME} <store-dir> --due YYYY-MM-DD --person <slug> [--person <slug> ...] \\
     --why "<one-liner>" --origin user-ask|signal|standing \\
     [--context "<text>"] [--draft "<text>"] [--source-signal <id>] \\
+    [--signal-type <kebab-type>] \\
     [--kind event-proposal --event-title "<s>" --event-start <iso-datetime> \\
      --event-end <iso-datetime> --event-attendee <slug> [--event-attendee <slug> ...] \\
      [--event-location "<s>"]]
@@ -39,6 +41,12 @@ packages/core/contracts/wakeup.md. Prints the created path on success.
 With --kind event-proposal, the entry carries a proposed-event mapping
 (wakeup contract 1.2.0): title/start/end/attendees are required, location is
 optional. The event flags are rejected unless --kind event-proposal is set.
+
+--signal-type <kebab-type> sets the wakeup contract 1.1.0 outcome fields
+(fired-on/dismiss-reason/acted-on/snooze-count/signal-type) at creation; the
+value must be lowercase kebab-case (e.g. job-change). Omitting it leaves the
+file's schema_version and shape unchanged (1.0.0, or 1.2.0 for
+event-proposal, with no outcome-field block).
 EOF
   exit 1
 }
@@ -50,6 +58,7 @@ ORIGIN=""
 CONTEXT=""
 DRAFT=""
 SOURCE_SIGNAL=""
+SIGNAL_TYPE=""
 PEOPLE=""
 PEOPLE_COUNT=0
 KIND=""
@@ -112,6 +121,11 @@ $2"
     --source-signal)
       [ "$#" -ge 2 ] || usage
       SOURCE_SIGNAL="$2"
+      shift 2
+      ;;
+    --signal-type)
+      [ "$#" -ge 2 ] || usage
+      SIGNAL_TYPE="$2"
       shift 2
       ;;
     --kind)
@@ -207,6 +221,23 @@ esac
 if [ "${ORIGIN}" = "signal" ] && [ -z "${SOURCE_SIGNAL}" ]; then
   echo "--source-signal is required (non-null) when --origin is 'signal'" >&2
   usage
+fi
+
+if [ -n "${SIGNAL_TYPE}" ]; then
+  signal_type_valid=1
+  case "${SIGNAL_TYPE}" in
+    *[!a-z0-9-]*) signal_type_valid=0 ;;
+  esac
+  case "${SIGNAL_TYPE}" in
+    -*|*-) signal_type_valid=0 ;;
+  esac
+  case "${SIGNAL_TYPE}" in
+    *--*) signal_type_valid=0 ;;
+  esac
+  if [ "${signal_type_valid}" -ne 1 ]; then
+    echo "Invalid --signal-type: '${SIGNAL_TYPE}' (expected kebab-case: lowercase letters, digits, hyphens; e.g. job-change)" >&2
+    usage
+  fi
 fi
 
 # --- kind / event-proposal validation ---
@@ -317,6 +348,8 @@ WHY_ESCAPED="$(escape_yaml "${WHY}")"
 SCHEMA_VERSION="1.0.0"
 if [ "${KIND}" = "event-proposal" ]; then
   SCHEMA_VERSION="1.2.0"
+elif [ -n "${SIGNAL_TYPE}" ]; then
+  SCHEMA_VERSION="1.1.0"
 fi
 
 {
@@ -329,6 +362,13 @@ fi
   echo "status: pending"
   echo "origin: ${ORIGIN}"
   echo "source-signal: ${SOURCE_SIGNAL_VALUE}"
+  if [ -n "${SIGNAL_TYPE}" ]; then
+    echo "fired-on:"
+    echo "dismiss-reason:"
+    echo "acted-on:"
+    echo "snooze-count: 0"
+    echo "signal-type: ${SIGNAL_TYPE}"
+  fi
   if [ "${KIND}" = "event-proposal" ]; then
     echo "kind: event-proposal"
     echo "proposed-event:"
