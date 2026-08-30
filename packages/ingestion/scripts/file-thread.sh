@@ -16,7 +16,10 @@
 # skip (thread-summary.md's `skip` field non-null): the capture id is
 # appended to the ledger, nothing else is written.
 #
-# Dedup (D3): every other inbox/*.md `chat-message` capture sharing the
+# Dedup (D3): every other inbox/*.md capture whose BODY parses as chat JSON
+# (a `chatID` key plus a `messages` array — regardless of its `type` field,
+# so legacy `source: beeper` / `type: other` captures carrying the same chat
+# body as a `type: chat-message` capture are folded in too) sharing the
 # summary's chat_id is folded in — messages unioned by message `id`, filed
 # once, EVERY contributing capture id appended to the ledger (ids already
 # there are left alone). This makes a rerun over the same capture(s) a
@@ -24,10 +27,14 @@
 # written.
 #
 # Episodes (D2): one interaction per active UTC day (a day with at least
-# one non-NOTICE, non-deleted message). `people` on each day's interaction
-# is the non-self people whose sender_ids sent that day, falling back to
-# every non-self person for a `single` chat. Commitments/open-threads ride
-# only on the LAST active day's interaction.
+# one non-NOTICE/REACTION, non-deleted, non-empty-text message). `people`
+# on each day's interaction is the non-self people whose sender_ids sent
+# that day, falling back through every non-self summary person -> an
+# existing person matched by that day's senderName -> a single per-thread
+# fallback person (never `single`-only, coordinator correction: "never drop
+# an active day" — a group whose summary under-lists participants must
+# still get every active day filed). Commitments/open-threads ride only on
+# the LAST active day's interaction.
 #
 # Person upsert: existing people are matched by exact normalized `name:`;
 # otherwise a new person is created (kebab-case slug, `-2`/`-3` on
@@ -168,6 +175,18 @@ def truthy(v):
     return v is True or (isinstance(v, str) and v.strip().lower() == "true")
 
 
+def is_chat_body(body):
+    """A capture is a chat capture iff its body parses as JSON with a
+    `chatID` key and a `messages` array — regardless of its `type` field
+    (legacy `source: beeper` / `type: other` captures carry the same chat
+    body as `type: chat-message` captures)."""
+    return (
+        isinstance(body, dict)
+        and body.get("chatID") is not None
+        and isinstance(body.get("messages"), list)
+    )
+
+
 # ---------------------------------------------------------------------------
 # 1. Parse the primary event + its summary.
 # ---------------------------------------------------------------------------
@@ -216,16 +235,14 @@ chat_type = summary.get("chat_type") or (primary_body or {}).get("chatType") or 
 contributing = {}  # capture_id -> messages list
 for path in sorted(glob.glob(os.path.join(inbox_dir, "*.md"))):
     fm, body = read_capture(path)
-    if fm.get("type") != "chat-message":
-        continue
-    if body is None:
+    if not is_chat_body(body):
         continue
     if body.get("chatID") != chat_id:
         continue
     cap_id = fm.get("id") or os.path.splitext(os.path.basename(path))[0]
     contributing[cap_id] = body.get("messages") or []
 
-if primary_id not in contributing:
+if primary_id not in contributing and is_chat_body(primary_body):
     contributing[primary_id] = (primary_body or {}).get("messages") or []
 
 contributing_ids = sorted(contributing.keys())
@@ -286,45 +303,9 @@ for p in people_entries:
         sender_to_person[sid] = p
 
 # ---------------------------------------------------------------------------
-# 4. Active days + per-day people.
-# ---------------------------------------------------------------------------
-
-days = {}  # date -> {"messages": [...], "people": [person-entry,...]}
-for msg in messages:
-    if not is_active(msg):
-        continue
-    d = msg_date(msg)
-    if not d:
-        continue
-    days.setdefault(d, {"messages": [], "senders": set()})
-    days[d]["messages"].append(msg)
-    days[d]["senders"].add(msg.get("senderID"))
-
-sorted_days = sorted(days.keys())
-
-for d in sorted_days:
-    matched = []
-    seen_names = set()
-    for sid in days[d]["senders"]:
-        p = sender_to_person.get(sid)
-        if p and p.get("display_name") not in seen_names:
-            seen_names.add(p["display_name"])
-            matched.append(p)
-    if not matched and chat_type == "single":
-        matched = list(people_entries)
-    days[d]["people"] = matched
-
-# ---------------------------------------------------------------------------
-# 5. Per-person aggregate: which days they're linked to.
-# ---------------------------------------------------------------------------
-
-person_days = {}  # display_name -> sorted [dates]
-for d in sorted_days:
-    for p in days[d]["people"]:
-        person_days.setdefault(p["display_name"], set()).add(d)
-
-# ---------------------------------------------------------------------------
-# 6. Existing people (name -> slug) + slug list, for resolution/creation.
+# 3b. Existing people (name -> slug) scan — moved ahead of day-building
+# (section 4) because tier 3's senderName fallback below needs it; also
+# reused by person resolution/creation in section 7.
 # ---------------------------------------------------------------------------
 
 
@@ -343,18 +324,128 @@ def read_frontmatter_field(text, field):
 
 
 name_to_slug = {}
+name_to_display = {}
 all_slugs = set()
 if os.path.isdir(people_dir):
     for pf in glob.glob(os.path.join(people_dir, "*.md")):
         slug = os.path.splitext(os.path.basename(pf))[0]
         all_slugs.add(slug)
         with open(pf) as f:
-            content = f.read()
-        fm_match = re.match(r"^---\n(.*?)\n---\n", content, re.DOTALL)
+            content_pf = f.read()
+        fm_match = re.match(r"^---\n(.*?)\n---\n", content_pf, re.DOTALL)
         fm_text = fm_match.group(1) if fm_match else ""
         pname = read_frontmatter_field(fm_text, "name")
         if pname:
-            name_to_slug[normalize_name(pname)] = slug
+            norm_pname = normalize_name(pname)
+            name_to_slug[norm_pname] = slug
+            name_to_display[norm_pname] = pname
+
+# ---------------------------------------------------------------------------
+# 4. Active days + per-day people ("never drop an active day", coordinator
+# correction: in groups the summary often lists only one or two of many
+# senders, which used to resolve empty-people days to nothing and silently
+# drop the interaction — single chats had a fallback, groups didn't). Tiered
+# fallback, unconditional on chat_type: (1) summary sender_ids match, (2)
+# every non-self summary person, (3) that day's senders resolved by
+# senderName against an existing person's name, (4) one per-thread fallback
+# person (from the chat title, tagged group-chat for a group) so the day is
+# always preserved.
+# ---------------------------------------------------------------------------
+
+chat_title = summary.get("title") or (primary_body or {}).get("title") or ""
+
+_thread_fallback_ref = {"person": None}
+
+
+def get_thread_fallback_person():
+    """Lazily creates/reuses ONE synthetic person for this whole thread —
+    the last-resort tier when neither the summary's people[] nor any
+    existing person's name resolves a day's senders. Named from the chat's
+    title (or the chat_id if there is no title); tagged group-chat for a
+    group thread so it reads as visibly provisional."""
+    if _thread_fallback_ref["person"] is not None:
+        return _thread_fallback_ref["person"]
+    name = chat_title.strip() if chat_title.strip() else ("Chat %s" % chat_id)
+    entry = {
+        "display_name": name,
+        "sender_ids": [],
+        "is_self": False,
+        "role_guess": "unknown",
+        "_fallback_tags": "[group-chat]" if chat_type == "group" else "[]",
+    }
+    _thread_fallback_ref["person"] = entry
+    return entry
+
+
+days = {}  # date -> {"messages": [...], "senders": set(), "sender_names": {sid: name}, "people": [...]}
+for msg in messages:
+    if not is_active(msg):
+        continue
+    d = msg_date(msg)
+    if not d:
+        continue
+    days.setdefault(d, {"messages": [], "senders": set(), "sender_names": {}})
+    days[d]["messages"].append(msg)
+    sid = msg.get("senderID")
+    days[d]["senders"].add(sid)
+    sname = msg.get("senderName")
+    if sname:
+        days[d]["sender_names"][sid] = sname
+
+sorted_days = sorted(days.keys())
+
+for d in sorted_days:
+    matched = []
+    seen_names = set()
+    for sid in days[d]["senders"]:
+        p = sender_to_person.get(sid)
+        if p and p.get("display_name") not in seen_names:
+            seen_names.add(p["display_name"])
+            matched.append(p)
+
+    if not matched:
+        # Tier 2: every non-self summary person (was single-chat-only;
+        # now applies to every chat type).
+        matched = list(people_entries)
+
+    if not matched:
+        # Tier 3: the summary listed nobody non-self at all — resolve this
+        # day's senders by senderName against an existing person's name.
+        seen_names = set()
+        for sid in days[d]["senders"]:
+            sname = days[d]["sender_names"].get(sid)
+            norm = normalize_name(sname) if sname else ""
+            if norm and norm in name_to_slug and name_to_display[norm] not in seen_names:
+                seen_names.add(name_to_display[norm])
+                matched.append(
+                    {
+                        "display_name": name_to_display[norm],
+                        "sender_ids": [sid],
+                        "is_self": False,
+                        "role_guess": "unknown",
+                    }
+                )
+
+    if not matched:
+        # Tier 4: last resort — the one per-thread fallback person, so the
+        # day is never dropped.
+        matched = [get_thread_fallback_person()]
+
+    days[d]["people"] = matched
+
+# ---------------------------------------------------------------------------
+# 5. Per-person aggregate: which days they're linked to.
+# ---------------------------------------------------------------------------
+
+person_days = {}  # display_name -> sorted [dates]
+for d in sorted_days:
+    for p in days[d]["people"]:
+        person_days.setdefault(p["display_name"], set()).add(d)
+
+# ---------------------------------------------------------------------------
+# 6. Slug generation — name_to_slug/all_slugs were already built in section
+#    3b (moved there so tier 3's senderName fallback can use them).
+# ---------------------------------------------------------------------------
 
 
 def gen_new_slug(name):
@@ -481,6 +572,14 @@ for display_name, date_set in person_days.items():
         tags_line = "[]"
         if person_entry.get("role_guess") == "unsolicited":
             tags_line = "[linkedin-outreach]"
+        elif (
+            _thread_fallback_ref["person"] is not None
+            and display_name == _thread_fallback_ref["person"]["display_name"]
+        ):
+            # Tier 4's per-thread fallback person carries its own tag
+            # (group-chat for a group thread) since it isn't in the
+            # summary's people[] at all.
+            tags_line = _thread_fallback_ref["person"]["_fallback_tags"]
         slug = create_person(display_name, last_touch, tags_line)
         created = True
         people_new += 1
@@ -534,8 +633,10 @@ for i, d in enumerate(sorted_days):
     day_people = days[d]["people"]
     slugs = [slug_by_display_name[p["display_name"]] for p in day_people if p["display_name"] in slug_by_display_name]
     if not slugs:
-        # No resolved person for this day (shouldn't happen given the
-        # fallback rule above) — nothing to link this interaction to.
+        # Defensive only: section 4's tiered fallback (summary sender_ids
+        # -> every non-self summary person -> senderName match -> the
+        # per-thread fallback person) guarantees at least one person per
+        # active day, so this should be unreachable now.
         continue
     who = ", ".join(p["display_name"] for p in day_people if p["display_name"] in slug_by_display_name)
     n_msgs = len(days[d]["messages"])
@@ -588,4 +689,15 @@ print(
     "file-thread: %s people_new=%d people_touched=%d interactions=%d days=%d dedup_ids=%d"
     % (primary_id, people_new, len(people_touched), interactions_written, len(sorted_days), len(new_ids))
 )
+
+# Internal assertion: every active day should have produced exactly one
+# interaction (the "never drop an active day" rule) on a non-dedup-no-op
+# run — this code path never runs on the no-op branch above (it exits
+# early), so any mismatch here means the tiered fallback in section 4 has
+# a gap.
+if len(sorted_days) != interactions_written:
+    print(
+        "WARN: days=%d interactions=%d" % (len(sorted_days), interactions_written),
+        file=sys.stderr,
+    )
 PYEOF

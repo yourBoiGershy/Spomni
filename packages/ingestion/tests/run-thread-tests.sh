@@ -29,11 +29,24 @@
 #     thread-fixture-pat-002), same chatID, carrying only the first 2 of
 #     chat-fixture.md's messages verbatim (same message ids) — file-thread
 #     dedup test.
+#   events/chat-fixture-legacy.md — a third capture (different id,
+#     thread-fixture-pat-legacy), legacy shape (source: beeper, type:
+#     other), same chatID, carrying the same 2-message subset as
+#     chat-fixture-subset.md — file-thread dedup-by-body-shape test.
 #   events/reaction-only.md — one REACTION-type row and one empty-text
 #     TEXT row on the same day, same chatID/thread as neither content row
 #     survives file-thread's activity filter.
 #   events/unsolicited.md — one real message from a stranger with no
 #     prior relationship to the user.
+#   events/chat-fixture-group.md — a group chat (thread-fixture-group-001,
+#     chatType: group), 3 senders (the user, Alex Group, Sam Group) over 2
+#     UTC days; day 1 has no Alex message at all (only the user + Sam) —
+#     the "never drop an active day" group-fallback regression case.
+#   summaries/group-partial.json — thread-summary for chat-fixture-group.md
+#     listing only ONE non-self person (Alex Group) even though Sam Group
+#     also sent messages both days — exercises tier 2's "every non-self
+#     summary person" fallback on a group thread (day 1 has zero sender_id
+#     matches; day 2 has one).
 #   summaries/three-day.json — thread-summary 1.0.0 for chat-fixture.md:
 #     one non-self person (Pat Example), one told-by-user fact, one
 #     commitment, one open thread.
@@ -690,6 +703,81 @@ if grep -q "inferred-from-thread" "$VALIDATE_STORE"; then
   fi
 else
   echo "SKIP: ft guarded case — validate-store.sh does not yet enumerate inferred-from-thread (core 1.3.0 pending)"
+fi
+
+# -----------------------------------------------------------------------
+# Case 10 — legacy beeper capture (source: beeper, type: other) carrying the
+# same chatID chat-JSON body as a 2-message subset: dedup by BODY shape
+# (chatID+messages), not by type — the legacy id must be folded in and
+# ledgered same as chat-fixture-subset.md in case 2.
+# -----------------------------------------------------------------------
+
+ft10_store="$WORK_DIR/ft10-store"
+ft10_data="$WORK_DIR/ft10-data"
+ft_new_store "$ft10_store"
+cp "$FIXTURES/events/chat-fixture.md" "$ft10_store/inbox/"
+cp "$FIXTURES/events/chat-fixture-legacy.md" "$ft10_store/inbox/"
+
+ft10_out="$WORK_DIR/ft10-out.txt"
+"$FILE_THREAD" "$ft10_store" "$ft10_store/inbox/chat-fixture.md" "$FIXTURES/summaries/three-day.json" --data-dir "$ft10_data" > "$ft10_out" 2>"$WORK_DIR/ft10-err.txt"
+
+if grep -q 'dedup_ids=2$' "$ft10_out"; then
+  pass "ft case 10: dedup_ids=2 with a legacy (type: other, source: beeper) same-chatID capture present"
+else
+  fail "ft case 10: expected dedup_ids=2, got: $(cat "$ft10_out")"
+fi
+
+if grep -qx "thread-fixture-pat-001" "$ft10_data/ingestion/debrief-filed.log" 2>/dev/null \
+  && grep -qx "thread-fixture-pat-legacy" "$ft10_data/ingestion/debrief-filed.log" 2>/dev/null; then
+  pass "ft case 10: both capture ids (including the legacy one) land in the ledger"
+else
+  fail "ft case 10: ledger missing one or both capture ids: $(cat "$ft10_data/ingestion/debrief-filed.log" 2>/dev/null)"
+fi
+
+# -----------------------------------------------------------------------
+# Case 11 — "never drop an active day" group fallback: 3 senders (user,
+# Alex Group, Sam Group), 2 UTC days, but the summary lists only ONE
+# non-self person (Alex Group). Day 1 has no Alex message at all (only the
+# user + Sam Group) — before the coordinator's fix this resolved to zero
+# matched people and the interaction was silently dropped (the live-run
+# regression: group chats losing days because the summary under-lists
+# participants). Expected: both days produce an interaction, both linked
+# to Alex Group (tier 2's "every non-self summary person" fallback,
+# unconditional on chat_type now).
+# -----------------------------------------------------------------------
+
+ft11_store="$WORK_DIR/ft11-store"
+ft11_data="$WORK_DIR/ft11-data"
+ft_new_store "$ft11_store"
+cp "$FIXTURES/events/chat-fixture-group.md" "$ft11_store/inbox/"
+
+ft11_out="$WORK_DIR/ft11-out.txt"
+"$FILE_THREAD" "$ft11_store" "$ft11_store/inbox/chat-fixture-group.md" "$FIXTURES/summaries/group-partial.json" --data-dir "$ft11_data" > "$ft11_out" 2>"$WORK_DIR/ft11-err.txt"
+ft11_status=$?
+
+if [ "$ft11_status" -eq 0 ] && grep -q '^file-thread: thread-fixture-group-001 people_new=1 people_touched=1 interactions=2 days=2 dedup_ids=1$' "$ft11_out"; then
+  pass "ft case 11: group fixture prints interactions=2 days=2 (no dropped day)"
+else
+  fail "ft case 11: exited $ft11_status, got: $(cat "$ft11_out") $(cat "$WORK_DIR/ft11-err.txt")"
+fi
+
+if [ -f "$ft11_store/interactions/2026-08-15-alex-group.md" ] && [ -f "$ft11_store/interactions/2026-08-16-alex-group.md" ]; then
+  pass "ft case 11: both days' interaction files exist"
+else
+  fail "ft case 11: missing interaction file(s): $(ls "$ft11_store/interactions" 2>/dev/null)"
+fi
+
+if grep -q '\[\[alex-group\]\]' "$ft11_store/interactions/2026-08-15-alex-group.md" 2>/dev/null \
+  && grep -q '\[\[alex-group\]\]' "$ft11_store/interactions/2026-08-16-alex-group.md" 2>/dev/null; then
+  pass "ft case 11: day 1 (no Alex message) still links [[alex-group]] via the fallback"
+else
+  fail "ft case 11: day 1 or day 2 interaction not linked to [[alex-group]]"
+fi
+
+if ! grep -q 'WARN: days=' "$WORK_DIR/ft11-err.txt" 2>/dev/null; then
+  pass "ft case 11: no days!=interactions WARN assertion fired"
+else
+  fail "ft case 11: unexpected WARN in stderr: $(cat "$WORK_DIR/ft11-err.txt")"
 fi
 
 fi

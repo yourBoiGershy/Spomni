@@ -108,7 +108,8 @@ schema = """{
   "chat_type": "single|group",
   "skip": null | {"reason": "bot|broadcast|self-note|security-notice|empty"},
   "people": [{"display_name": str, "sender_ids": [str], "is_self": bool,
-              "role_guess": "friend|family|colleague|client|collaborator|acquaintance|unsolicited|unknown"}],
+              "role_guess": "friend|family|colleague|client|collaborator|acquaintance|unsolicited|unknown",
+              "message_count": int (optional, >= 0)}],
   "relationship_kind_guess": "friend|family|colleague|client|collaborator|acquaintance|unsolicited|unknown|group",
   "gist": str,
   "open_threads": [str],
@@ -152,6 +153,10 @@ skip -- it is a person with role_guess "unsolicited".
 stands now -- never a message-by-message narration.
 - relationship_kind_guess mirrors the single other persons role_guess for \
 a "single" chat, or is the literal string "group" for a "group" chat.
+- For chat_type "group", list EVERY non-self participant who sent 2 or \
+more messages (name + sender_ids), each with their own role_guess; \
+participants with only a single message may be omitted. For a "single" \
+chat, list the one counterpart.
 
 Respond with ONLY this JSON object (no prose, no markdown fence), with \
 capture_id "%s", chat_id "%s", chat_type "%s" filled in exactly as given:
@@ -214,6 +219,11 @@ for i, person in enumerate(people):
     if person["role_guess"] not in role_enum:
         sys.stderr.write("summarize-thread.sh: people[%d] invalid role_guess: %r\n" % (i, person["role_guess"]))
         sys.exit(4)
+    if "message_count" in person:
+        mc = person["message_count"]
+        if not isinstance(mc, int) or isinstance(mc, bool) or mc < 0:
+            sys.stderr.write("summarize-thread.sh: people[%d] invalid message_count: %r\n" % (i, mc))
+            sys.exit(4)
 
 kind_enum = role_enum | {"group"}
 if data["relationship_kind_guess"] not in kind_enum:
