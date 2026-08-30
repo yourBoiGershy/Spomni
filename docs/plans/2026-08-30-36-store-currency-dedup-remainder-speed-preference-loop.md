@@ -1,6 +1,6 @@
-# Plan 35 — Store currency, person dedup, remainder speed, preference loop
+# Plan 36 — Store currency, person dedup, remainder speed, preference loop
 
-**Status:** proposed 2026-08-30 · **Branch:** chunk-35-store-currency
+**Status:** proposed 2026-08-30 · **Branch:** chunk-36-store-currency
 **Mission test (§1):** every unit cuts a running cost (remembering-to, re-reading
 old context, cleaning duplicates, re-stating preferences). Nothing here drafts,
 sends, scores engagement, or performs the relationship.
