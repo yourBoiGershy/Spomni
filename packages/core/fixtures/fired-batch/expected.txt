@@ -1,0 +1,12 @@
+1. [[dana-whitfield]] — birthday coming up (birthday)
+→ send a birthday note today
+
+2. [[sam-okafor]] — job change: now leading partnerships at Meridian (job-change)
+→ congratulate them on the new role
+
+3. [[jordan-lee]] — quarterly catch-up is due
+→ create "Coffee with Jordan" 2026-09-05T10:00:00-04:00 and reply "3 done"
+
+You never debriefed "Weekly sync" with [[jordan-lee]] on 2026-08-28.
+
+Reply: <n> draft | <n> done | <n> snooze <dur> | <n> skip | <n> never <signal-type> | <n> not-them | <n> wrong-tier <tier>

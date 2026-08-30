@@ -196,7 +196,30 @@ bash packages/connectors/scripts/sync-scheduler.sh status
   missing tool, re-run `preflight` — the connector likely needs re-linking in
   claude.ai.
 
-### 5b. Feedback (plan 34)
+### 5b. Nudge delivery (plan 33)
+
+Wake-up cards render to `outbox/<date>.md` unconditionally (no setup
+needed); to also have them pushed somewhere you'll actually see, configure a
+live channel. The Beeper token is shared with beeper-in — no new secret.
+
+```sh
+bash packages/ingestion/scripts/profile-set-notify.sh data/store \
+    --channel beeper-self --beeper-chat-id <id> --quiet-hours 22:00-08:00
+```
+
+Find the chat id of your "Note to self" chat in Beeper Desktop. For email
+fallback instead, use `--channel gmail-self --gmail-address <you>`.
+
+Then enable the `notify` row in `lanes.tsv` (it ships `enabled true` by
+default) and re-run:
+
+```sh
+bash packages/connectors/scripts/sync-scheduler.sh install
+```
+
+A first tick logs `deliver: nothing new` until a wake-up actually fires.
+
+### 5c. Feedback (plan 34)
 
 The `feedback` lane in `sync-lanes.tsv` ships enabled and parses your
 replies to delivered cards on every tick — reply with the card number:

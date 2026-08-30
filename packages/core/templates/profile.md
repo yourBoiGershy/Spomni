@@ -1,5 +1,5 @@
 ---
-schema_version: 1.0.0
+schema_version: 1.1.0
 ---
 
 ## Priorities
@@ -20,3 +20,11 @@ schema_version: 1.0.0
 
 <!-- Observed-from-behavior only, filed solely after user confirmation. Empty until then. -->
 <!-- "- **[observed-from-behavior]** <text> (<YYYY-MM-DD>)" -->
+
+## Notify
+
+<!-- Optional. Where nudges reach the user. One "key: value" bullet per line, all [stated-by-user]: -->
+<!-- "- **[stated-by-user]** channel: <beeper-self|gmail-self|outbox|none> (<YYYY-MM-DD>)" -->
+<!-- "- **[stated-by-user]** beeper_chat_id: <id> (<YYYY-MM-DD>)" -->
+<!-- "- **[stated-by-user]** quiet_hours: <HH:MM-HH:MM> (<YYYY-MM-DD>)" -->
+<!-- "- **[stated-by-user]** gmail_address: <address> (<YYYY-MM-DD>)" -->

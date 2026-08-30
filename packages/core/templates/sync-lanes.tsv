@@ -22,6 +22,11 @@
 # writes into this data dir's inbox/).
 beeper	900	true	/bin/bash <ABS-REPO-ROOT>/packages/connectors/beeper-in/scripts/beeper-sweep.sh
 
+# Delivery lane (plan 33) — renders and sends fired wake-up batches via
+# packages/connectors/scripts/deliver-tick.sh, the channel configured in
+# <store>/profile.md ## Notify (beeper-self, gmail-self, or outbox-only).
+notify	900	true	/bin/bash <ABS-REPO-ROOT>/packages/connectors/scripts/deliver-tick.sh <ABS-STORE-DIR> --private-data-root <ABS-PRIVATE-DATA-ROOT>
+
 # Feedback lane (plan 34) — parses numbered replies to delivered cards out of
 # the note-to-self chat. Deterministic shell, no model session, so it's
 # cheap to run every tick; must run after the beeper lane above so a reply

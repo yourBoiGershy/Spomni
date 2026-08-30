@@ -530,13 +530,15 @@ EOF
   template_copy_dir="$SANDBOX/template-check"
   mkdir -p "$template_copy_dir"
   template_copy="$template_copy_dir/lanes.tsv"
-  sed -e "s#<ABS-REPO-ROOT>#$REPO_ROOT#g" -e "s#<ABS-CLAUDE-BIN>#$STUB_CLAUDE#g" "$template_src" > "$template_copy"
+  sed -e "s#<ABS-REPO-ROOT>#$REPO_ROOT#g" -e "s#<ABS-CLAUDE-BIN>#$STUB_CLAUDE#g" \
+      -e "s#<ABS-STORE-DIR>#$template_copy_dir/store#g" \
+      -e "s#<ABS-PRIVATE-DATA-ROOT>#$template_copy_dir#g" "$template_src" > "$template_copy"
 
   template_rows="$(sync_lanes_list "$template_copy")"
   template_rc=$?
   assert_eq "core template sync-lanes.tsv: parses cleanly under sync_lanes_list" "$template_rc" "0"
   template_row_count="$(printf '%s\n' "$template_rows" | grep -c .)"
-  assert_eq "core template sync-lanes.tsv: exactly 4 rows" "$template_row_count" "4"
+  assert_eq "core template sync-lanes.tsv: exactly 5 rows" "$template_row_count" "5"
   assert_contains "core template sync-lanes.tsv: feedback lane row present" "$template_rows" "feedback"
 
   # --- (ix) tick/subcommand argument errors ---

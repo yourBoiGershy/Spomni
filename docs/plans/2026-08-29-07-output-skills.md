@@ -7,6 +7,11 @@ Depends-on: 01; renders 06's batches; brief uses 04's artifacts
 Build everything the user actually sees: the query skill ("who do I know in marketing?"), the pre-meeting brief, and the nudge rendering that turns fired wake-ups into cards with trigger, ammunition, and an optional draft — delivered through a pluggable output-adapter interface so terminal/file today and email/Slack later are the same render.
 
 ## Context
+**Amended by Plan 33** (docs/plans/2026-08-30-33-nudge-delivery-beeper-self.md):
+the nudge-card format, `file-out`/`gmail-out` adapters, and the delivery
+channel (units 1, 3, 5, 6 here) moved to plan 33 and are built there; this
+plan retains only the query and brief skills.
+
 **Amended by Plan 21** (docs/plans/2026-08-29-21-calendar-intelligence.md):
 the brief skill gains an "Upcoming" section — next-7-days filed calendar
 interactions naming the brief's subject, cited, silent when empty (see that

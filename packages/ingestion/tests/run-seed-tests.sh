@@ -383,6 +383,189 @@ else
   fail "read-only: unexpected writes under fixtures/onboarding-seed/: $touched"
 fi
 
+# =============================================================================
+# Group 3 — profile-set-notify.sh (plan 33), the sole sanctioned writer of
+# `## Notify`. Mission test: guards stated-by-user provenance of the notify
+# config — every bullet must carry the [stated-by-user] tag and survive
+# validate-store.sh's Notify-section checks.
+# =============================================================================
+
+NOTIFY="$REPO_ROOT/packages/ingestion/scripts/profile-set-notify.sh"
+VALIDATE="$REPO_ROOT/packages/core/scripts/validate-store.sh"
+
+if [ ! -x "$NOTIFY" ]; then
+  fail "profile-set-notify.sh missing or not executable: $NOTIFY"
+elif [ ! -x "$VALIDATE" ]; then
+  fail "validate-store.sh missing or not executable: $VALIDATE"
+else
+  NOTIFY_STORE="$WORK_DIR/notify-store"
+  mkdir -p "$NOTIFY_STORE"
+
+  # --- assertions: fresh store (no profile.md yet), all four options ---
+  notify_out1="$WORK_DIR/notify-out1.txt"
+  "$NOTIFY" "$NOTIFY_STORE" \
+    --channel beeper-self --beeper-chat-id chat-123 \
+    --gmail-address alice@example.com --quiet-hours 22:00-08:00 \
+    --today 2026-08-30 \
+    > "$notify_out1" 2> "$WORK_DIR/notify-err1.txt"
+  notify_status1=$?
+
+  if [ "$notify_status1" -eq 0 ]; then
+    pass "profile-set-notify.sh: exits 0 on a fresh store with all four options"
+  else
+    fail "profile-set-notify.sh: exited $notify_status1 on fresh store (expected 0): $(cat "$WORK_DIR/notify-err1.txt")"
+  fi
+
+  if [ -f "$NOTIFY_STORE/profile.md" ]; then
+    pass "profile-set-notify.sh: creates profile.md from the core template when absent"
+  else
+    fail "profile-set-notify.sh: profile.md was not created on a fresh store"
+  fi
+
+  expected_summary1='notify: channel=beeper-self beeper_chat_id=chat-123 gmail_address=alice@example.com quiet_hours=22:00-08:00'
+  if [ "$(cat "$notify_out1")" = "$expected_summary1" ]; then
+    pass "profile-set-notify.sh: prints the exact summary line on a fresh store"
+  else
+    fail "profile-set-notify.sh: summary line mismatch — expected '$expected_summary1', got '$(cat "$notify_out1")'"
+  fi
+
+  bullets_ok=1
+  for bullet in \
+    '- **[stated-by-user]** channel: beeper-self (2026-08-30)' \
+    '- **[stated-by-user]** beeper_chat_id: chat-123 (2026-08-30)' \
+    '- **[stated-by-user]** gmail_address: alice@example.com (2026-08-30)' \
+    '- **[stated-by-user]** quiet_hours: 22:00-08:00 (2026-08-30)'
+  do
+    if ! grep -qF -- "$bullet" "$NOTIFY_STORE/profile.md"; then
+      bullets_ok=0
+      fail "profile-set-notify.sh: missing expected bullet: $bullet"
+    fi
+  done
+  [ "$bullets_ok" -eq 1 ] && pass "profile-set-notify.sh: all four stated-by-user bullets present with the --today date"
+
+  # --- assertions: rerun with only --channel replaces just that bullet,
+  # leaving the other three bullets and every other section untouched ---
+  before_rerun="$WORK_DIR/before-rerun.md"
+  cp "$NOTIFY_STORE/profile.md" "$before_rerun"
+
+  notify_out2="$WORK_DIR/notify-out2.txt"
+  "$NOTIFY" "$NOTIFY_STORE" --channel gmail-self --today 2026-08-31 \
+    > "$notify_out2" 2> "$WORK_DIR/notify-err2.txt"
+  notify_status2=$?
+
+  if [ "$notify_status2" -eq 0 ]; then
+    pass "profile-set-notify.sh: exits 0 on rerun with only --channel"
+  else
+    fail "profile-set-notify.sh: rerun exited $notify_status2 (expected 0): $(cat "$WORK_DIR/notify-err2.txt")"
+  fi
+
+  if grep -qF -- '- **[stated-by-user]** channel: gmail-self (2026-08-31)' "$NOTIFY_STORE/profile.md"; then
+    pass "profile-set-notify.sh: rerun replaces the channel bullet with the new value and date"
+  else
+    fail "profile-set-notify.sh: rerun did not produce the expected replaced channel bullet"
+  fi
+
+  if grep -qF -- '- **[stated-by-user]** channel: beeper-self (2026-08-30)' "$NOTIFY_STORE/profile.md"; then
+    fail "profile-set-notify.sh: rerun left the stale channel bullet in place (should be replaced, not appended)"
+  else
+    pass "profile-set-notify.sh: rerun removed the stale channel bullet (no duplicate)"
+  fi
+
+  diff_minus_channel="$(diff \
+    <(grep -vF 'channel:' "$before_rerun") \
+    <(grep -vF 'channel:' "$NOTIFY_STORE/profile.md"))"
+  if [ -z "$diff_minus_channel" ]; then
+    pass "profile-set-notify.sh: rerun leaves the other three bullets and every other section byte-identical"
+  else
+    fail "profile-set-notify.sh: rerun changed content outside the channel bullet: $diff_minus_channel"
+  fi
+
+  # --- assertions: --channel bogus rejected, nothing written ---
+  before_bad_enum="$WORK_DIR/before-bad-enum.md"
+  cp "$NOTIFY_STORE/profile.md" "$before_bad_enum"
+  "$NOTIFY" "$NOTIFY_STORE" --channel bogus --today 2026-09-01 \
+    > "$WORK_DIR/notify-out3.txt" 2> "$WORK_DIR/notify-err3.txt"
+  notify_status3=$?
+
+  if [ "$notify_status3" -eq 2 ]; then
+    pass "profile-set-notify.sh: --channel bogus exits 2"
+  else
+    fail "profile-set-notify.sh: --channel bogus exited $notify_status3 (expected 2)"
+  fi
+
+  if cmp -s "$before_bad_enum" "$NOTIFY_STORE/profile.md"; then
+    pass "profile-set-notify.sh: --channel bogus leaves profile.md unchanged"
+  else
+    fail "profile-set-notify.sh: --channel bogus modified profile.md"
+  fi
+
+  # --- assertions: bad --quiet-hours regex rejected, nothing written ---
+  before_bad_qh="$WORK_DIR/before-bad-qh.md"
+  cp "$NOTIFY_STORE/profile.md" "$before_bad_qh"
+  "$NOTIFY" "$NOTIFY_STORE" --quiet-hours '25:99-08:00' --today 2026-09-01 \
+    > "$WORK_DIR/notify-out4.txt" 2> "$WORK_DIR/notify-err4.txt"
+  notify_status4=$?
+
+  if [ "$notify_status4" -eq 2 ]; then
+    pass "profile-set-notify.sh: --quiet-hours 25:99-08:00 exits 2"
+  else
+    fail "profile-set-notify.sh: --quiet-hours 25:99-08:00 exited $notify_status4 (expected 2)"
+  fi
+
+  if cmp -s "$before_bad_qh" "$NOTIFY_STORE/profile.md"; then
+    pass "profile-set-notify.sh: bad --quiet-hours leaves profile.md unchanged"
+  else
+    fail "profile-set-notify.sh: bad --quiet-hours modified profile.md"
+  fi
+
+  # --- assertions: no options at all is a usage error, nothing written ---
+  before_no_opts="$WORK_DIR/before-no-opts.md"
+  cp "$NOTIFY_STORE/profile.md" "$before_no_opts"
+  "$NOTIFY" "$NOTIFY_STORE" \
+    > "$WORK_DIR/notify-out5.txt" 2> "$WORK_DIR/notify-err5.txt"
+  notify_status5=$?
+
+  if [ "$notify_status5" -eq 2 ]; then
+    pass "profile-set-notify.sh: no options exits 2"
+  else
+    fail "profile-set-notify.sh: no options exited $notify_status5 (expected 2)"
+  fi
+
+  if cmp -s "$before_no_opts" "$NOTIFY_STORE/profile.md"; then
+    pass "profile-set-notify.sh: no-options usage error leaves profile.md unchanged"
+  else
+    fail "profile-set-notify.sh: no-options usage error modified profile.md"
+  fi
+
+  # --- assertion: the resulting store passes validate-store.sh with zero
+  # Notify-section errors. Note: the core profile.md template's own
+  # `<!-- ... [[slug]] ... -->` example comment under `## Signal opt-outs`
+  # trips validate-store.sh's link-resolution check regardless of Notify
+  # content (it scans `[[slug]]` syntax across the whole file body,
+  # including HTML comments) — a pre-existing template/validator gap,
+  # unrelated to this script. HTML comment lines are stripped before
+  # validating so this assertion isolates Notify-section coverage.
+  validate_store="$WORK_DIR/validate-store"
+  mkdir -p "$validate_store/people" "$validate_store/interactions" "$validate_store/wakeups"
+  grep -v '<!--' "$NOTIFY_STORE/profile.md" > "$validate_store/profile.md"
+
+  validate_out="$WORK_DIR/validate-out.txt"
+  "$VALIDATE" "$validate_store" > "$validate_out" 2>&1
+  validate_status=$?
+
+  if [ "$validate_status" -eq 0 ]; then
+    pass "validate-store.sh: clean run against the notify-populated profile.md (comments stripped)"
+  else
+    fail "validate-store.sh: unexpected findings against the notify-populated profile.md: $(cat "$validate_out")"
+  fi
+
+  if grep -qi 'notify' "$validate_out"; then
+    fail "validate-store.sh: unexpected Notify-section finding(s): $(grep -i 'notify' "$validate_out")"
+  else
+    pass "validate-store.sh: zero Notify-section errors"
+  fi
+fi
+
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 
