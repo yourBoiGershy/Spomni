@@ -6,10 +6,9 @@ Two kinds of entries live here:
   work in this repo (planning, dispatching workers). Not user-facing.
 - **Product skills** (symlinks) — what Spomni users actually invoke as slash
   commands: `debrief`, `onboarding-seed`, `gmail-sweep`, `calendar-sweep`,
-  `event-confirm`, and `scheduling-intent` (`review-tiers` joins once its
-  skill lands on this branch). Each symlink points at the real skill under
-  `packages/<pkg>/skills/<name>/`, which is the source of truth — edit the
-  target, never the link.
+  `event-confirm`, `scheduling-intent`, and `review-tiers`. Each symlink
+  points at the real skill under `packages/<pkg>/skills/<name>/`, which is
+  the source of truth — edit the target, never the link.
 
 Claude Code follows symlinks in `.claude/skills/<name>`, so a relative
 symlink here is enough to make a product skill invocable.
