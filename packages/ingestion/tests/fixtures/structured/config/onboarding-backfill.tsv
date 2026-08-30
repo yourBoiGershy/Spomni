@@ -1,0 +1,4 @@
+# onboarding-backfill.tsv — synthetic fixture, self identities only.
+window_months	6
+self	me@example.test
+self	Me Myself

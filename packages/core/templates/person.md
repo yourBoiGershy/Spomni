@@ -1,5 +1,5 @@
 ---
-schema_version: 1.1.0
+schema_version: 1.2.0
 name: <name>
 org:
 role:
@@ -9,6 +9,8 @@ birthday:
 how-met:
 last-touch:
 tier:
+# tier_source: required if tier is set (plan 31; set only via person-set-tier.sh):
+# tier_source:
 # Optional relationship kind (plan 30; set only via person-set-kind.sh):
 # kind:
 # kind_note:

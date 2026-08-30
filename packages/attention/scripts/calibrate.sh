@@ -11,8 +11,9 @@
 #      evidence dimensions forward verbatim from the previous file (this
 #      mode never touches them) and stamps schema_version 1.1.0.
 #   2. --seed-from-user-model: seeds the kinds/evidence dimensions from the
-#      store's confirmed data/store/user-model.md (calibration.md "Seeding
-#      from user-model"). Never touches signal-types/tags.
+#      store's data/store/user-model.md when status is confirmed or
+#      provisional (calibration.md "Seeding from user-model"; plan 31 D6).
+#      Never touches signal-types/tags.
 #   3. --rescale <dimension>: geometric-mean renormalizes one dimension
 #      (kinds|evidence|signal-types|tags) in place (calibration.md
 #      "Rescale"). Never touches the other three dimensions.
@@ -47,8 +48,9 @@
 # Reads:  <store-dir>/wakeups/*.md, <store-dir>/people/*.md (tags only),
 #         <store-dir>/ranking-weights.json (if present, as the per-step
 #         clamp baseline / rescale-and-seed target),
-#         <store-dir>/user-model.md (seed mode only, confirmed status
-#         required — refuses with exit 3 otherwise).
+#         <store-dir>/user-model.md (seed mode only, status must be
+#         confirmed or provisional — refuses with exit 3 otherwise;
+#         plan 31 D6).
 # Writes: <store-dir>/ranking-weights.json (full rewrite; sole write this
 #         script performs on that file, atomic via mktemp+mv).
 # Side effect (ordinary mode only): may create at most one new
@@ -186,8 +188,8 @@ if [ "${SEED_MODE}" -eq 1 ]; then
     fmc == 1 && /^status: / { sub(/^status: */, ""); print; exit }
   ' "${USER_MODEL_PATH}")"
 
-  if [ "${UM_STATUS}" != "confirmed" ]; then
-    echo "${SCRIPT_NAME}: --seed-from-user-model refuses: user-model.md status is '${UM_STATUS:-<unset>}', not 'confirmed'" >&2
+  if [ "${UM_STATUS}" != "confirmed" ] && [ "${UM_STATUS}" != "provisional" ]; then
+    echo "${SCRIPT_NAME}: --seed-from-user-model refuses: user-model.md status is '${UM_STATUS:-<unset>}', not 'confirmed' or 'provisional'" >&2
     exit 3
   fi
 

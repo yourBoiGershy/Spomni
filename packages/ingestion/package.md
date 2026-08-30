@@ -40,7 +40,13 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   over `<store-dir>`; writes only its `--out-dir` — deterministic,
   no-model person-sharded pre-pass over the eligible filing batch,
   applying `specs/parallel-filing.md`'s D1 connected-components rule, plan
-  27), `scripts/derive-evidence.sh` (read-only over
+  27), `scripts/file-structured.sh` (deterministic, no-model filer over
+  `<store-dir>/inbox/` for `calendar-event` and metadata-only gmail
+  events — templated `people/`/`interactions/` writes only, no `## Facts`/
+  tier/kind opinion; shares `data/ingestion/debrief-filed.log` with
+  `skills/debrief/` and is sole writer of
+  `data/ingestion/structured-held.log`; per `specs/structured-filing.md`
+  D1–D3, plan 31), `scripts/derive-evidence.sh` (read-only over
   `people/`/`interactions/`/`wakeups/`/`stats.json`, never `inbox/`/`archive/`;
   emits the per-person evidence JSON-lines `relationship-scoring.md`'s judgment
   and `check-judgment.sh`'s `--evidence` gate both consume, plan 30),
@@ -81,7 +87,10 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   Ollama/EMBED_CMD resolution, and the `embeddings: unavailable` degrade path
   shared by `scripts/embed-people.sh`/`nearest-confirmed.sh`/`cluster-people.sh`
   (plan 30); `specs/rescale.md` — the re-center/rank math, skew rule, and
-  suggested-tier recompute `scripts/rescale-scores.sh` implements (plan 30)
+  suggested-tier recompute `scripts/rescale-scores.sh` implements (plan 30);
+  `specs/structured-filing.md` — the eligibility rule (`calendar-event` or
+  metadata-only gmail), the no-invented-provenance template writes, and the
+  D3 hold-vs-guess rule `scripts/file-structured.sh` implements (plan 31)
 - Ledgers/artifacts: `data/ingestion/triage-held.log` (sole writer:
   `scripts/triage-inbox.sh`) — append-only, tab-separated
   `<capture-id>\t<rule-name>\t<held-at ISO 8601 Z>`, one line per held
@@ -98,7 +107,14 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   (plan 30); `data/ingestion/review-judgments/<date>.jsonl` (sole writer:
   `skills/review-tiers/`) — one judgment-record run's raw output, per
   invocation date, validated by `scripts/check-judgment.sh` before any write
-  or presentation (plan 30)
+  or presentation (plan 30); `data/ingestion/structured-held.log` (sole
+  writer: `scripts/file-structured.sh`) — append-only, tab-separated
+  `<capture-id>\t<reason>\t<held-at ISO 8601 Z>`, one line per event
+  `file-structured.sh` could not resolve deterministically (ambiguous
+  name-hint match, or an email with no name and no existing person); read
+  by `skills/debrief/` batch/shard mode as ordinary unfiled input (not an
+  exclusion list — see that skill's structured-events note), per
+  `specs/structured-filing.md` D3 (plan 31)
 - Conventions: `needs-confirmation` and `needs-follow-up` markers, met-at /
   will-meet-at / same-event-as links
 - Evals: `evals/cases/` — 16 T3 (skill-tier) cases (`eval-case@1`,
@@ -179,3 +195,10 @@ Plan 30 (kind/tier judgment + user-model + embeddings): `specs/user-model-derive
 `scripts/check-judgment.sh`, `skills/review-tiers/`, and the
 `data/ingestion/review-skips.log` / `data/ingestion/review-judgments/<date>.jsonl`
 artifacts.
+Plan 31 (deterministic filing & cold-start priors,
+`docs/plans/2026-08-30-31-deterministic-filing-cold-start-priors.md`):
+`scripts/file-structured.sh`, `specs/structured-filing.md`, the
+`data/ingestion/structured-held.log` ledger, `skills/onboarding-seed/`'s
+collapse to triage → structured filing → debrief-remainder →
+`/review-tiers --all` cold start (D7), and `specs/onboarding-tiering-seed.md`'s
+further supersession note.

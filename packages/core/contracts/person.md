@@ -1,6 +1,6 @@
 # Contract: person
 
-`schema_version: 1.1.0`
+`schema_version: 1.2.0`
 
 ## Store location
 
@@ -34,24 +34,30 @@ Markdown file with YAML frontmatter plus three fixed prose sections.
 | `how-met` | string | no | One line of context on how the user knows this person. |
 | `last-touch` | ISO 8601 date | no | `YYYY-MM-DD`. Auto-maintained by the filing engine as the most recent linked `interaction.md` date — never hand-edited. |
 | `tier` | enum | no | One of: `inner-circle`, `close`, `active`, `dormant`. Relationship-warmth bucket; feeds nudge ranking (`docs/PROJECT-CONTEXT.md`'s warmth × rarity ranking). |
+| `tier_source` | enum | required if `tier` set (1.2.0, plan 31) | `derived` \| `stated-by-user` — same provenance asymmetry as `kind_source`: a derived write never overwrites a stated tier. A file with `tier` set but no `tier_source` (pre-1.2.0) reads as `stated-by-user` (legacy default). The writer is `packages/core/scripts/person-set-tier.sh` — the one sanctioned way to set these two fields. |
 | `kind` | enum | no | One of the D3 vocabulary defined in `contracts/relationship-scoring.md`. |
 | `kind_note` | string | required if `kind` set | Free-text rationale — the semantic part. |
 | `kind_source` | enum | required if `kind` set | `stated-by-user` \| `derived` — never mixed; a user correction sets `stated-by-user` and sticks: the classification pass never overwrites a stated kind. |
 | `kind_expires` | ISO date | no | For time-boxed kinds; past `kind_expires` the kind reads as `expired` with no attention warranted and no guilt framing. |
 | `kind_updated` | ISO date | required if `kind` set | Last write. |
 
-### Kind vs. tier (plan 30)
+### Kind vs. tier (plan 30, superseded by plan 31 D4/D5)
 
 `tier` stays the warmth axis; `kind` is an orthogonal second axis (what the
-relationship *is*). Provenance asymmetry: derived kinds may be written to
-`people/` by ingestion without confirmation (they are labeled `derived`, like
-inferred facts); tier writes still require user confirmation, zero
-exceptions. Unkinded and untiered remain valid end states. The writer of kind
-fields is ingestion via `packages/core/scripts/person-set-kind.sh`
-(forward-declared, plan 30).
+relationship *is*). Both now share the same provenance model: a `derived`
+write may be made to `people/` by ingestion without confirmation (labeled
+`derived`, like inferred facts), and a `derived` write never overwrites a
+`stated-by-user` value for that same field — the asymmetry runs one
+direction only. Unkinded and untiered remain valid end states. The writer of
+kind fields is `packages/core/scripts/person-set-kind.sh`; the writer of
+tier + tier_source is `packages/core/scripts/person-set-tier.sh` (plan 31).
 
-Versioning: `1.1.0` = additive optional kind fields per plan 30; `1.0.0`
-files remain valid.
+Versioning: `1.2.0` = additive `tier_source` field per plan 31 (a derived
+write to `tier` never overwrites a stated one, mirroring `kind_source`);
+`1.1.0` = additive optional kind fields per plan 30; `1.0.0` files remain
+valid. A `1.1.0`-or-earlier file with `tier` set and no `tier_source` is
+read as `tier_source: stated-by-user` (legacy default — every pre-1.2.0
+tier write required user confirmation, so this reading is safe).
 
 ### Body sections (fixed, in this order)
 

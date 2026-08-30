@@ -1,6 +1,6 @@
 # Contract: relationship scoring
 
-`schema_version: 1.0.0`
+`schema_version: 2.0.0`
 
 ## Purpose
 
@@ -22,9 +22,12 @@ transcripts; the persisted results are `person.md` kind fields (written via
   drift judgment (`## Drift prefilter` below).
 - Ingestion's judgment pass may write `kind`/`kind_note`/`kind_source`/
   `kind_expires`/`kind_updated` to `people/<slug>.md` (`contracts/person.md`
-  1.1.0) via `person-set-kind.sh`; tier suggestions require user
-  confirmation before any `tier` write (zero exceptions, same rule as
-  `profile.md`/`user-model.md`).
+  1.1.0) via `person-set-kind.sh`, and `tier`/`tier_source` (`contracts/
+  person.md` 1.2.0) via `person-set-tier.sh` — both always as `derived`
+  when unconfirmed (plan 31 D5, superseding plan 30 D2's "zero unconfirmed
+  tier writes"). Only a user correction may write `tier_source:
+  stated-by-user`, and it sticks (never overwritten by a later derived
+  write).
 - Attention's drift judgment writes no `person.md` field at all — it only
   *proposes* (a wake-up); see `## Drift prefilter`.
 
@@ -102,8 +105,14 @@ asked to reproduce. Everything not listed here is left to judgment.
   suggests above `active`; `kind: unknown` never suggests above `close`.
 - **Expired kinds:** a `kind_expires` in the past forces
   `attention_warrant: 0` and no tier suggestion.
-- **Zero unconfirmed tier writes:** a `suggested_tier` is never written to
-  `person.md`'s `tier` field without explicit user confirmation.
+- **Unconfirmed tier writes are always derived (plan 31 D5, supersedes plan
+  30 D2's asymmetry):** a `suggested_tier` may be written to `person.md`'s
+  `tier` field without user confirmation, but only as `tier_source: derived`
+  (via `person-set-tier.sh`) — the same provenance discipline as a derived
+  `kind`. A derived write never overwrites a `tier_source: stated-by-user`
+  tier; a judgment record that yields a tier write always carries
+  `tier_source: derived`. A user correction writes `tier_source:
+  stated-by-user` and sticks — never overwritten by a later derived pass.
 - **Stated kinds are sticky:** a `kind_source: stated-by-user` value is
   never overwritten by a judgment record — the classification pass skips
   people whose current kind is user-stated.
@@ -211,6 +220,9 @@ Additive changes (new evidence-input field name, new optional breakdown
 segment) are a `schema_version` minor bump, same convention as
 `ranking-weights.md`. Changing the meaning of the kind vocabulary, the
 judgment record's field types, or any rule in `## Rules` is a major bump.
+`2.0.0` = plan 31 D5 replaces the "zero unconfirmed tier writes" rule with
+"unconfirmed tier writes are always `tier_source: derived`" (see
+`## Rules` above and `docs/DECISIONS.md#derived-tiers-provisional`).
 
 ## Notes
 

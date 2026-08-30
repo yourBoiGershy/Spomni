@@ -1,44 +1,49 @@
 ---
 name: onboarding-seed
-description: One-shot, session-driven onboarding pass — backfills the three direct lanes over a configured window, files the resulting history, computes deterministic tier suggestions from frequency + participation signals, and presents them once for the user to confirm/adjust/skip. Never writes a tier without explicit per-person confirmation.
+description: One-shot, session-driven onboarding pass — backfills the three direct lanes over a configured window, files the resulting history (deterministically for calendar/metadata-only email, via the model only for free text), then hands off to `/review-tiers --all` in cold-start mode to auto-adopt a provisional user-model and write derived kinds + tiers, ending in a correction digest. No tier or kind is withheld pending confirmation — every write this run makes is labeled `derived` until the user corrects it.
 ---
 
 # Onboarding seed
 
 Sequences `packages/ingestion/specs/onboarding-tiering-seed.md` end to end
-for a fresh install: three lane backfills → normal filing → `stats.json` →
-participation derivation → deterministic tier scoring → one batched,
-human-confirmed presentation. This document is the session's runbook; the
-spec is the model of record — where this document and the spec disagree,
-the spec wins.
+for a fresh install: three lane backfills → deterministic structured filing
+→ model filing for what's left → `/review-tiers --all` cold start (derived
+user-model, derived kinds + tiers, correction digest). This document is the
+session's runbook; the spec is the model of record — where this document
+and the spec disagree, the spec wins.
 
 Invoked explicitly only ("run onboarding seed" / "run the onboarding
 backfill"), typically once, at first-run onboarding. It is not a scheduled
-job and does not queue itself for a later pass — see Step 5's "one session,
-not a backlog" rule below.
+job and does not queue itself for a later pass — see the Summary section's
+"one session, not a backlog" rule below.
 
 ## Hard rules (binding, restated from the spec — read before running)
 
 - **Draft, never send** applies as everywhere else — this skill only reads,
-  derives, and (after confirmation) writes `tier`. It never contacts anyone.
-- **No tier is ever written without the user's explicit, per-person
-  confirmation in Step 6.** A suggestion is a suggestion; nothing in Steps
-  0–5 writes to `people/<slug>.md`.
-- **Stated always outranks derived.** Every value this skill computes
-  (base band, `user-engaged`, `co-attended`, `silent-group`,
-  `never-answered`, the final score) is a derived suggestion — it carries no
-  weight against anything the user has separately, explicitly stated about
-  a person's tier.
-- **A skip writes nothing, now or automatically later.** Same for anyone
-  excluded by the insufficient-data gate or left out by the 20-person cap.
-  Ending the session partway through the batch is treated exactly like a
-  skip for everyone not yet acted on — there is no resumed prompt, no
-  "you still have N people to review," ever, from this pass.
+  derives, and writes labeled-derived `kind`/`tier` values. It never
+  contacts anyone.
+- **Every tier/kind written this run is labeled `derived`** (`tier_source:
+  derived` / `kind_source: derived`, per `packages/core/contracts/
+  person.md` 1.2.0) and is shown, one line per person, in the correction
+  digest that ends `/review-tiers --all` — nothing here is written silently
+  or withheld pending a per-person confirmation.
+- **A stated correction always outranks derived**, at any time, not just
+  in this session. Correcting any line in the digest (or any other
+  explicit stated-tier/kind utterance, this session or a later one) writes
+  `stated-by-user` and sticks — a `--source derived` write can never
+  overwrite it (`person-set-tier.sh`/`person-set-kind.sh` both exit 2 on
+  that attempt).
+- **Skips and silence write nothing further.** Not reacting to a digest
+  line leaves that person's `derived` write exactly as it stands — no
+  additional write, no re-prompt, no "you still have N to review"
+  resurfacing later.
 - **No-guilt framing is binding**, not a style suggestion: never phrase a
-  suggestion as "you've been neglecting X" or similar; a `dormant` or
-  `never-answered` suggestion is a neutral read of observed frequency, not a
-  verdict. Never single out or flag excluded/capped/skipped people as
-  "still needs attention" anywhere in this session's output.
+  derived tier/kind as "you've been neglecting X" or similar; a `dormant`
+  or low-warrant read is a neutral read of observed frequency, not a
+  verdict.
+- **Never enumerate excluded people.** Anyone outside `/review-tiers
+  --all`'s scope or cap is not listed, not flagged as "still needs
+  attention," and is not queued for a later pass.
 
 ## Step 0 — resolve and announce the window; check for `self` identities
 
@@ -129,12 +134,53 @@ backfilled and what didn't in the eventual summary.
 
 ## Step 2 — file the backfilled history
 
-Run the normal filing/debrief path over whatever new `inbox/` capture
-events the three backfill sweeps just landed —
-`packages/ingestion/skills/debrief/SKILL.md`, unchanged, exactly as it
-runs for any other capture event. This produces `people/<slug>.md` (new
-people as needed) and `interactions/*.md` files. No `tier` is set by this
-step — filing carries no tier opinion, per the spec.
+Three sub-steps, in order, over whatever new `inbox/` capture events the
+three backfill sweeps just landed. Expect hundreds of structured
+(calendar/metadata-only-email) events to file deterministically in under
+30 seconds; the model path (sub-step c) only ever sees free text — chat
+episodes, email bodies, and whatever structured events (a)/(b) held.
+
+**(a) Triage.**
+
+```sh
+bash packages/ingestion/scripts/triage-inbox.sh <store-dir> --data-dir <data-dir>/ingestion
+```
+
+Note: `triage-inbox.sh`'s `--data-dir` names the **ingestion dir** directly
+(it writes `<dir>/triage-held.log`), while `file-structured.sh` below takes
+the **data root** and reads `<dir>/ingestion/triage-held.log` itself — the
+two scripts' `--data-dir` meanings differ; do not "fix" this line to match
+sub-step (b)'s form.
+
+Deterministic, no-model pre-judgment hold pass (`specs/import-triage.md`);
+populates `data/ingestion/triage-held.log` so neither (b) nor (c) spends
+judgment re-deciding a class of event this pass already, conservatively,
+held out.
+
+**(b) Deterministic structured filing.**
+
+```sh
+bash packages/ingestion/scripts/file-structured.sh <store-dir> --data-dir <data-dir>
+```
+
+Files every eligible `calendar-event` and metadata-only gmail event with no
+model call — templated person/interaction writes only, per
+`specs/structured-filing.md`. Report its summary line verbatim
+(`file-structured: eligible= filed= people_new= held= skipped=`) as part of
+this run's own summary. Anything it can't resolve deterministically (an
+ambiguous name hint, an email with no name and no existing person) is
+appended to `data/ingestion/structured-held.log` for sub-step (c), never
+silently merged.
+
+**(c) Debrief the remainder.**
+
+Run the normal filing/debrief path (`packages/ingestion/skills/debrief/
+SKILL.md`, shard mode per `specs/parallel-filing.md` for this backfill
+volume) over what's left — by construction now only free-text events (chat
+episodes, email bodies) plus anything (b) held in
+`structured-held.log`. This produces `people/<slug>.md` (new people as
+needed) and `interactions/*.md` files. No `tier` is set by this step —
+filing carries no tier opinion, per the spec.
 
 ## Step 3 — build stats
 
@@ -145,88 +191,61 @@ bash packages/core/scripts/build-stats.sh <store-dir>
 Produces `<store-dir>/stats.json` (`packages/core/contracts/derived-index.md`)
 fresh from the just-filed `people/`/`interactions/` state.
 
-## Step 4 — derive participation, then score suggestions
+## Step 4 — derive participation, then run review-tiers cold start
 
 ```sh
 bash packages/ingestion/scripts/derive-participation.sh \
   <store-dir> <store-dir>/stats.json <window-start-iso> \
   <data-dir>/config/onboarding-backfill.tsv
-
-bash packages/ingestion/scripts/suggest-tiers.sh \
-  <store-dir>/stats.json <participation-tsv-path> <window-start-iso>
 ```
 
-`<window-start-iso>` is the same value Step 0 resolved. Pipe or redirect
-`derive-participation.sh`'s stdout to a file (or a variable) to hand to
-`suggest-tiers.sh` as `<participation-tsv-path>`. Both scripts are
-read-only and write nothing to the store; `derive-participation.sh` fails
-closed with a clear stderr reason if zero `self` identities resolved from
-the config (Step 0 should have already caught this, but treat a failure
-here the same way: stop, surface the stderr, do not guess). `suggest-tiers.sh`
-emits the deterministic suggestion batch, one row per presentable person,
-already gated (`touchpoints >= 2`), scored, and ordered (score descending,
-`median_gap_days` ascending, `touchpoints` descending, slug ascending),
-capped at 20 rows.
+`<window-start-iso>` is the same value Step 0 resolved. Read-only, writes
+nothing to the store; fails closed with a clear stderr reason if zero
+`self` identities resolved from the config (Step 0 should have already
+caught this, but treat a failure here the same way: stop, surface the
+stderr, do not guess).
 
-## Step 5 — present the batch once
+Then hand off to the cold-start review pass:
 
-Present every row `suggest-tiers.sh` emitted, in the order it emitted them
-(warmest/most-engaged first), each with its full breakdown string verbatim
-(`suggested: <tier> | base: <band> (median_gap_days=<n>) | signals: ...` or
-`| class: silent-group (low)` / `| class: never-answered (very low)`).
+```
+/review-tiers --all
+```
 
-Binding presentation rules (state these to yourself as constraints on the
-wording you use, not just as documentation):
+On a fresh install `user-model.md` is absent, so review-tiers' own Step 1
+derives it and auto-adopts `status: provisional` with no dialogue (D6 —
+the confirm dialogue only ever runs on explicit `--confirm-model`, never
+from this skill). Its own Step 3 writes both a derived `kind` and a
+derived `tier` for every person that clears its scope/gate, and its Step 4
+ends with a correction digest (one line per person, breakdown string
+attached, no question that blocks) instead of a batch requiring per-person
+confirm/adjust/skip before anything is written — see
+`packages/ingestion/skills/review-tiers/SKILL.md` /
+`packages/ingestion/specs/review-tiers.md` for that flow's own rules,
+which this skill does not restate. Any correction the user makes against
+the digest, here or later, writes `stated-by-user` and outranks the
+derived value permanently.
 
-- **One session, not a backlog.** All suggestions from this run are shown
-  together, once, in this single pass. There is no follow-up prompt for
-  anyone not gotten to — no "you still have N people to review" resurfacing
-  later, ever.
-- **No-guilt framing.** Never phrase a suggestion as "you've been
-  neglecting X" or anything guilt-inflected. A `dormant` or
-  `never-answered` suggestion is a neutral read of observed contact
-  frequency, not a verdict on the relationship or the user.
-- **Never flag the excluded.** People excluded by the insufficient-data
-  gate (`touchpoints < 2`) or left out by the 20-person cap are not
-  mentioned as needing attention, are not listed as a "still to do" tail,
-  and are not queued for a later pass. Silence about them is correct.
-
-## Step 6 — per person: confirm / adjust / skip
-
-For each presented person, one of three explicit actions:
-
-- **Confirm** the suggested tier as-is.
-- **Adjust** to any of the four tier values (`inner-circle`, `close`,
-  `active`, `dormant`) — not just an adjacent one; the suggestion is a
-  starting point, not a constraint.
-- **Skip** — no tier is set for this person, now or ever automatically
-  later.
-
-**Only on explicit per-person confirmation** (confirm or adjust — both are,
-at the filing layer, the same event: an explicit user-stated tier value for
-a named, unambiguous, already-resolved person), file the write via
-`packages/ingestion/specs/stated-preference-filing.md` (a).2 — the existing
-person's frontmatter `tier` overwrite, unambiguous, since every presented
-slug already resolved out of `stats.json`/`people/`, not free text. (a).4,
-the new-person flow, is not the expected path here (everyone in the batch
-already has a person file by Step 2) but remains the correct fallback if a
-presented slug's person file is ever missing at write time.
-
-**State this verbatim to the user before the batch, and hold to it:**
-
-- No tier is ever written without that person's explicit confirmation.
-- A skip writes nothing — not now, not automatically later.
-- Ending the session mid-batch is treated as a skip for everyone not yet
-  acted on.
-- Every suggestion here is derived from observed backfilled behavior, not
-  from anything stated — stated tiers, whenever given (in this session or
-  any other), always outrank these suggestions.
+**`suggest-tiers.sh` is not run by default.** It remains available only as
+an optional, read-only diagnostic (`packages/ingestion/scripts/
+suggest-tiers.sh <store-dir>/stats.json <participation-tsv-path>
+<window-start-iso>`) for comparing the legacy frequency-only score against
+`/review-tiers --all`'s semantic judgment; it writes nothing and this skill
+does not invoke it.
 
 ## Summary
 
-End with a short summary: window used, per-lane backfill outcome (counts or
-"skill run — see its own summary"), how many people cleared the gate, how
-many were presented (capped at 20 if more cleared), and how many were
-confirmed / adjusted / skipped in this session. Do not summarize or
-enumerate the untiered/excluded/skipped set beyond a bare count — no
-per-person callout, per the no-guilt rule above.
+End with a short summary:
+
+- Window used.
+- Per-lane backfill outcome (counts, or "skill run — see its own
+  summary").
+- Structured filing (b): the `file-structured.sh` summary line verbatim
+  (`eligible= filed= people_new= held= skipped=`).
+- Model filing (c): count of events debrief filed.
+- Totals: people/interactions counts in the store after Step 2.
+- `/review-tiers --all`'s own summary: derived tiers/kinds written,
+  provisional user-model adopted (yes/no, revision), corrections applied
+  this session.
+
+Do not summarize or enumerate the untiered/excluded/skipped set beyond a
+bare count — no per-person callout, per the no-guilt rule above.

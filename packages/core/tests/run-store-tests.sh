@@ -535,6 +535,195 @@ EOF
     "validate-store.sh accepts an all-zero vector (the norm exemption)"
 fi
 
+# ---------------------------------------------------------------------------
+# assertion 8: plan-31 tier-provenance write path (person-set-tier.sh) —
+# round trip, both refusal shapes (derived-over-stated, --clear derived),
+# --clear, and byte-identity of every non-tier* line.
+# ---------------------------------------------------------------------------
+
+PLAN31_TIER_SCRIPT="$REPO_ROOT/packages/core/scripts/person-set-tier.sh"
+PLAN31_SOURCE_STORE="$REPO_ROOT/packages/core/fixtures/store"
+
+echo ""
+echo "--- plan 31: person-set-tier.sh round-trip + refusals ---"
+
+TIER_STORE="$PLAN30_TMP_ROOT/tier-store"
+
+if [ ! -x "$PLAN31_TIER_SCRIPT" ]; then
+  fail "$PLAN31_TIER_SCRIPT not found or not executable"
+elif [ ! -d "$PLAN31_SOURCE_STORE" ]; then
+  fail "plan31 tier tests: source store fixture missing at $PLAN31_SOURCE_STORE"
+else
+  cp -R "$PLAN31_SOURCE_STORE" "$TIER_STORE"
+
+  TIER_TARGET="$TIER_STORE/people/aiko-tanaka.md"
+  if [ ! -f "$TIER_TARGET" ]; then
+    fail "plan31 tier round-trip: fixture person people/aiko-tanaka.md missing"
+  else
+    tier_before_snapshot="$PLAN30_TMP_ROOT/aiko-tier-before.md"
+    cp "$TIER_TARGET" "$tier_before_snapshot"
+
+    tier_set_output="$("$PLAN31_TIER_SCRIPT" "$TIER_STORE" aiko-tanaka --tier close --source stated-by-user --today 2026-08-30 2>&1)"
+    tier_set_status=$?
+
+    if [ "$tier_set_status" -eq 0 ]; then
+      pass "person-set-tier.sh exits 0 on a valid stated-by-user write"
+    else
+      fail "person-set-tier.sh exited $tier_set_status (expected 0) on a valid stated-by-user write: $tier_set_output"
+    fi
+
+    if printf '%s' "$tier_set_output" | grep -qF "set tier=close source=stated-by-user for aiko-tanaka"; then
+      pass "person-set-tier.sh prints the expected confirmation line"
+    else
+      fail "person-set-tier.sh did not print the expected confirmation line, got: $tier_set_output"
+    fi
+
+    if grep -qxF "tier: close" "$TIER_TARGET" && grep -qxF "tier_source: stated-by-user" "$TIER_TARGET"; then
+      pass "person-set-tier.sh wrote both tier fields with the expected values"
+    else
+      fail "person-set-tier.sh did not write the expected tier* field values"
+      cat "$TIER_TARGET"
+    fi
+
+    tier_diff_out="$(diff <(grep -v '^tier' "$tier_before_snapshot") <(grep -v '^tier' "$TIER_TARGET"))"
+    if [ -z "$tier_diff_out" ]; then
+      pass "person-set-tier.sh leaves every non-tier* line byte-identical"
+    else
+      fail "person-set-tier.sh changed a non-tier* line"
+      echo "$tier_diff_out"
+    fi
+
+    tier_derived_output="$("$PLAN31_TIER_SCRIPT" "$TIER_STORE" aiko-tanaka --tier active --source derived --today 2026-08-30 2>&1)"
+    tier_derived_status=$?
+    if [ "$tier_derived_status" -eq 2 ]; then
+      pass "person-set-tier.sh exits 2 when a derived write targets a stated-by-user tier"
+    else
+      fail "person-set-tier.sh exited $tier_derived_status (expected 2) on derived-over-stated refusal"
+    fi
+    if printf '%s' "$tier_derived_output" | grep -qi "refusing"; then
+      pass "person-set-tier.sh stderr mentions 'refusing' on derived-over-stated refusal"
+    else
+      fail "person-set-tier.sh did not mention 'refusing' in output: $tier_derived_output"
+    fi
+    if grep -qxF "tier: close" "$TIER_TARGET" && grep -qxF "tier_source: stated-by-user" "$TIER_TARGET"; then
+      pass "person-set-tier.sh leaves the file untouched after a refused derived write"
+    else
+      fail "person-set-tier.sh mutated the file despite refusing the derived write"
+    fi
+
+    tier_clear_derived_output="$("$PLAN31_TIER_SCRIPT" "$TIER_STORE" aiko-tanaka --clear --source derived 2>&1)"
+    tier_clear_derived_status=$?
+    if [ "$tier_clear_derived_status" -eq 2 ]; then
+      pass "person-set-tier.sh exits 2 for --clear --source derived"
+    else
+      fail "person-set-tier.sh exited $tier_clear_derived_status (expected 2) for --clear --source derived: $tier_clear_derived_output"
+    fi
+
+    tier_clear_output="$("$PLAN31_TIER_SCRIPT" "$TIER_STORE" aiko-tanaka --clear --source stated-by-user 2>&1)"
+    tier_clear_status=$?
+    if [ "$tier_clear_status" -eq 0 ] && ! grep -q '^tier:' "$TIER_TARGET" && ! grep -q '^tier_source:' "$TIER_TARGET"; then
+      pass "person-set-tier.sh --clear removes both tier and tier_source"
+    else
+      fail "person-set-tier.sh --clear (exit $tier_clear_status) did not remove tier/tier_source as expected"
+      cat "$TIER_TARGET"
+    fi
+  fi
+
+  # --- derived write into a person with no existing tier line (insert path) ---
+  TIER_TARGET2="$TIER_STORE/people/ayesha-malik.md"
+  if [ ! -f "$TIER_TARGET2" ]; then
+    fail "plan31 tier tests: fixture person people/ayesha-malik.md missing"
+  else
+    "$PLAN31_TIER_SCRIPT" "$TIER_STORE" ayesha-malik --clear --source stated-by-user > /dev/null 2>&1
+    tier_insert_output="$("$PLAN31_TIER_SCRIPT" "$TIER_STORE" ayesha-malik --tier dormant --source derived --today 2026-08-30 2>&1)"
+    tier_insert_status=$?
+    if [ "$tier_insert_status" -eq 0 ] && grep -qxF "tier: dormant" "$TIER_TARGET2" && grep -qxF "tier_source: derived" "$TIER_TARGET2"; then
+      pass "person-set-tier.sh inserts tier/tier_source on a person with no prior tier line"
+    else
+      fail "person-set-tier.sh (exit $tier_insert_status) did not insert tier/tier_source as expected"
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# assertion 9: plan-31 validate-store.sh rules — person tier_source, and
+# user-model.md status: provisional.
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "--- plan 31: validate-store.sh tier_source / provisional rules ---"
+
+C_TIER_SOURCE_ORPHAN="$PLAN30_TMP_ROOT/case-tier-source-orphan"
+plan30_min_store "$C_TIER_SOURCE_ORPHAN"
+cat > "$C_TIER_SOURCE_ORPHAN/people/test-person.md" <<'EOF'
+---
+schema_version: 1.2.0
+name: Test Person
+tier_source: derived
+---
+
+## Facts
+
+- **[told-by-user]** placeholder fact (2026-08-01)
+EOF
+plan30_assert_finding "$C_TIER_SOURCE_ORPHAN" 1 "tier_source is set without tier" \
+  "validate-store.sh flags tier_source present without tier"
+
+C_TIER_SOURCE_BAD="$PLAN30_TMP_ROOT/case-tier-source-bad-vocab"
+plan30_min_store "$C_TIER_SOURCE_BAD"
+cat > "$C_TIER_SOURCE_BAD/people/test-person.md" <<'EOF'
+---
+schema_version: 1.2.0
+name: Test Person
+tier: close
+tier_source: bogus-source
+---
+
+## Facts
+
+- **[told-by-user]** placeholder fact (2026-08-01)
+EOF
+plan30_assert_finding "$C_TIER_SOURCE_BAD" 1 "invalid tier_source" \
+  "validate-store.sh flags a tier_source value outside derived|stated-by-user"
+
+C_TIER_SOURCE_OK="$PLAN30_TMP_ROOT/case-tier-source-ok"
+plan30_min_store "$C_TIER_SOURCE_OK"
+cat > "$C_TIER_SOURCE_OK/people/test-person.md" <<'EOF'
+---
+schema_version: 1.2.0
+name: Test Person
+tier: close
+tier_source: derived
+---
+
+## Facts
+
+- **[told-by-user]** placeholder fact (2026-08-01)
+EOF
+plan30_assert_finding "$C_TIER_SOURCE_OK" 0 "store clean" \
+  "validate-store.sh accepts a valid tier/tier_source pair"
+
+if [ ! -f "$PLAN30_USER_MODEL_VALID" ]; then
+  fail "plan31 provisional tests: fixture missing at $PLAN30_USER_MODEL_VALID"
+else
+  C_UM_PROVISIONAL="$PLAN30_TMP_ROOT/case-user-model-provisional"
+  plan30_min_store "$C_UM_PROVISIONAL"
+  sed -e 's/^status: confirmed$/status: provisional/' \
+      -e 's/^confirmed_at: 2026-08-25$/confirmed_at: null/' \
+      -e 's/^revision: 1$/revision: 0/' \
+      -e 's/^provenance: stated-by-user$/provenance: observed-from-behavior/' \
+    "$PLAN30_USER_MODEL_VALID" > "$C_UM_PROVISIONAL/user-model.md"
+  plan30_assert_finding "$C_UM_PROVISIONAL" 0 "store clean" \
+    "validate-store.sh accepts a valid status: provisional user-model.md"
+
+  C_UM_PROVISIONAL_MISMATCH="$PLAN30_TMP_ROOT/case-user-model-provisional-mismatch"
+  plan30_min_store "$C_UM_PROVISIONAL_MISMATCH"
+  sed -e 's/^status: confirmed$/status: provisional/' \
+    "$PLAN30_USER_MODEL_VALID" > "$C_UM_PROVISIONAL_MISMATCH/user-model.md"
+  plan30_assert_finding "$C_UM_PROVISIONAL_MISMATCH" 1 "requires provenance: observed-from-behavior" \
+    "validate-store.sh flags status: provisional paired with provenance: stated-by-user"
+fi
+
 rm -rf "$PLAN30_TMP_ROOT"
 trap - EXIT
 

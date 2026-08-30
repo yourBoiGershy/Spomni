@@ -485,7 +485,7 @@ else
 $(diff "$EXPECTED_CHECK_REJECTS" "$rejects_out")"
 fi
 
-reason_tokens="bad-json missing-field:kind warrant-range kind-vocabulary kind-note-empty scheduling-needs-expiry expires-shape confidence-enum tier-enum rationale-cites-kind rationale-cites-evidence rationale-length gate:touchpoints<2 cap:scheduling>active cap:unknown>close expired-nonzero stated-kind-changed"
+reason_tokens="bad-json missing-field:kind warrant-range kind-vocabulary kind-note-empty scheduling-needs-expiry expires-shape confidence-enum tier-enum rationale-cites-kind rationale-cites-evidence rationale-length gate:touchpoints<2 cap:scheduling>active cap:unknown>close expired-nonzero stated-kind-changed tier-source-invalid"
 reason_dup_or_missing=0
 for token in $reason_tokens; do
   cnt="$(grep -Fc "reject:${token}" "$rejects_out" || true)"
@@ -495,7 +495,7 @@ for token in $reason_tokens; do
   fi
 done
 if [ "$reason_dup_or_missing" -eq 0 ]; then
-  pass "check-judgment.sh: every one of the 17 reject reasons appears exactly once in rejects.jsonl output"
+  pass "check-judgment.sh: every one of the 18 reject reasons appears exactly once in rejects.jsonl output"
 else
   fail "check-judgment.sh: $reason_dup_or_missing reason token(s) did not appear exactly once"
 fi

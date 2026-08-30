@@ -411,6 +411,34 @@ else
 fi
 
 # =============================================================================
+# Scenario 5b: seed on a provisional user-model -> exits 0, writes
+# ranking-weights.json byte-identical (mod generated_at) to the confirmed
+# case's expected-seeded.json (plan 31 D6 — a provisional model still seeds)
+# =============================================================================
+
+S5B_DIR="$TMP_ROOT/s5b-seed-provisional"
+mkdir -p "$S5B_DIR"
+cp "$SEED_FIXTURES/user-model.provisional.md" "$S5B_DIR/user-model.md"
+cp "$SEED_FIXTURES/ranking-weights.before.json" "$S5B_DIR/ranking-weights.json"
+
+s5b_output="$("$CALIBRATE" "$S5B_DIR" --seed-from-user-model --today 2026-08-30 2>&1)"
+s5b_status=$?
+
+if [ "$s5b_status" -eq 0 ]; then
+  pass "seed on a provisional user-model exits 0"
+else
+  fail "seed on a provisional user-model exited $s5b_status (expected 0): $s5b_output"
+fi
+
+s5b_diff="$(normalized_diff "$SEED_FIXTURES/expected-seeded.json" "$S5B_DIR/ranking-weights.json")"
+if [ -z "$s5b_diff" ]; then
+  pass "seed on a provisional user-model matches expected-seeded.json (mod generated_at), same as confirmed"
+else
+  fail "seed on a provisional user-model did not match expected-seeded.json:"
+  echo "$s5b_diff"
+fi
+
+# =============================================================================
 # Scenario 6: signal-types/tags are never touched by seed mode
 # =============================================================================
 

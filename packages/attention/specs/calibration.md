@@ -305,19 +305,22 @@ record of prior calibration rationale text").
 
 A one-shot (or revision-triggered) initialization of the `kinds` and
 `evidence` dimensions of `ranking-weights.json` (1.1.0) from the store's
-confirmed `data/store/user-model.md` — the "Priors, not multipliers"
-amendment's seeding path, per `ranking-weights.md` 1.1.0 and
-`relationship-scoring.md`'s `## Priors` section. This is a separate
-invocation from the sweep's normal `calibrate` step (which only ever touches
-`signal-types`/`tags`) — `--seed-from-user-model` is invoked explicitly
-(onboarding confirmation flow, or a later revision confirmation), never
-silently folded into a sweep run.
+`data/store/user-model.md` — the "Priors, not multipliers" amendment's
+seeding path, per `ranking-weights.md` 1.1.0 and `relationship-scoring.md`'s
+`## Priors` section. This is a separate invocation from the sweep's normal
+`calibrate` step (which only ever touches `signal-types`/`tags`) —
+`--seed-from-user-model` is invoked explicitly (onboarding confirmation
+flow, or a later revision confirmation), never silently folded into a sweep
+run.
 
-**Refusal:** if `user-model.md`'s frontmatter `status` is `draft` (not
-`confirmed`), the command refuses and exits **3** — no partial write, no
-`ranking-weights.json` touch at all. Seeding only ever reads confirmed
-user-model state, same as the drift judgment (`tier-drift.md` "## Judgment
-verdict").
+**Refusal:** the command accepts `user-model.md` frontmatter `status:
+confirmed` or `status: provisional` (plan 31 D6 — a provisional model is
+derived and auto-adopted, not user-stated, but is still a fit basis to seed
+priors from). Any other status — `draft`, absent, or unrecognized — refuses
+and exits **3**, with no partial write and no `ranking-weights.json` touch
+at all. This differs from the drift judgment's stricter `confirmed`-only
+gate (`tier-drift.md` "## Judgment verdict"), which still ignores
+provisional models.
 
 ### `kinds.*` derivation
 

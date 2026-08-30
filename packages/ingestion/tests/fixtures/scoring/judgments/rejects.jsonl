@@ -15,3 +15,4 @@
 {"slug":"cap-unknown-test","attention_warrant":90,"suggested_tier":"inner-circle","kind":"unknown","kind_note":"Insufficient evidence yet.","rationale":"touchpoints unknown pattern noted here.","confidence":"low"}
 {"slug":"expired-nonzero-test","attention_warrant":40,"suggested_tier":"active","kind":"professional","kind_note":"note.","kind_expires":"2026-08-01","rationale":"touchpoints show ongoing professional contact.","confidence":"medium"}
 {"slug":"mara-quill","attention_warrant":60,"suggested_tier":"close","kind":"professional","kind_note":"Reassessing relationship type.","rationale":"touchpoints suggest a professional pattern now.","confidence":"medium"}
+{"slug":"tier-source-invalid-test","attention_warrant":50,"suggested_tier":"active","kind":"friend","kind_note":"note.","tier_source":"stated-by-user","rationale":"touchpoints friend test.","confidence":"medium"}

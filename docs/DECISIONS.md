@@ -335,3 +335,21 @@ linking any account.
 Revisit if: a contributor needs Linux (scheduler backend + drop the macOS-only
 CI runner), or the plugin manifest format becomes a better discovery surface than
 symlinks.
+
+**derived-tiers-provisional** · 2026-08-30
+Tiers and the user-model start from observed behavior with no user input. `person.md`
+1.2.0 adds `tier_source: derived | stated-by-user`; `review-tiers` writes derived
+kinds *and* derived tiers, and `user-model.md` is auto-adopted as `status:
+provisional` (no confirm dialogue; `calibrate.sh --seed-from-user-model` accepts it).
+The user only ever *corrects*: a stated tier/kind/model line always outranks a derived
+one and a derived write never overwrites stated. This supersedes plan 30 D2's
+asymmetry ("tier writes require confirmation, zero exceptions") and the onboarding-seed
+20-row confirm batch. Why: the confirm gates made the first useful ranking depend on
+the user doing homework, which is running cost of exactly the kind the mission removes;
+provenance labeling (preference-provenance) keeps the honesty the gates were protecting.
+Companion: structured lanes (calendar, metadata-only email) are filed deterministically
+by `file-structured.sh` — no model call, no invented facts, hold-don't-guess on
+ambiguity — so a 6-month backfill files in seconds instead of minutes of parallel
+model workers. Plan 31.
+Revisit if: derived tiers measurably mis-rank nudges (then weight derived lower in
+ranking, not reinstate the gate), or a lane's metadata turns out to need judgment.
