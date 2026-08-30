@@ -74,6 +74,19 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   `profile.md`'s `## Notify` section — the stated-by-user notification
   channel/beeper-chat-id/gmail-address/quiet-hours bullets, per
   `contracts/profile.md` 1.1.0, plan 33),
+  `scripts/feedback-recent.sh` (read-only over
+  `<store>/signals/feedback.jsonl`; renders the `## Recent corrections`/
+  `## Recent draft edits` judgment-prompt blocks, newest first, capped by
+  `--n`, filterable by `--kind`/`--person`, per `specs/feedback-ledger.md`,
+  plan 34), `scripts/feedback-to-evals.sh <store> --data-dir <d>`
+  (read-only over `<store>/signals/feedback.jsonl` and `<store>`; sole
+  writer of `<data-dir>/evals/feedback/cases/` and
+  `<data-dir>/evals/feedback/suite.txt` — turns every
+  tier-correction/kind-correction ledger line into a T3 regression eval
+  case proving the correction sticks against a later `review tiers` pass,
+  latest-per-slug-per-type wins, idempotent; run only via
+  `RA_EVAL_PRIVATE_MANIFEST` per `contracts/eval-case.md` 1.3.0's
+  private-manifest mode, per plan 34 D4/U20),
   `scripts/summarize-thread.sh` (one headless model call
   per `chat-message` capture, emitting `thread-summary` 1.0.0 strict JSON —
   no store writes, per `specs/thread-summary.md`, plan 32),
@@ -133,7 +146,25 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   name-hint match, or an email with no name and no existing person); read
   by `skills/debrief/` batch/shard mode as ordinary unfiled input (not an
   exclusion list — see that skill's structured-events note), per
-  `specs/structured-filing.md` D3 (plan 31)
+  `specs/structured-filing.md` D3 (plan 31); `<store>/signals/feedback.jsonl`
+  (sole writer: `scripts/feedback-file.sh`) — the append-only feedback
+  ledger every reply, correction, and lifecycle outcome writes one line
+  to; user `--text` is stored verbatim, never rewritten; cross-package
+  callers (attention `wakeup-queue.sh`, core `person-set-tier.sh`/
+  `person-set-kind.sh` stated writes, `skills/review-tiers/`,
+  `scripts/feedback-parse.sh`) call `feedback-file.sh` rather than writing
+  the file themselves, per `specs/feedback-ledger.md` and
+  `packages/core/contracts/feedback-event.md` 1.0.0 (plan 34 D1);
+  `scripts/feedback-parse.sh` (deterministic, no-model reply-grammar parse
+  of note-to-self `chat-message` capture events against the last delivered
+  batch — `packages/attention/scripts/wakeup-queue.sh` fire/snooze/dismiss
+  and `scripts/person-set-tier.sh` for the applied verbs, `feedback-file.sh`
+  for everything else including unparseable text, which is always ledgered
+  as `freeform`, never dropped; sole writer of
+  `data/ingestion/feedback-cursor` and `data/ingestion/feedback-applied.log`
+  `<capture-id>\t<line-no>\t<type>\t<ts>\t<exit>`; runs on every sync tick as
+  the `feedback` lane row, no-op when nothing new; per
+  `specs/feedback-parse.md`, plan 34 D2/U8)
 - Conventions: `needs-confirmation` and `needs-follow-up` markers, met-at /
   will-meet-at / same-event-as links
 - Evals: `evals/cases/` — 16 T3 (skill-tier) cases (`eval-case@1`,
@@ -188,11 +219,21 @@ provenance labeling. Ingestion is the sole writer of the people-store.
 - Tier-change proposal wake-ups from `packages/attention` (read-only — the
   confirmation reply is what ingestion files; `attention` never writes `person.md` or
   `profile.md` directly, per `docs/DECISIONS.md#preference-provenance`)
+- `scripts/feedback-parse.sh` calls `packages/attention`'s
+  `scripts/wakeup-queue.sh` (`snooze`/`dismiss`, sanctioned cross-package
+  call per plan 34 D1/D2) to apply a reply, and reads `<store>/outbox/
+  delivered.log` + `<store>/wakeups/fired/*-batch.json` (connectors-owned /
+  attention-owned artifacts respectively, plan 33) read-only to resolve a
+  reply's card number to a wake-up id
 
 ## Owned paths
 
 `packages/ingestion/**`; at runtime: `people/`, `interactions/`, `index.json`,
-`user-model.md`, `index/embeddings.jsonl` in the private data dir.
+`user-model.md`, `index/embeddings.jsonl`, `<store>/signals/feedback.jsonl`
+(sole writer: `scripts/feedback-file.sh`) in the private data dir, plus
+`<data-dir>/ingestion/feedback-cursor` and
+`<data-dir>/ingestion/feedback-applied.log` (sole writer:
+`scripts/feedback-parse.sh`).
 
 ## Built by
 
@@ -228,3 +269,10 @@ Plan 32 (thread summaries, one model call per thread,
 triage → structured filing → thread summaries/filing → debrief-remainder
 (D5) — `chat-message` captures no longer route through `skills/debrief/`'s
 per-day episode-split model pass during onboarding/backfill.
+
+Plan 34 (feedback ledger, docs/plans/2026-08-30-34-feedback-ledger.md):
+`scripts/feedback-file.sh` (sole writer of `signals/feedback.jsonl`),
+`scripts/feedback-parse.sh` (sole writer of `data/ingestion/feedback-cursor`
+and `data/ingestion/feedback-applied.log`), `specs/feedback-ledger.md`,
+`specs/feedback-parse.md`, and `contracts/feedback-event.md` 1.0.0's landing
+(core-owned contract, ingestion-owned sole writer).

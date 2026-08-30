@@ -75,15 +75,21 @@ usage() {
 Usage:
   ${SCRIPT_NAME} <store-dir> list-due [--today YYYY-MM-DD] [--json]
   ${SCRIPT_NAME} <store-dir> fire [--today YYYY-MM-DD] [--now ISO-TIMESTAMP] [--adjacency-minutes N]
-  ${SCRIPT_NAME} <store-dir> snooze <id> (--days N | --until YYYY-MM-DD) [--today YYYY-MM-DD]
-  ${SCRIPT_NAME} <store-dir> dismiss <id> --reason <not-now|not-this-person|not-this-signal-type|already-handled>
-  ${SCRIPT_NAME} <store-dir> confirm <id> --event-id <connector-event-id>
-  ${SCRIPT_NAME} <store-dir> decline <id> --reason <not-now|not-this-person|not-this-signal-type|already-handled>
+  ${SCRIPT_NAME} <store-dir> snooze <id> (--days N | --until YYYY-MM-DD) [--today YYYY-MM-DD] [--channel <c>] [--source reply|session]
+  ${SCRIPT_NAME} <store-dir> dismiss <id> --reason <not-now|not-this-person|not-this-signal-type|already-handled> [--text "<words>"] [--channel <c>] [--source reply|session]
+  ${SCRIPT_NAME} <store-dir> confirm <id> --event-id <connector-event-id> [--channel <c>] [--source reply|session]
+  ${SCRIPT_NAME} <store-dir> decline <id> --reason <not-now|not-this-person|not-this-signal-type|already-handled> [--channel <c>] [--source reply|session]
   ${SCRIPT_NAME} <store-dir> acted-on [--today YYYY-MM-DD]
 
 Deterministic wake-up queue lifecycle over <store-dir>/wakeups/*.md, per
 packages/core/contracts/wakeup.md 1.2.0 and
 packages/attention/specs/outcome-recording.md.
+
+Every lifecycle write (snooze/dismiss/confirm/decline/acted-on) also appends
+one feedback-event@1 line via ingestion's feedback-file.sh (sole ledger
+writer) — see packages/attention/specs/outcome-recording.md. Missing
+feedback-file.sh is not an error (prints "feedback: skipped ..." and
+continues); --source defaults to "session".
 EOF
   exit 1
 }
@@ -448,6 +454,33 @@ build_entry_json() {
 }
 
 # =============================================================================
+# feedback ledger append — plan 34 D1. wakeup-queue.sh is not the ledger
+# writer (ingestion's feedback-file.sh is, sole writer); every lifecycle
+# write here calls this helper after the file write succeeds. Absent
+# feedback-file.sh (fixture stores/tests without ingestion) is not an error.
+# =============================================================================
+
+FEEDBACK_FILE_SH="$(dirname "$0")/../../ingestion/scripts/feedback-file.sh"
+
+# ledger_append <wakeup-id> --type <t> --source <s> [--reason <r>] [--text <t>] [--channel <c>]
+ledger_append() {
+  wakeup_id="$1"
+  shift
+  if [ ! -f "${FEEDBACK_FILE_SH}" ]; then
+    echo "feedback: skipped (feedback-file.sh absent)"
+    return 0
+  fi
+  set +e
+  "${FEEDBACK_FILE_SH}" "${STORE_DIR}" --target "wakeup:${wakeup_id}" "$@"
+  ec="$?"
+  set -e
+  if [ "${ec}" -ne 0 ]; then
+    echo "feedback: ledger write failed (exit ${ec})" >&2
+  fi
+  return 0
+}
+
+# =============================================================================
 # op: list-due
 # =============================================================================
 
@@ -749,6 +782,8 @@ snooze_op() {
   DAYS=""
   UNTIL=""
   TODAY=""
+  CHANNEL=""
+  SOURCE="session"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --days)
@@ -764,6 +799,16 @@ snooze_op() {
       --today)
         [ "$#" -ge 2 ] || usage
         TODAY="$2"
+        shift 2
+        ;;
+      --channel)
+        [ "$#" -ge 2 ] || usage
+        CHANNEL="$2"
+        shift 2
+        ;;
+      --source)
+        [ "$#" -ge 2 ] || usage
+        SOURCE="$2"
         shift 2
         ;;
       *)
@@ -820,6 +865,17 @@ snooze_op() {
   set_field_file "${FILE}" status pending
   set_field_file "${FILE}" snooze-count "${sc}"
 
+  if [ -n "${DAYS}" ]; then
+    SNOOZE_REASON="${DAYS}d"
+  else
+    SNOOZE_REASON="until:${UNTIL}"
+  fi
+  if [ -n "${CHANNEL}" ]; then
+    ledger_append "${ID}" --type snooze --reason "${SNOOZE_REASON}" --source "${SOURCE}" --channel "${CHANNEL}"
+  else
+    ledger_append "${ID}" --type snooze --reason "${SNOOZE_REASON}" --source "${SOURCE}"
+  fi
+
   echo "snoozed ${ID} -> due: ${NEW_DUE} (snooze-count: ${sc})"
 }
 
@@ -833,11 +889,29 @@ dismiss_op() {
   shift
 
   REASON=""
+  TEXT=""
+  CHANNEL=""
+  SOURCE="session"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --reason)
         [ "$#" -ge 2 ] || usage
         REASON="$2"
+        shift 2
+        ;;
+      --text)
+        [ "$#" -ge 2 ] || usage
+        TEXT="$2"
+        shift 2
+        ;;
+      --channel)
+        [ "$#" -ge 2 ] || usage
+        CHANNEL="$2"
+        shift 2
+        ;;
+      --source)
+        [ "$#" -ge 2 ] || usage
+        SOURCE="$2"
         shift 2
         ;;
       *)
@@ -875,6 +949,11 @@ dismiss_op() {
   set_field_file "${FILE}" status dismissed
   set_field_file "${FILE}" dismiss-reason "${REASON}"
 
+  ledger_extra=()
+  [ -n "${TEXT}" ] && ledger_extra+=(--text "${TEXT}")
+  [ -n "${CHANNEL}" ] && ledger_extra+=(--channel "${CHANNEL}")
+  ledger_append "${ID}" --type dismiss --reason "${REASON}" --source "${SOURCE}" "${ledger_extra[@]+"${ledger_extra[@]}"}"
+
   echo "dismissed ${ID} -> dismiss-reason: ${REASON}"
 }
 
@@ -891,6 +970,8 @@ confirm_decline_op() {
 
   EVENT_ID=""
   REASON=""
+  CHANNEL=""
+  SOURCE="session"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --event-id)
@@ -901,6 +982,16 @@ confirm_decline_op() {
       --reason)
         [ "$#" -ge 2 ] || usage
         REASON="$2"
+        shift 2
+        ;;
+      --channel)
+        [ "$#" -ge 2 ] || usage
+        CHANNEL="$2"
+        shift 2
+        ;;
+      --source)
+        [ "$#" -ge 2 ] || usage
+        SOURCE="$2"
         shift 2
         ;;
       *)
@@ -951,6 +1042,10 @@ confirm_decline_op() {
     set_field_file "${WAKEUP_FILE}" "created-event-id" "${EVENT_ID}"
     set_field_file "${WAKEUP_FILE}" "acted-on" "true"
 
+    ledger_extra=()
+    [ -n "${CHANNEL}" ] && ledger_extra+=(--channel "${CHANNEL}")
+    ledger_append "${WAKEUP_ID}" --type acted-on --reason confirmed --source "${SOURCE}" "${ledger_extra[@]+"${ledger_extra[@]}"}"
+
     echo "confirmed ${WAKEUP_ID} -> created-event-id: ${EVENT_ID} (confirmed-on: ${TODAY})"
   else
     case "${REASON}" in
@@ -967,6 +1062,10 @@ confirm_decline_op() {
 
     set_field_file "${WAKEUP_FILE}" "status" "dismissed"
     set_field_file "${WAKEUP_FILE}" "dismiss-reason" "${REASON}"
+
+    ledger_extra=()
+    [ -n "${CHANNEL}" ] && ledger_extra+=(--channel "${CHANNEL}")
+    ledger_append "${WAKEUP_ID}" --type dismiss --reason "${REASON}" --source "${SOURCE}" "${ledger_extra[@]+"${ledger_extra[@]}"}"
 
     echo "declined ${WAKEUP_ID} -> dismiss-reason: ${REASON}"
   fi
@@ -1036,6 +1135,7 @@ acted_on_op() {
 
     if [ "${matched}" -eq 1 ]; then
       set_field_file "${f}" acted-on true
+      ledger_append "${id}" --type acted-on --source auto
       echo "acted-on ${id} -> true"
     elif [[ "${TODAY}" > "${window_end}" ]]; then
       set_field_file "${f}" acted-on false

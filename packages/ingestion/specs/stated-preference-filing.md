@@ -27,7 +27,7 @@ apply to `## Facts`/`## Signal opt-outs` bullets, not scalar frontmatter fields)
 `profile.md` bullet filed under this spec carries `**[stated-by-user]**` per the
 contract's tagging rule. Never file an `**[observed-from-behavior]**` bullet from a raw
 utterance — that tag is reserved for the draft-diff loop's confirmed style notes
-(out of scope here).
+(see (f) below).
 
 ## (a) Tier utterances
 
@@ -45,7 +45,16 @@ Filing rule:
 2. **Unambiguous match:** write `tier: <value>` into that person's frontmatter,
    overwriting any prior `tier` value in place — this is a frontmatter field update, not
    an append, so there is exactly one `tier` value per person at all times, matching
-   `person.md`'s frontmatter shape (a table field, not a list).
+   `person.md`'s frontmatter shape (a table field, not a list). This write goes through
+   `packages/core/scripts/person-set-tier.sh <store> <slug> --tier <value> --source
+   stated-by-user`, and whenever the triggering utterance carried the user's own words
+   (the debrief/voice-note line, or a review-tiers correction reply), that write also
+   passes `--feedback-text "<verbatim words>" --feedback-source session` (plan 34) so the
+   correction lands in `<store>/signals/feedback.jsonl`
+   (`packages/core/contracts/feedback-event.md`) in the user's own words, never
+   rewritten or paraphrased — this is what lets a later session stop asking the user to
+   re-explain a preference they already stated. A tier write with no underlying utterance
+   text (should one ever arise) passes no `--feedback-text`.
 3. **Ambiguous match** (e.g. two people plausibly named "Dana" in the store, or the
    debrief gives too little context to pick one): **ask, do not write.** Emit the
    plan 03 one-clarifying-question flow ("Which Dana — Dana Whitfield or Dana Ruiz?")
@@ -169,9 +178,10 @@ reply):
 
 ## (e) Provenance and write discipline (binding, cross-cutting)
 
-- Every `profile.md` bullet this spec creates is `**[stated-by-user]**` — never
+- Every `profile.md` bullet lanes (a)–(c) create is `**[stated-by-user]**` — never
   `**[observed-from-behavior]**`. That tag is reserved for the draft-diff loop's
-  post-confirmation style notes, which are out of scope for this spec.
+  post-confirmation style notes, filed by the separate lane at (f) below — the two
+  never mix within one bullet.
 - `person.md` tier writes are frontmatter overwrites (single scalar value, no history
   kept in the file itself — `git log` on the person-store, if the private data dir is
   versioned, is the history mechanism, same as any other frontmatter field).
@@ -186,7 +196,81 @@ reply):
   and `docs/DECISIONS.md#preference-provenance`, it only ever *proposes* — the write, per
   (d), always terminates in ingestion.
 
-## (f) Relationship to plan 03
+## (f) Draft-diff style notes (`## Style notes`, plan 15 × plan 34)
+
+This is the second, and only other, path in this spec where a non-utterance
+signal ends in a `profile.md` write — the draft-diff loop plan 15 reserves
+`## Style notes` for (see (e) above: `## Style notes` bullets are always
+`**[observed-from-behavior]**`, never `**[stated-by-user]**`). Mission test:
+this is the assistant learning the user's edit habits so drafts get closer
+to what the user would have written anyway — it never lets a pattern change
+what gets sent without the user looking at it and saying yes.
+
+**Producer.** The source of every style observation is
+`<store>/signals/feedback.jsonl` lines with `type: draft-edit`
+(`packages/core/contracts/feedback-event.md`): `target: wakeup:<id>`,
+`text` = the user's edited draft (or a note about it) verbatim, `reason`
+may carry a short machine-usable diff summary (e.g. `shorter`,
+`dropped-greeting`, `more-casual`) when one is derivable. These lines are
+written when a user edits a drafted message during a session — the
+sweep/brief shows a proposed draft, the user replies with a changed
+version instead of sending it as-is — via:
+
+```
+bash packages/ingestion/scripts/feedback-file.sh <store> --type draft-edit \
+  --target wakeup:<id> --source session --text "<edited draft verbatim>" \
+  --reason "<one-line what changed>"
+```
+
+This spec does not define the session step that detects "the user edited
+the draft" (that is the debrief/sweep skill's job); it only fixes what
+happens to the `draft-edit` lines once they land in the ledger.
+
+**Proposal rule.** When ingestion scans the ledger (the same pass that
+reads `feedback-recent.sh` for other calibration context) and finds **two
+or more `draft-edit` lines within a trailing 30-day window pointing the
+same direction** — same `reason` token, or a text-level pattern an
+implementation may derive the same way (both edits shortened the draft,
+both dropped the greeting, both landed more casual) — it proposes exactly
+one observed style note. The proposal is surfaced the same way any other
+revealed-preference proposal is surfaced (a wake-up or in-session prompt
+asking the user to confirm the pattern, per (d)'s "propose, never
+overwrite" precedent) — this spec does not define a second proposal
+mechanism.
+
+**Filed only on confirm.** The style note is written to `profile.md`'s
+`## Style notes` section —
+```
+- **[observed-from-behavior]** <note> (<date>)
+```
+— **only** on the user's explicit confirmation, via the existing plan 15
+confirm path. A pattern with two, ten, or a hundred matching `draft-edit`
+lines is never auto-adopted; absent confirmation, no bullet is written, no
+matter how consistent the observed edits are. This is the same rule (e)
+already states for every other bullet this spec's lanes file, restated here
+because it is the one this loop exists to protect: style is learned from
+what the user does, adopted only from what the user says yes to.
+
+**The confirm itself is ledgered.** Once the user confirms, in addition to
+the `profile.md` write above, ingestion calls:
+```
+bash packages/ingestion/scripts/feedback-file.sh <store> --type model-confirm \
+  --target model --source session --to "style:<note>"
+```
+so the confirmation is itself a permanent, replayable record in the ledger
+— consistent with `feedback-event.md`'s `model-confirm` type, already used
+for user-model confirmations (plan 30/31), reused here rather than inventing
+a parallel confirmation record.
+
+**Readers.** `packages/attention`'s draft composition (the `--draft` path)
+reads both `## Style notes` and `feedback-recent.sh --kind draft-edits` when
+building a draft prompt — the confirmed note gives durable, low-cost style
+context, and the recent raw edits give near-term signal that hasn't yet
+crossed the two-in-30-days threshold. Neither read constitutes a write:
+`attention` only ever proposes (per (d) and the contract's writer/readers
+section), the write always terminates in ingestion as described above.
+
+## (g) Relationship to plan 03
 
 This spec amends plan 03's filing-engine brief (`docs/plans/2026-08-29-03-filing-engine.md`),
 which is unbuilt as of this writing. When plan 03's `skills/debrief/SKILL.md` is

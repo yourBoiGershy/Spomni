@@ -185,10 +185,15 @@ at all, no judgment call spent) for an opted-out person.
    judge **without** user-model priors and disclose `user-model: none` in
    the breakdown string (never block on a missing/unconfirmed model);
    `ranking-weights.json`'s `kinds`/`evidence` priors (absent → `1.0`
-   neutral); and neighbor priors from `index/embeddings.jsonl` via
+   neutral); neighbor priors from `index/embeddings.jsonl` via
    `packages/ingestion/scripts/nearest-confirmed.sh` (read-only) when that
    file exists, else the breakdown omits the `neighbors:` segment per that
-   contract's rule.
+   contract's rule; and, read-only, the user's own corrections via
+   `bash packages/ingestion/scripts/feedback-recent.sh <store> --n 10`
+   (`specs/tier-drift.md` "## Judgment verdict" — the `## Recent
+   corrections` block, appended to the judgment prompt after the priors
+   above). These are the user's own words; a correction outranks any prior
+   read above for this candidate.
 3. **Verdict.** The judgment resolves to a quiet-drift or upward-drift
    signal event — `evidence:` carries the full breakdown string
    (`relationship-scoring.md` "## Breakdown string", quoted there, not
@@ -313,6 +318,24 @@ bash packages/core/scripts/wakeup-add.sh <store-dir> \
   value other than the signal event's own `type`.
 - **Drafts** (`--draft`) are allowed and optional, always surfaced for
   human review — draft-never-send holds; this skill never sends anything.
+  The `--draft` text stays in the wake-up's `## Draft` section as unsent
+  text for the user to edit or send themselves. Before composing any draft
+  text, read, read-only: `<store-dir>/profile.md` `## Style notes` bullets
+  (`packages/core/contracts/profile.md`) and
+  `bash packages/ingestion/scripts/feedback-recent.sh <store-dir> --kind
+  draft-edits --n 5`, which prints a `## Recent draft edits` block, one
+  line per edit (or `_none yet_`):
+
+  ```
+  ## Recent draft edits
+  - 2026-08-30 person:jane-doe — "shorten this, too formal"
+  ```
+
+  The draft follows the style notes and recent edits: shorter/longer,
+  more/less formal, whatever the notes and edits say, in the user's voice
+  — not a generic template. This never changes draft-never-send: the
+  drafted text is still only ever proposed in `## Draft`, and the human
+  holds send.
 
 ## 5. Silence & never-do list
 

@@ -112,6 +112,25 @@ question (UPWARD direction), reading:
   that file exists, resolved via
   `packages/ingestion/scripts/nearest-confirmed.sh` (read-only; attention
   never writes the embeddings index).
+- The user's own corrections, read-only via
+  `bash packages/ingestion/scripts/feedback-recent.sh <store> --n 10`
+  (`packages/core/contracts/feedback-event.md`; attention never writes
+  `signals/feedback.jsonl` — ingestion's `feedback-file.sh` is the sole
+  writer). This prints a `## Recent corrections` block, one line per
+  correction (or `_none yet_` when the ledger has none):
+
+  ```
+  ## Recent corrections
+  - 2026-08-30 person:bob-cpa — judge said kind=friend, user said
+    kind=transactional, words: "my accountant"
+  ```
+
+  Append this block to the judgment prompt after the priors segment above,
+  with the instruction: **these are the user's own words; a correction
+  outranks any prior.** A correction naming this candidate's `kind` or
+  `tier` overrides the corresponding ranking-weights/user-model/neighbor
+  prior for this judgment call, same as any other stated-vs-inferred
+  precedence in this repo (`docs/DECISIONS.md#preference-provenance`).
 
 The judgment resolves to exactly one of:
 

@@ -231,6 +231,27 @@ Inputs, in order:
       overrides a stated kind, a stated tier, or any rule in
       relationship-scoring.md's ## Rules."
 
+2b. The recent-corrections block: the verbatim stdout of
+    `feedback-recent.sh <store> --n 10` (a sibling unit) — either
+
+      ## Recent corrections
+      - 2026-08-30 person:bob-cpa — judge said kind=friend, user said
+        kind=transactional, words: "my accountant"
+
+    or, when there is no feedback yet:
+
+      ## Recent corrections
+      _none yet_
+
+    followed by this instruction line, verbatim: "These are the user's
+    own words about their relationships; a correction outranks any
+    prior. Do not restate a correction as a rule for other people unless
+    the words themselves generalize." This is the same global block (cap
+    10, not scoped to the person or cluster being judged) on every
+    judgment call in the run, including `--person <slug>` runs — the
+    judge needs cross-person patterns in the user's corrections, not
+    just the one person's own history.
+
 3. For the cluster currently being judged: exemplar(s) first, with their
    confirmed kind/tier, then members. Per person, in order:
      a. The evidence JSON line (derive-evidence.sh's output: touchpoints,
@@ -283,6 +304,11 @@ Then validate the whole batch before anything is written or shown:
 bash packages/ingestion/scripts/check-judgment.sh <data-dir>/ingestion/review-judgments/<today>.jsonl \
   --today <today> --evidence <evidence.jsonl>
 ```
+
+`check-judgment.sh` is unchanged by the recent-corrections block above
+(input 2b) — it validates judgment records against
+`relationship-scoring.md`'s record shape and rules only, and never reads
+the corrections block itself.
 
 For every `reject:<reason>` line: re-judge that one person **once** (same
 prompt, with the rejection reason appended as an extra instruction to
@@ -403,6 +429,21 @@ this order:
    — overriding any `derived` kind Step 3 wrote for that person, since a
    correction is now a user statement.
 
+**Carry the user's words into both writes (plan 34).** Whenever the user's
+correction reply included words — "3 → close", "she's my accountant", or
+any freeform reply that changed a digest line — pass `--feedback-text`
+set to that reply verbatim (the whole message, never a paraphrase or
+summary) and `--feedback-source session` to both the tier setter
+(`person-set-tier.sh`, invoked as `stated-preference-filing.md` (a).2's
+write path) and `person-set-kind.sh`. A correction made with no
+accompanying words (e.g. a bare structured edit) passes no
+`--feedback-text`. This appends a `tier-correction` or `kind-correction`
+line to `<store>/signals/feedback.jsonl`
+(`packages/core/contracts/feedback-event.md`) — the durable record that
+lets a later session stop re-asking what the user already said;
+`feedback-recent.sh` (a sibling unit) renders the last 10 such lines into
+the judgment prompt.
+
 A stated value always outranks a derived one, now and on every future
 derived pass. **Never enumerate excluded people** — people outside this
 run's scope (skip-ledger, beyond the 20-cap, or out of the resolved
@@ -456,3 +497,7 @@ skipped/excluded people, per the no-guilt rule):
 - Skew: `yes`/`no`, and whether `--rescale` was applied.
 - How many people were digested (capped at 20 if more cleared), how many
   corrections were made in this session (before or after the digest).
+- `corrections ledgered: N` — how many of those corrections carried
+  `--feedback-text` into `signals/feedback.jsonl` (plan 34; a correction
+  made with no accompanying words is counted in "corrections were made"
+  above but not in this count).

@@ -28,3 +28,4 @@ packages/ingestion/evals/cases/no-ollama-fallback   # smoke
 packages/ingestion/evals/cases/rescale-skew-detection
 packages/ingestion/evals/cases/review-tiers-zero-writes-without-confirm   # smoke
 packages/ingestion/evals/cases/stated-kind-sticks   # smoke
+packages/ingestion/evals/cases/feedback-correction-holds   # smoke

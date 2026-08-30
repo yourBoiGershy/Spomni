@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0.0",
+  "fired_at": "2026-08-30T12:00:00Z",
+  "today": "2026-08-30",
+  "budget": {
+    "max": 3,
+    "used_before": 0,
+    "used_after": 1
+  },
+  "entries": [
+    {
+      "id": "2026-08-20-jane-doe",
+      "due": "2026-08-20",
+      "people": ["[[jane-doe]]"],
+      "why": "quarterly check-in",
+      "origin": "user-ask",
+      "kind": "nudge",
+      "signal_type": null,
+      "context": "Time for the standing quarterly check-in with Jane.",
+      "draft": null,
+      "proposed_event": null
+    },
+    {
+      "id": "2026-08-21-sam-oyelaran",
+      "due": "2026-08-21",
+      "people": ["[[sam-oyelaran]]"],
+      "why": "job change: new onboarding-flows team",
+      "origin": "signal",
+      "kind": "nudge",
+      "signal_type": "job-change",
+      "context": "Sam started leading a new onboarding-flows team — good excuse to check in.",
+      "draft": null,
+      "proposed_event": null
+    }
+  ],
+  "held_budget": [],
+  "held_adjacent": []
+}

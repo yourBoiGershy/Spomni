@@ -1,6 +1,6 @@
 # Contract: eval case
 
-`schema_version: 1.2.0`
+`schema_version: 1.3.0`
 
 The shared format every package authors quality-eval cases in, so one set of
 runner scripts (owned by `packages/core`) can execute cases from any package
@@ -180,6 +180,16 @@ if it resolves under `data/`. This is not advisory: real user data must
 never be pointed at by an eval run, per the code-data-separation principle
 and `docs/DECISIONS.md`.
 
+**Private manifests (plan 34 D4):** correction-derived cases live under
+`<data-dir>/evals/feedback/`, run only via `RA_EVAL_PRIVATE_MANIFEST`;
+committed manifests never reference `data/`. Setting
+`RA_EVAL_PRIVATE_MANIFEST=<abs path to a suite.txt>` opts exactly that one
+manifest (matched by exact resolved path) into allowing its case, `store`,
+and `expected` paths to resolve under the private data dir containing that
+manifest — every other manifest, and every path outside that dir, keeps the
+refusal above unchanged. See `RA_EVAL_PRIVATE_MANIFEST` / `RA_EVAL_PRIVATE_DIR`
+below.
+
 ## Environment variables
 
 Runner behavior is tuned entirely through environment variables — no CLI
@@ -193,6 +203,8 @@ noted default.
 | `RA_EVAL_SMOKE` | `eval-suite.sh` | Set to `1` to run only manifest lines carrying an inline trailing `# smoke` tag. A manifest with zero tagged lines prints a `SUITE NOTE:` and is skipped; if every manifest yields zero smoke lines the suite exits `2`. |
 | `RA_EVAL_RERUN_FAILED` | `eval-suite.sh` | Set to `1` to filter each manifest's case lines down to only those whose last recorded outcome (in that manifest's `.last-run.tsv` sidecar — see State file below) was `FAIL`, `ERROR`, or `XPASS`, plus any case with no recorded outcome yet (never run before — included, not silently skipped). Composes with `RA_EVAL_SMOKE` as an intersection. A manifest with no `.last-run.tsv` yet has its filter skipped entirely (all its cases run) and gets a `SUITE NOTE:`. If filtering leaves zero cases across every manifest, the suite prints `SUITE NOTE: nothing to re-run — last recorded run has no failures` and exits `0` (a success state, not the zero-cases `exit 2`). |
 | `RA_EVAL_RUNNER_AGENT` / `RA_EVAL_RUNNER_SKILL` | `eval-suite.sh` | Test hooks: absolute paths overriding the `eval-run.sh` / `eval-run-skill.sh` runner script paths. Default unchanged. |
+| `RA_EVAL_PRIVATE_MANIFEST` | `eval-suite.sh` | Absolute path to a `suite.txt`. When set and a manifest being run resolves (via `cd dir && pwd -P`) to that exact path, that manifest's cases may have `store`/`expected` under the private data dir containing it — the `data/` refusal is skipped for paths prefixed by that dir only. Prints `eval: private manifest mode (<dir>)` once when a manifest matches. Every other manifest is unaffected. Forwarded per-case to `eval-run-skill.sh` as `RA_EVAL_PRIVATE_DIR`. |
+| `RA_EVAL_PRIVATE_DIR` | `eval-run-skill.sh` | Set by `eval-suite.sh` (never by hand) for cases whose manifest matched `RA_EVAL_PRIVATE_MANIFEST`; the data/-path refusal is skipped for `store`/`expected` paths prefixed by this dir. Empty/unset preserves the refusal exactly as before. |
 | `RA_EVAL_TIMEOUT_SECS` | `eval-run.sh`, `eval-run-skill.sh` | Wall-clock guard per case (backgrounded sleep-and-kill, no `timeout(1)`). Default `300`; `eval-judge.sh` defaults to `120`. |
 | `RA_EVAL_DRY_RUN` | `eval-run.sh`, `eval-run-skill.sh` | Set to `1` to print the `claude` invocation instead of running it, and emit `RESULT SKIP case=<name> reason=dry-run` in place of an actual result. |
 | `RA_EVAL_FORCE` | `eval-run.sh`, `eval-run-skill.sh` | Set to `1` to run a case despite it declaring `runnable-when` (bypasses the `SKIP`). |

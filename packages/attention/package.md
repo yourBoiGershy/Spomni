@@ -85,6 +85,17 @@ attention-merge).
 
 ## Consumes
 
+- `feedback-event@^1` (core) — `scripts/wakeup-queue.sh`'s `fire`/`snooze`/
+  `dismiss`/`confirm`/`decline` lifecycle ops each append one
+  `feedback-event@1` line via ingestion's `scripts/feedback-file.sh`
+  (sanctioned cross-package call, plan 34 D1); a missing `feedback-file.sh`
+  is skip-with-log, never an error. Attention never opens
+  `signals/feedback.jsonl` for write — ingestion is its sole writer.
+- `feedback-event@^1` (core), read side — the `tier-drift` judgment pass
+  and `signal-scan`'s draft composition step read the ledger read-only via
+  ingestion's `packages/ingestion/scripts/feedback-recent.sh` (`##
+  Recent corrections` / `## Recent draft edits` blocks); attention never
+  reads `signals/feedback.jsonl` directly.
 - `signal-event@^1`, `wakeup@1.2` (core) — outcome recording targets the 1.1 fields
   specifically (`fired-on`, `dismiss-reason`, `acted-on`, `snooze-count`); a 1.0 file
   is upgraded to 1.1 in place the first time a 1.1 writer (`wakeup-queue.sh`

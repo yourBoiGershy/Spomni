@@ -25,6 +25,12 @@
 #      inside the window -> true; open window with no match -> untouched +
 #      silent; closed window with no match -> false; re-run -> silent and
 #      byte-identical
+#   12. feedback ledger (plan 34 D1, outcome-recording.md): every lifecycle op
+#      (snooze/dismiss/confirm/decline/acted-on) appends one feedback-event
+#      line to <store>/signals/feedback.jsonl via ingestion's
+#      feedback-file.sh; --text/--channel/--source passthrough on dismiss;
+#      missing signals/ dir still gets created; absent feedback-file.sh
+#      prints a skip line and does not block the lifecycle write
 #
 # bash 3.2 portable (no associative arrays, no mapfile) — must run under
 # macOS's stock /bin/bash, invocable from anywhere.
@@ -619,6 +625,190 @@ if [ "$s11_validate_status" -eq 0 ]; then
   pass "validate-store.sh clean after the acted-on sweep"
 else
   fail "validate-store.sh reported findings after the acted-on sweep: $s11_validate_out"
+fi
+
+# =============================================================================
+# Scenario 12: feedback ledger (plan 34 D1) — every lifecycle op appends one
+# feedback-event line to <store>/signals/feedback.jsonl via
+# ../../ingestion/scripts/feedback-file.sh.
+# =============================================================================
+
+s12_line_for() {
+  # s12_line_for <target-id> — last ledger line whose target matches
+  target="$1"
+  jq -c "select(.target == \"wakeup:${target}\")" "$S12_LEDGER" 2>/dev/null | tail -n1
+}
+
+S12_DIR="$TMP_ROOT/s12-feedback"
+mkdir -p "$S12_DIR/people" "$S12_DIR/interactions" "$S12_DIR/wakeups"
+cp "$PERSON_FIXTURE" "$S12_DIR/people/"
+cp "$PERSON_FIXTURE_2" "$S12_DIR/people/"
+S12_LEDGER="$S12_DIR/signals/feedback.jsonl"
+
+S12_SNOOZE_FILE="$(add_wakeup "$S12_DIR" --due 2026-09-10 --person aiko-tanaka --why "snooze" --origin user-ask)"
+S12_DISMISS_FILE="$(add_wakeup "$S12_DIR" --due 2026-09-11 --person aiko-tanaka --why "dismiss" --origin user-ask)"
+S12_DISMISS_TEXT_FILE="$(add_wakeup "$S12_DIR" --due 2026-09-12 --person aiko-tanaka --why "dismiss-text" --origin user-ask)"
+S12_CONFIRM_FILE="$(add_wakeup "$S12_DIR" --due 2026-09-13 --person aiko-tanaka --why "confirm" --origin user-ask \
+  --kind event-proposal --event-title "Coffee" --event-start 2026-09-13T15:00:00Z --event-end 2026-09-13T15:30:00Z \
+  --event-attendee aiko-tanaka)"
+S12_DECLINE_FILE="$(add_wakeup "$S12_DIR" --due 2026-09-14 --person aiko-tanaka --why "decline" --origin user-ask \
+  --kind event-proposal --event-title "Lunch" --event-start 2026-09-14T15:00:00Z --event-end 2026-09-14T15:30:00Z \
+  --event-attendee aiko-tanaka)"
+S12_MATCH_FILE="$(add_wakeup "$S12_DIR" --due 2026-08-20 --person aiko-tanaka --why "acted-match" --origin user-ask)"
+S12_NOMATCH_FILE="$(add_wakeup "$S12_DIR" --due 2026-08-01 --person ayesha-malik --why "acted-nomatch" --origin user-ask)"
+
+S12_SNOOZE_ID="2026-09-10-aiko-tanaka"
+S12_DISMISS_ID="2026-09-11-aiko-tanaka"
+S12_DISMISS_TEXT_ID="2026-09-12-aiko-tanaka"
+S12_CONFIRM_ID="2026-09-13-aiko-tanaka"
+S12_DECLINE_ID="2026-09-14-aiko-tanaka"
+S12_MATCH_ID="2026-08-20-aiko-tanaka"
+S12_NOMATCH_ID="2026-08-01-ayesha-malik"
+
+# fire the acted-on candidates on their own due dates so fired-on anchors
+# correctly (mirrors scenario 11)
+"$QUEUE" "$S12_DIR" fire --today 2026-08-01 --now 2026-08-01T14:00:00Z >/dev/null 2>&1
+"$QUEUE" "$S12_DIR" fire --today 2026-08-20 --now 2026-08-20T14:00:00Z >/dev/null 2>&1
+
+# matching interaction for S12_MATCH_ID, dated inside its (fired-on, +7d] window
+S12_INTERACTION="$S12_DIR/interactions/2026-08-25-aiko-tanaka.md"
+{
+  echo "---"
+  echo "schema_version: 1.0.0"
+  echo "date: 2026-08-25"
+  echo "people: [\"[[aiko-tanaka]]\"]"
+  echo "calendar-event: null"
+  echo "source-capture: null"
+  echo "---"
+  echo ""
+  echo "## Summary"
+  echo ""
+  echo "Caught up with Aiko."
+  echo ""
+  echo "## Commitments"
+  echo ""
+  echo "- _none_"
+} > "$S12_INTERACTION"
+
+"$QUEUE" "$S12_DIR" snooze "$S12_SNOOZE_ID" --days 7 --today 2026-09-10 >/dev/null 2>&1
+"$QUEUE" "$S12_DIR" dismiss "$S12_DISMISS_ID" --reason not-now >/dev/null 2>&1
+"$QUEUE" "$S12_DIR" dismiss "$S12_DISMISS_TEXT_ID" --reason not-now --text "not now thanks" --channel beeper-self --source reply >/dev/null 2>&1
+"$QUEUE" "$S12_DIR" confirm "$S12_CONFIRM_ID" --event-id evt-1 >/dev/null 2>&1
+"$QUEUE" "$S12_DIR" decline "$S12_DECLINE_ID" --reason not-now >/dev/null 2>&1
+"$QUEUE" "$S12_DIR" acted-on --today 2026-09-15 >/dev/null 2>&1
+
+if [ -f "$S12_LEDGER" ]; then
+  pass "feedback ledger: signals/feedback.jsonl created"
+else
+  fail "feedback ledger: signals/feedback.jsonl was not created"
+fi
+
+s12_snooze_line="$(s12_line_for "$S12_SNOOZE_ID")"
+if [ "$(printf '%s' "$s12_snooze_line" | jq -r '.type')" = "snooze" ] \
+  && [ "$(printf '%s' "$s12_snooze_line" | jq -r '.reason')" = "7d" ] \
+  && [ "$(printf '%s' "$s12_snooze_line" | jq -r '.target')" = "wakeup:$S12_SNOOZE_ID" ]; then
+  pass "feedback ledger: snooze --days 7 -> type snooze reason 7d"
+else
+  fail "feedback ledger: snooze line wrong: $s12_snooze_line"
+fi
+
+s12_dismiss_line="$(s12_line_for "$S12_DISMISS_ID")"
+if [ "$(printf '%s' "$s12_dismiss_line" | jq -r '.type')" = "dismiss" ] \
+  && [ "$(printf '%s' "$s12_dismiss_line" | jq -r '.reason')" = "not-now" ]; then
+  pass "feedback ledger: dismiss --reason not-now -> type dismiss reason not-now"
+else
+  fail "feedback ledger: dismiss line wrong: $s12_dismiss_line"
+fi
+
+s12_confirm_line="$(s12_line_for "$S12_CONFIRM_ID")"
+if [ "$(printf '%s' "$s12_confirm_line" | jq -r '.type')" = "acted-on" ] \
+  && [ "$(printf '%s' "$s12_confirm_line" | jq -r '.reason')" = "confirmed" ]; then
+  pass "feedback ledger: confirm -> type acted-on reason confirmed"
+else
+  fail "feedback ledger: confirm line wrong: $s12_confirm_line"
+fi
+
+s12_decline_line="$(s12_line_for "$S12_DECLINE_ID")"
+if [ "$(printf '%s' "$s12_decline_line" | jq -r '.type')" = "dismiss" ] \
+  && [ "$(printf '%s' "$s12_decline_line" | jq -r '.reason')" = "not-now" ]; then
+  pass "feedback ledger: decline --reason not-now -> type dismiss reason not-now"
+else
+  fail "feedback ledger: decline line wrong: $s12_decline_line"
+fi
+
+s12_acted_lines="$(jq -c "select(.target == \"wakeup:${S12_MATCH_ID}\" and .type == \"acted-on\" and .source == \"auto\")" "$S12_LEDGER" 2>/dev/null)"
+s12_acted_count="$(printf '%s\n' "$s12_acted_lines" | grep -c . || true)"
+if [ "$s12_acted_count" = "1" ]; then
+  pass "feedback ledger: acted-on sweep auto-match -> exactly one acted-on/auto line"
+else
+  fail "feedback ledger: expected exactly one acted-on/auto line, got $s12_acted_count: $s12_acted_lines"
+fi
+
+s12_nomatch_lines="$(jq -c "select(.target == \"wakeup:${S12_NOMATCH_ID}\")" "$S12_LEDGER" 2>/dev/null)"
+if [ -z "$s12_nomatch_lines" ]; then
+  pass "feedback ledger: acted-on sweep closed-window no-match writes no ledger line"
+else
+  fail "feedback ledger: unexpected ledger line for no-match entry: $s12_nomatch_lines"
+fi
+
+s12_all_target_count="$(jq -r '.target' "$S12_LEDGER" 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$s12_all_target_count" = "6" ]; then
+  pass "feedback ledger: exactly six lines written across all ops (5 lifecycle ops + the text-dismiss case)"
+else
+  fail "feedback ledger: expected 6 total ledger lines, got $s12_all_target_count"
+fi
+
+s12_text_line="$(s12_line_for "$S12_DISMISS_TEXT_ID")"
+if [ "$(printf '%s' "$s12_text_line" | jq -r '.text')" = "not now thanks" ] \
+  && [ "$(printf '%s' "$s12_text_line" | jq -r '.channel')" = "beeper-self" ] \
+  && [ "$(printf '%s' "$s12_text_line" | jq -r '.source')" = "reply" ]; then
+  pass "feedback ledger: dismiss --text/--channel/--source reply carried verbatim"
+else
+  fail "feedback ledger: text-dismiss line wrong: $s12_text_line"
+fi
+
+# --- fixture store without signals/ dir: op still exits 0 and creates it ---
+
+S12B_DIR="$TMP_ROOT/s12b-no-signals"
+new_store "$S12B_DIR"
+add_wakeup "$S12B_DIR" --due 2026-09-02 --person aiko-tanaka --why "nosignals" --origin user-ask >/dev/null
+
+if [ -d "$S12B_DIR/signals" ]; then
+  fail "feedback ledger (no-signals setup): signals/ unexpectedly pre-existing"
+else
+  pass "feedback ledger (no-signals setup): signals/ absent before the op"
+fi
+
+s12b_out="$("$QUEUE" "$S12B_DIR" dismiss 2026-09-02-aiko-tanaka --reason not-now 2>&1)"
+s12b_status=$?
+if [ "$s12b_status" -eq 0 ] && [ -f "$S12B_DIR/signals/feedback.jsonl" ]; then
+  pass "feedback ledger: dismiss on a store without signals/ creates the dir and exits 0"
+else
+  fail "feedback ledger: no-signals-dir case failed (status=$s12b_status): $s12b_out"
+fi
+
+# --- absent writer: no ingestion/scripts/feedback-file.sh sibling ---
+
+S12C_ROOT="$TMP_ROOT/s12c-absent-writer"
+mkdir -p "$S12C_ROOT/attention/scripts"
+cp "$QUEUE" "$S12C_ROOT/attention/scripts/wakeup-queue.sh"
+chmod +x "$S12C_ROOT/attention/scripts/wakeup-queue.sh"
+S12C_STORE="$S12C_ROOT/store"
+new_store "$S12C_STORE"
+S12C_FILE="$(add_wakeup "$S12C_STORE" --due 2026-09-02 --person aiko-tanaka --why "absentwriter" --origin user-ask)"
+
+s12c_out="$("$S12C_ROOT/attention/scripts/wakeup-queue.sh" "$S12C_STORE" dismiss 2026-09-02-aiko-tanaka --reason not-now 2>&1)"
+s12c_status=$?
+if [ "$s12c_status" -eq 0 ] && printf '%s\n' "$s12c_out" | grep -q '^feedback: skipped (feedback-file.sh absent)$'; then
+  pass "feedback ledger: absent writer prints skip line and exits 0"
+else
+  fail "feedback ledger: absent-writer case failed (status=$s12c_status): $s12c_out"
+fi
+
+if grep -q '^status: dismissed$' "$S12C_FILE"; then
+  pass "feedback ledger: absent writer still updates the wakeup file"
+else
+  fail "feedback ledger: absent writer did not update the wakeup file: $(cat "$S12C_FILE")"
 fi
 
 summary_and_exit

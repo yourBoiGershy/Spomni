@@ -646,6 +646,158 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# assertion 8b: plan-34 feedback-ledger hook — person-set-tier.sh /
+# person-set-kind.sh only append to signals/feedback.jsonl on a stated-by-user
+# write (mission test: only stated corrections are recorded). Uses the same
+# person-set-tier.sh / person-set-kind.sh scripts as assertion 8, plus
+# packages/ingestion/scripts/feedback-file.sh.
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "--- plan 34: feedback-ledger hook (person-set-tier.sh / person-set-kind.sh) ---"
+
+PLAN34_KIND_SCRIPT="$REPO_ROOT/packages/core/scripts/person-set-kind.sh"
+PLAN34_FEEDBACK_FILE_SCRIPT="$REPO_ROOT/packages/ingestion/scripts/feedback-file.sh"
+
+if [ ! -x "$PLAN31_TIER_SCRIPT" ]; then
+  fail "$PLAN31_TIER_SCRIPT not found or not executable (plan 34 feedback tests)"
+elif [ ! -x "$PLAN34_KIND_SCRIPT" ]; then
+  fail "$PLAN34_KIND_SCRIPT not found or not executable (plan 34 feedback tests)"
+elif [ ! -x "$PLAN34_FEEDBACK_FILE_SCRIPT" ]; then
+  fail "$PLAN34_FEEDBACK_FILE_SCRIPT not found or not executable (plan 34 feedback tests)"
+elif ! command -v jq >/dev/null 2>&1; then
+  fail "jq not found on PATH — cannot check plan-34 feedback-ledger contents"
+else
+  FEEDBACK_STORE="$PLAN30_TMP_ROOT/feedback-store"
+  plan30_min_store "$FEEDBACK_STORE"
+  FEEDBACK_LEDGER="$FEEDBACK_STORE/signals/feedback.jsonl"
+
+  # --- case 1: stated tier write with feedback text -> one ledger line ---
+  cat > "$FEEDBACK_STORE/people/feedback-person.md" <<'EOF'
+---
+schema_version: 1.2.0
+name: Feedback Person
+tier: active
+---
+
+## Facts
+
+- **[told-by-user]** placeholder fact (2026-08-01)
+EOF
+
+  fb1_output="$("$PLAN31_TIER_SCRIPT" "$FEEDBACK_STORE" feedback-person --tier close --source stated-by-user --today 2026-08-30 --feedback-text "she's basically family" 2>&1)"
+  fb1_status=$?
+
+  if [ "$fb1_status" -eq 0 ] && [ -f "$FEEDBACK_LEDGER" ] && [ "$(wc -l < "$FEEDBACK_LEDGER" | tr -d ' ')" -eq 1 ]; then
+    pass "stated-by-user tier write appends exactly one feedback-ledger line"
+  else
+    fail "stated-by-user tier write did not append exactly one feedback-ledger line (exit $fb1_status): $fb1_output"
+  fi
+
+  if [ -f "$FEEDBACK_LEDGER" ]; then
+    fb1_line="$(tail -n1 "$FEEDBACK_LEDGER")"
+    fb1_type="$(printf '%s' "$fb1_line" | jq -r '.type')"
+    fb1_target="$(printf '%s' "$fb1_line" | jq -r '.target')"
+    fb1_from="$(printf '%s' "$fb1_line" | jq -r '.from')"
+    fb1_to="$(printf '%s' "$fb1_line" | jq -r '.to')"
+    fb1_text="$(printf '%s' "$fb1_line" | jq -r '.text')"
+    fb1_source="$(printf '%s' "$fb1_line" | jq -r '.source')"
+
+    if [ "$fb1_type" = "tier-correction" ] && [ "$fb1_target" = "person:feedback-person" ] && \
+       [ "$fb1_from" = "active" ] && [ "$fb1_to" = "close" ] && \
+       [ "$fb1_text" = "she's basically family" ] && [ "$fb1_source" = "session" ]; then
+      pass "feedback-ledger tier-correction line has the expected type/target/from/to/text/source"
+    else
+      fail "feedback-ledger tier-correction line did not match expected fields: $fb1_line"
+    fi
+  fi
+
+  # --- case 2: derived write -> no new ledger line ---
+  fb2_lines_before="$(wc -l < "$FEEDBACK_LEDGER" | tr -d ' ')"
+  fb2_output="$("$PLAN31_TIER_SCRIPT" "$FEEDBACK_STORE" feedback-person --tier active --source derived --today 2026-08-30 --feedback-text "should be ignored" 2>&1)"
+  fb2_status=$?
+  fb2_lines_after="$(wc -l < "$FEEDBACK_LEDGER" | tr -d ' ')"
+
+  if [ "$fb2_status" -eq 2 ] && [ "$fb2_lines_before" -eq "$fb2_lines_after" ]; then
+    pass "derived write does not append to signals/feedback.jsonl (refused as expected: existing tier is stated-by-user)"
+  else
+    fail "derived write behaved unexpectedly (exit $fb2_status, ledger lines $fb2_lines_before -> $fb2_lines_after): $fb2_output"
+  fi
+
+  # --- case 3: kind stated write on a person with no prior kind -> from=null ---
+  fb3_lines_before="$(wc -l < "$FEEDBACK_LEDGER" | tr -d ' ')"
+  fb3_output="$("$PLAN34_KIND_SCRIPT" "$FEEDBACK_STORE" feedback-person --kind friend --note "college friend" --source stated-by-user --today 2026-08-30 --feedback-text "he's a close friend" 2>&1)"
+  fb3_status=$?
+  fb3_lines_after="$(wc -l < "$FEEDBACK_LEDGER" | tr -d ' ')"
+
+  if [ "$fb3_status" -eq 0 ] && [ "$fb3_lines_after" -eq $((fb3_lines_before + 1)) ]; then
+    pass "stated-by-user kind write appends exactly one feedback-ledger line"
+  else
+    fail "stated-by-user kind write (exit $fb3_status) did not append exactly one feedback-ledger line ($fb3_lines_before -> $fb3_lines_after): $fb3_output"
+  fi
+
+  fb3_line="$(tail -n1 "$FEEDBACK_LEDGER")"
+  fb3_type="$(printf '%s' "$fb3_line" | jq -r '.type')"
+  fb3_from="$(printf '%s' "$fb3_line" | jq -r '.from')"
+  fb3_to="$(printf '%s' "$fb3_line" | jq -r '.to')"
+
+  if [ "$fb3_type" = "kind-correction" ] && [ "$fb3_from" = "null" ] && [ "$fb3_to" = "friend" ]; then
+    pass "feedback-ledger kind-correction line reads from=null for a person with no prior kind"
+  else
+    fail "feedback-ledger kind-correction line did not read from=null/to=friend: $fb3_line"
+  fi
+
+  # --- case 4: --clear --source stated-by-user -> to="null" (the string) ---
+  fb4_output="$("$PLAN31_TIER_SCRIPT" "$FEEDBACK_STORE" feedback-person --clear --source stated-by-user 2>&1)"
+  fb4_status=$?
+  fb4_line="$(tail -n1 "$FEEDBACK_LEDGER")"
+  fb4_to="$(printf '%s' "$fb4_line" | jq -r '.to')"
+
+  if [ "$fb4_status" -eq 0 ] && [ "$fb4_to" = "null" ]; then
+    pass "person-set-tier.sh --clear --source stated-by-user appends a feedback-ledger line with to=\"null\""
+  else
+    fail "person-set-tier.sh --clear (exit $fb4_status) did not append to=\"null\" ledger line: $fb4_line"
+  fi
+
+  # --- case 5: feedback-file.sh absent -> skip message, exit 0, person still updated ---
+  FEEDBACK_ABSENT_ROOT="$PLAN30_TMP_ROOT/feedback-absent"
+  mkdir -p "$FEEDBACK_ABSENT_ROOT/core/scripts"
+  cp "$PLAN31_TIER_SCRIPT" "$FEEDBACK_ABSENT_ROOT/core/scripts/person-set-tier.sh"
+  cp "$PLAN34_KIND_SCRIPT" "$FEEDBACK_ABSENT_ROOT/core/scripts/person-set-kind.sh"
+  chmod +x "$FEEDBACK_ABSENT_ROOT/core/scripts/person-set-tier.sh" "$FEEDBACK_ABSENT_ROOT/core/scripts/person-set-kind.sh"
+
+  FEEDBACK_ABSENT_STORE="$PLAN30_TMP_ROOT/feedback-absent-store"
+  plan30_min_store "$FEEDBACK_ABSENT_STORE"
+  cat > "$FEEDBACK_ABSENT_STORE/people/absent-person.md" <<'EOF'
+---
+schema_version: 1.2.0
+name: Absent Person
+tier: active
+---
+
+## Facts
+
+- **[told-by-user]** placeholder fact (2026-08-01)
+EOF
+
+  fb5_output="$("$FEEDBACK_ABSENT_ROOT/core/scripts/person-set-tier.sh" "$FEEDBACK_ABSENT_STORE" absent-person --tier close --source stated-by-user --today 2026-08-30 --feedback-text "she's basically family" 2>&1)"
+  fb5_status=$?
+
+  if [ "$fb5_status" -eq 0 ] && printf '%s' "$fb5_output" | grep -qF "feedback: skipped (feedback-file.sh absent)"; then
+    pass "person-set-tier.sh exits 0 and prints the skip message when feedback-file.sh is absent"
+  else
+    fail "person-set-tier.sh (exit $fb5_status) did not print the expected skip message: $fb5_output"
+  fi
+
+  if [ ! -d "$FEEDBACK_ABSENT_STORE/signals" ] && grep -qxF "tier: close" "$FEEDBACK_ABSENT_STORE/people/absent-person.md"; then
+    pass "person-set-tier.sh with feedback-file.sh absent still updates the person file, and writes no signals/ dir"
+  else
+    fail "person-set-tier.sh with feedback-file.sh absent left an unexpected store state"
+    cat "$FEEDBACK_ABSENT_STORE/people/absent-person.md"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # assertion 9: plan-31 validate-store.sh rules — person tier_source, and
 # user-model.md status: provisional.
 # ---------------------------------------------------------------------------
@@ -765,6 +917,138 @@ plan30_assert_finding "$C_FACTS_UNTAGGED" 1 "Facts bullet missing provenance tag
 
 rm -rf "$PLAN30_TMP_ROOT"
 trap - EXIT
+
+# ---------------------------------------------------------------------------
+# eval private manifest mode (plan 34 D4) — RA_EVAL_PRIVATE_MANIFEST opts
+# exactly ONE manifest (matched by exact resolved path) into allowing its
+# case store/expected paths to resolve under data/; every other manifest —
+# even another one also under data/ — keeps the refusal. Builds a synthetic
+# private-style suite + skill-tier case under a scratch dir (never touches
+# the real data/ dir) and drives packages/core/scripts/eval-suite.sh under
+# RA_EVAL_DRY_RUN=1 so no `claude -p` calls are ever made.
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "--- eval private manifest mode ---"
+
+EVAL_SUITE_SCRIPT="$REPO_ROOT/packages/core/scripts/eval-suite.sh"
+EVAL_TMP_ROOT="$(mktemp -d)"
+trap 'rm -rf "$EVAL_TMP_ROOT"' EXIT
+
+if [ ! -x "$EVAL_SUITE_SCRIPT" ]; then
+  fail "$EVAL_SUITE_SCRIPT not found or not executable"
+else
+  # Manifest A (opted in by RA_EVAL_PRIVATE_MANIFEST in cases 2 and 3 below)
+  # — a minimal skill-tier case shaped like
+  # packages/ingestion/evals/cases/01-tier-change (prompt.md + store/expected
+  # dirs), but with its store/expected under the same data/ dir as the
+  # manifest itself.
+  FEEDBACK_DIR="$EVAL_TMP_ROOT/data/evals/feedback"
+  CASE_A_DIR="$FEEDBACK_DIR/case-a"
+  mkdir -p "$CASE_A_DIR/before" "$CASE_A_DIR/expected"
+  cat > "$CASE_A_DIR/prompt.md" <<EOF
+---
+tier: skill
+store: $CASE_A_DIR/before
+expected: $CASE_A_DIR/expected
+max-turns: 8
+model: haiku
+---
+Test-only prompt body (never dispatched — RA_EVAL_DRY_RUN=1 in every
+assertion below).
+EOF
+  FEEDBACK_SUITE="$FEEDBACK_DIR/suite.txt"
+  printf '%s\n' "$CASE_A_DIR" > "$FEEDBACK_SUITE"
+
+  # Manifest B — a second, unrelated manifest also under data/, never opted
+  # in by RA_EVAL_PRIVATE_MANIFEST in any assertion below.
+  OTHER_DIR="$EVAL_TMP_ROOT/data/evals/other"
+  CASE_B_DIR="$OTHER_DIR/case-b"
+  mkdir -p "$CASE_B_DIR/before" "$CASE_B_DIR/expected"
+  cat > "$CASE_B_DIR/prompt.md" <<EOF
+---
+tier: skill
+store: $CASE_B_DIR/before
+expected: $CASE_B_DIR/expected
+max-turns: 8
+model: haiku
+---
+Test-only prompt body (never dispatched — RA_EVAL_DRY_RUN=1 in every
+assertion below).
+EOF
+  OTHER_SUITE="$OTHER_DIR/suite.txt"
+  printf '%s\n' "$CASE_B_DIR" > "$OTHER_SUITE"
+
+  # --- case 1: committed-style run (env unset) refuses a data/-path case ---
+  case1_out="$(RA_EVAL_DRY_RUN=1 "$EVAL_SUITE_SCRIPT" "$FEEDBACK_SUITE" 2>&1)"
+  if printf '%s\n' "$case1_out" | grep -qF "RESULT ERROR case=case-a reason=refused-data-path:store="; then
+    pass "eval-suite.sh refuses a data/-path case when RA_EVAL_PRIVATE_MANIFEST is unset"
+  else
+    fail "eval-suite.sh did not refuse the data/-path case with RA_EVAL_PRIVATE_MANIFEST unset"
+    echo "$case1_out"
+  fi
+
+  # --- case 2: same suite, RA_EVAL_PRIVATE_MANIFEST set to it -> allowed ---
+  # eval-suite.sh prints the physical (symlink-resolved, `pwd -P`) form of
+  # the manifest dir, which on macOS differs from $EVAL_TMP_ROOT's own
+  # /tmp/... spelling (a symlink to /private/tmp/...) — resolve the same
+  # way here so the expected-line check isn't a false negative.
+  FEEDBACK_DIR_PHYSICAL="$(cd "$FEEDBACK_DIR" && pwd -P)"
+  case2_out="$(RA_EVAL_DRY_RUN=1 RA_EVAL_PRIVATE_MANIFEST="$FEEDBACK_SUITE" "$EVAL_SUITE_SCRIPT" "$FEEDBACK_SUITE" 2>&1)"
+  if printf '%s\n' "$case2_out" | grep -qF "eval: private manifest mode (${FEEDBACK_DIR_PHYSICAL})"; then
+    pass "eval-suite.sh prints the private manifest mode line for the opted-in manifest"
+  else
+    fail "eval-suite.sh did not print the private manifest mode line"
+    echo "$case2_out"
+  fi
+  if printf '%s\n' "$case2_out" | grep -qF "RESULT SKIP case=case-a reason=dry-run"; then
+    pass "eval-suite.sh's opted-in manifest case proceeds past the data/ refusal (dry-run SKIP, not ERROR)"
+  else
+    fail "eval-suite.sh's opted-in manifest case did not proceed to dry-run SKIP"
+    echo "$case2_out"
+  fi
+
+  # --- case 3: RA_EVAL_PRIVATE_MANIFEST set to manifest A, but manifest B
+  #     (also under data/, a different directory) is still refused ---
+  case3_out="$(RA_EVAL_DRY_RUN=1 RA_EVAL_PRIVATE_MANIFEST="$FEEDBACK_SUITE" "$EVAL_SUITE_SCRIPT" "$OTHER_SUITE" 2>&1)"
+  if printf '%s\n' "$case3_out" | grep -qF "RESULT ERROR case=case-b reason=refused-data-path:store="; then
+    pass "eval-suite.sh still refuses a different data/ manifest's case even when another manifest is opted in"
+  else
+    fail "eval-suite.sh did not refuse manifest B's case despite manifest A being the opted-in one"
+    echo "$case3_out"
+  fi
+  if printf '%s\n' "$case3_out" | grep -qF "eval: private manifest mode"; then
+    fail "eval-suite.sh printed the private manifest mode line for a run that never included the opted-in manifest"
+  else
+    pass "eval-suite.sh prints no private manifest mode line when the opted-in manifest isn't the one run"
+  fi
+fi
+
+rm -rf "$EVAL_TMP_ROOT"
+trap - EXIT
+
+# --- case 4: real repo suite unaffected — RA_EVAL_DRY_RUN=1 still exits 0
+#     with error=0 (regression guard: private-manifest mode changes nothing
+#     for manifests that never resolve under data/) ---
+INGESTION_SUITE_REL="packages/ingestion/evals/suite.txt"
+if [ ! -f "$REPO_ROOT/$INGESTION_SUITE_REL" ]; then
+  fail "$INGESTION_SUITE_REL not found — cannot run case 4"
+else
+  case4_out="$(cd "$REPO_ROOT" && RA_EVAL_DRY_RUN=1 bash packages/core/scripts/eval-suite.sh "$INGESTION_SUITE_REL" 2>&1)"
+  case4_status=$?
+  if [ "$case4_status" -eq 0 ]; then
+    pass "RA_EVAL_DRY_RUN=1 eval-suite.sh $INGESTION_SUITE_REL exits 0"
+  else
+    fail "RA_EVAL_DRY_RUN=1 eval-suite.sh $INGESTION_SUITE_REL exited $case4_status (expected 0)"
+    echo "$case4_out"
+  fi
+  if printf '%s\n' "$case4_out" | grep -qE "SUITE SUMMARY:.*error=0"; then
+    pass "RA_EVAL_DRY_RUN=1 eval-suite.sh $INGESTION_SUITE_REL reports error=0"
+  else
+    fail "RA_EVAL_DRY_RUN=1 eval-suite.sh $INGESTION_SUITE_REL did not report error=0"
+    echo "$case4_out"
+  fi
+fi
 
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"

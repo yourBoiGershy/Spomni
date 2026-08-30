@@ -48,6 +48,9 @@ nothing.
   `tier_source: derived`, per plan 31),
   `contracts/embeddings-index.md` (`<store>/index/embeddings.jsonl`, local
   optional embeddings, per plan 30),
+  `contracts/feedback-event.md` (`<store>/signals/feedback.jsonl`, the
+  append-only source-of-truth log of user feedback — dismissals, snoozes,
+  tier/kind corrections, replies, model confirmations — per plan 34),
   `contracts/week-plan.md` (`signals/week-plan.json`, the capacity-model
   weekly nudge budget artifact, per plan 12 — this is the RENUMBERED cadence
   plan, docs/plans/2026-08-29-12-cadence-capacity.md, not the earlier plan 12
@@ -95,7 +98,17 @@ nothing.
 
 ## Consumes
 
-Nothing.
+Nothing structurally — core depends on no other package's contracts. Two
+sanctioned cross-package calls, both skip-with-log when the callee is
+absent: `scripts/person-set-tier.sh` / `scripts/person-set-kind.sh` call
+ingestion's `scripts/feedback-file.sh` (relative path) to append one
+`feedback-event@1` line whenever the write being made is `stated-by-user`
+(never for a derived write), per plan 34 D1. `contracts/eval-case.md`
+1.3.0 also defines a private-manifest mode (`RA_EVAL_PRIVATE_MANIFEST`
+read by `scripts/eval-suite.sh`): when a running suite manifest resolves
+to that env var's path, that manifest's cases may point `store`/`expected`
+at the private data dir containing it, skipping the ordinary `data/`
+refusal for paths under that dir only.
 
 ## Owned paths
 
@@ -132,5 +145,8 @@ The `person.md` 1.2.0 `tier_source` field, `scripts/person-set-tier.sh`, the
 `user-model.md` 1.1.0 `provisional` status, and the `relationship-scoring.md`
 2.0.0 derived-tier-write rule are by plan 31
 (docs/plans/2026-08-30-31-deterministic-filing-cold-start-priors.md).
+`contracts/feedback-event.md` by plan 34
+(docs/plans/2026-08-30-34-feedback-ledger.md).
+
 The `person.md` 1.3.0 `inferred-from-thread` Facts provenance label is by
 plan 32.

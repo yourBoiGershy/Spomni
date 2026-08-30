@@ -217,7 +217,10 @@ if [ ! -f "$S2_WAKEUP" ]; then
 else
   S2_PRE="$TMP_ROOT/s2-pre-image.md"
   cp "$S2_WAKEUP" "$S2_PRE"
-  S2_FILES_BEFORE="$(find "$S2_DIR" -type f | sort)"
+  # signals/feedback.jsonl is excluded: a feedback-ledger append is outcome
+  # recording (plan 34 D1), not a signal to anyone -- the silent-decline
+  # doctrine covers wake-ups/interactions/people/calendar file listings only.
+  S2_FILES_BEFORE="$(find "$S2_DIR" -type f | grep -v "/signals/feedback.jsonl\$" | sort)"
 
   s2_output="$("$CONFIRM" "$S2_DIR" decline 2026-08-31-theo-bramwell --reason not-now 2>&1)"
   s2_status=$?
@@ -251,7 +254,7 @@ else
     echo "$s2_validate_output"
   fi
 
-  S2_FILES_AFTER="$(find "$S2_DIR" -type f | sort)"
+  S2_FILES_AFTER="$(find "$S2_DIR" -type f | grep -v "/signals/feedback.jsonl\$" | sort)"
   if [ "$S2_FILES_BEFORE" = "$S2_FILES_AFTER" ]; then
     pass "decline creates no new files anywhere in the store (silent-decline doctrine)"
   else

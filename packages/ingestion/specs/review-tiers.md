@@ -163,7 +163,21 @@ write path of its own.
    (a).2 for the tier and `person-set-kind.sh --source stated-by-user`
    for the kind — the same write path `onboarding-tiering-seed.md` used
    for its confirm/adjust — and a stated value always outranks a derived
-   one, now and on every future derived pass. No-guilt framing is
+   one, now and on every future derived pass.
+
+   **The correction carries the user's words (plan 34).** Every correction
+   write — the tier write via `stated-preference-filing.md` (a).2 and the
+   kind write via `person-set-kind.sh --source stated-by-user` — passes
+   `--feedback-text` set to the user's message verbatim (the whole reply
+   that made the correction, not a paraphrase) and `--feedback-source
+   session`. A correction that arrives with no accompanying words (a bare
+   digest-line edit with nothing said) passes no `--feedback-text`. This
+   is what lets the store stop asking the user to re-explain themselves —
+   the ledger (`<store>/signals/feedback.jsonl`,
+   `packages/core/contracts/feedback-event.md`) is the durable record of
+   what was said; `feedback-recent.sh` (a sibling unit) renders the last
+   10 lines into the judgment prompt so a future judgment call already
+   knows what the user said, without asking again. No-guilt framing is
    retained: a low-warrant, dormant, expired, or no-rhythm line reads as
    a neutral observation ("scheduling contact — event passed"), never
    "neglected." **Never enumerate excluded people** — people outside this
@@ -226,6 +240,27 @@ Inputs, in order:
       kinds.scheduling: 0.5 or evidence.meeting: 1.5 — and a prior never
       overrides a stated kind, a stated tier, or any rule in
       relationship-scoring.md's ## Rules."
+
+2b. The recent-corrections block: the verbatim stdout of
+    `feedback-recent.sh <store> --n 10` (a sibling unit) — either
+
+      ## Recent corrections
+      - 2026-08-30 person:bob-cpa — judge said kind=friend, user said
+        kind=transactional, words: "my accountant"
+
+    or, when there is no feedback yet:
+
+      ## Recent corrections
+      _none yet_
+
+    followed by this instruction line, verbatim: "These are the user's
+    own words about their relationships; a correction outranks any
+    prior. Do not restate a correction as a rule for other people unless
+    the words themselves generalize." This is the same global block (cap
+    10, not scoped to the person or cluster being judged) on every
+    judgment call in the run, including `--person <slug>` runs — the
+    judge needs cross-person patterns in the user's corrections, not
+    just the one person's own history.
 
 3. For the cluster currently being judged: exemplar(s) first, with their
    confirmed kind/tier, then members. Per person, in order:
