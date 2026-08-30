@@ -17,6 +17,9 @@ data/*
 # Node
 node_modules/
 *.log
+# ...but test fixtures may legitimately ship a .log (e.g. outbox/delivered.log)
+!packages/*/tests/fixtures/**/*.log
+!packages/*/evals/cases/**/*.log
 
 # OS
 .DS_Store
