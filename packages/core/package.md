@@ -27,7 +27,9 @@ nothing.
   scheduled-syncs runner's lane config, per plan 19),
   `contracts/onboarding-backfill.md` (`<data-dir>/config/onboarding-backfill.tsv`,
   the user-configurable onboarding-backfill window + self-identity config, per
-  plan 24)
+  plan 24),
+  `contracts/import-pipeline.md` (the five-stage fetch/normalize/triage/
+  judgment/file pipeline spanning connectors + ingestion, per plan 26)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
   `templates/profile.md`, `templates/sync-lanes.tsv`
 - Store scripts: `scripts/build-index.sh` (people/ → index.json),
@@ -70,3 +72,5 @@ The `wakeup.md` 1.2.0 event-proposal bump is by plan 21
 event-proposal creation flags are a later work unit of the same plan.
 `contracts/onboarding-backfill.md` by plan 24
 (docs/plans/2026-08-29-24-onboarding-backfill-priority-seeding.md).
+`contracts/import-pipeline.md` by plan 26
+(docs/plans/2026-08-29-26-standard-import-pipeline.md).
