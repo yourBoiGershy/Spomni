@@ -72,6 +72,15 @@
 #      `vector` array of numbers whose length equals `dims` and whose L2
 #      norm is within 1e-6 of 1.0 (or exactly 0), a non-empty
 #      `embedded_at`, and a 64-hex-char `content_hash`.
+#  11. Every frontmatter `key: value` line whose value starts with a quote
+#      (`"` or `'`) must be a well-formed YAML quoted scalar — after
+#      stripping YAML's own escape sequences (`\"`/`\\` for double-quoted,
+#      `''` for single-quoted) the remainder must start and end with that
+#      same quote and contain no unescaped occurrence of it in between.
+#      Values that don't start with a quote are untouched (a plain scalar
+#      may contain quotes mid-string). Catches the js-yaml-crashing case an
+#      unescaped inner quote in a double-quoted scalar slips past the
+#      key:-shape check above.
 #
 # Output: one finding per line, "path/to/file.md:LINE: message", to stdout.
 # Exit 0 and "store clean: N files checked" when clean; exit 1 otherwise.
@@ -276,12 +285,58 @@ check_frontmatter_lines_parseable() {
     # runs on every frontmatter line of every file.)
     local file="$1" s="$2" e="$3"
     ensure_file_lines "$file"
-    local i line key
+    local i line key value v2 interior
     for ((i = s; i <= e; i++)); do
         line="${FILE_LINES[$i]}"
         # ^[A-Za-z0-9_-]+: — a colon-terminated key made only of those chars
         key="${line%%:*}"
         if [ "$key" != "$line" ] && [ -n "$key" ] && [ -z "${key//[A-Za-z0-9_-]/}" ]; then
+            # Recognized key: value line — check a quote-initial value for
+            # balanced/escaped quoting (chunk: validator-quote-guard).
+            value="${line#*:}"
+            while case "$value" in " "*) true ;; *) false ;; esac; do
+                value="${value# }"
+            done
+            while case "$value" in *" ") true ;; *) false ;; esac; do
+                value="${value% }"
+            done
+            case "$value" in
+                \"*)
+                    v2="${value//\\\\/}"
+                    v2="${v2//\\\"/}"
+                    case "$v2" in
+                        \"*\")
+                            interior="${v2#\"}"
+                            interior="${interior%\"}"
+                            case "$interior" in
+                                *\"*)
+                                    report "$file" "$i" "unbalanced/unescaped double quote in frontmatter value"
+                                    ;;
+                            esac
+                            ;;
+                        *)
+                            report "$file" "$i" "unbalanced/unescaped double quote in frontmatter value"
+                            ;;
+                    esac
+                    ;;
+                \'*)
+                    v2="${value//\'\'/}"
+                    case "$v2" in
+                        \'*\')
+                            interior="${v2#\'}"
+                            interior="${interior%\'}"
+                            case "$interior" in
+                                *\'*)
+                                    report "$file" "$i" "unbalanced/unescaped single quote in frontmatter value"
+                                    ;;
+                            esac
+                            ;;
+                        *)
+                            report "$file" "$i" "unbalanced/unescaped single quote in frontmatter value"
+                            ;;
+                    esac
+                    ;;
+            esac
             continue
         fi
         case "$line" in

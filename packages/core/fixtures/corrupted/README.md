@@ -1,7 +1,7 @@
 # Fixture: corrupted store
 
 A mini synthetic store (`people/`, `interactions/`, `wakeups/`) that is
-mostly valid, seeded with exactly 8 corruptions — one per file (bar the
+mostly valid, seeded with exactly 9 corruptions — one per file (bar the
 duplicate-slug pair, which spans two) — for
 `packages/core/scripts/validate-store.sh` to catch and for
 `packages/core/tests/run-store-tests.sh` to assert against. All names are
@@ -19,7 +19,8 @@ invented (code/data separation — see `data/README.md`).
 | `people/wendell-arkwright.md` | person.md 1.4.0 — a `**[told-by-user]**` Facts bullet also carries `[stale]`, which is only legal on `inferred-public-web`/`inferred-from-thread` facts. |
 | `people/imogen-castellane.md` | person.md 1.4.0 — an Open threads bullet has a malformed `(as-of 2026-8-1)` suffix (not zero-padded `YYYY-MM-DD`). |
 | `people/percival-nakashima.md` | person.md 1.4.0 — a `## Resolved` bullet is missing its required trailing `(resolved YYYY-MM-DD)` suffix. |
+| `people/opal-fennimore.md` | Unbalanced/unescaped double quote in a frontmatter value — `kind_note: "Too little data to classify: one "chat about life" call in May"` has unescaped inner quotes, which crashes js-yaml downstream even though it looks like a `key: value` line. |
 
 Everything else in this fixture set (the remaining people, interactions, and
 wake-up files) is intentionally valid, so a validator run against this store
-should report exactly these 8 findings and nothing else.
+should report exactly these 9 findings and nothing else.

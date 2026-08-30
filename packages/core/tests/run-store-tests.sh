@@ -5,7 +5,7 @@
 #   1. passes (exit 0) against the clean fixture store
 #      (packages/core/fixtures/store/)
 #   2. fails (exit 1) against the seeded-corruption fixture store
-#      (packages/core/fixtures/corrupted/) and reports every one of the 5
+#      (packages/core/fixtures/corrupted/) and reports every one of the 9
 #      seeded corruptions (matched by the filename of the corrupted file).
 #
 # bash 3.2 portable (no associative arrays, no mapfile) — this must run
@@ -92,6 +92,7 @@ leo-fenwick-duplicate.md:duplicate person slug (leo-fenwick)
 wendell-arkwright.md:person.md 1.4.0 told-by-user fact marked [stale]
 imogen-castellane.md:person.md 1.4.0 malformed as-of suffix on an Open threads bullet
 percival-nakashima.md:person.md 1.4.0 Resolved bullet missing (resolved YYYY-MM-DD) suffix
+opal-fennimore.md:unbalanced/unescaped double quote in a kind_note frontmatter value
 "
 
 if [ -n "${corrupted_output:-}" ]; then
