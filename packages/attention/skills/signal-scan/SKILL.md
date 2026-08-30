@@ -24,7 +24,10 @@ throughout (`CLAUDE.md`).
   `bash packages/core/scripts/build-stats.sh <store-dir>` before doing
   anything else — every detector and the whole of `ranking.md` §1 reads
   `stats.json`'s `tier`/`touchpoints`/`last_interaction`/`median_gap_days`
-  rollup, never recomputing it inline.
+  rollup, never recomputing it inline. (Normally a no-op: writers keep
+  both `index.json` and `stats.json` fresh via `reindex.sh` at filing time,
+  derived-index 1.1.0 — this is a reader-side safety net, not the common
+  path.)
 - Read `<store-dir>/profile.md` `## Signal opt-outs` once, up front — every
   detector below consults this same read for its own opt-out gate (per
   `ranking.md` §9's general gate table and each detector spec's own

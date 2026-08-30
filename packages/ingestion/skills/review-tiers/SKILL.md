@@ -324,8 +324,11 @@ already `stated-by-user`,
 ```sh
 bash packages/core/scripts/person-set-kind.sh <store> <slug> \
   --kind <kind> --note <kind_note> --source derived \
-  [--expires <kind_expires>] --today <today>
+  [--expires <kind_expires>] --today <today> --no-index
 ```
+
+(`--no-index`: this is a per-person loop; Step 5 reindexes once for the
+whole batch instead — plan 38 D2.)
 
 A person whose current `kind_source` is already `stated-by-user` gets no
 `person-set-kind.sh` call here at all (their `kind` field is untouched
@@ -336,8 +339,10 @@ for every accepted record carrying a non-null `suggested_tier`:
 
 ```sh
 bash packages/core/scripts/person-set-tier.sh <store> <slug> \
-  --tier <suggested_tier> --source derived --today <today>
+  --tier <suggested_tier> --source derived --today <today> --no-index
 ```
+
+(`--no-index` for the same reason as the kind write above.)
 
 A `--source derived` write never overwrites `tier_source:
 stated-by-user` — `person-set-tier.sh` exits `2` in that case; treat
@@ -423,7 +428,7 @@ this order:
    ```sh
    bash packages/core/scripts/person-set-kind.sh <store> <slug> \
      --kind <corrected-kind> --note <note> \
-     --source stated-by-user --today <today>
+     --source stated-by-user --today <today> --no-index
    ```
 
    — overriding any `derived` kind Step 3 wrote for that person, since a
@@ -460,7 +465,7 @@ rather than a per-person skip action. It is still consulted (via
 ## Step 5 — close
 
 ```sh
-bash packages/core/scripts/build-index.sh <store>
+bash packages/core/scripts/reindex.sh <store>
 bash packages/core/scripts/validate-store.sh <store>
 ```
 

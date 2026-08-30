@@ -35,6 +35,11 @@ export interface StoreReader {
   /** `stats.json`'s `generated_at` — every tool result stamps this so
    * answers are honest about freshness (staleness-cache decision). */
   readonly generatedAt: string;
+  /** True while the served index/stats copy is known to be stale and a
+   * background regeneration is (or was) in flight — staleness.ts's
+   * `SwappableStoreReader` is the only implementation that ever sets this
+   * true; `MarkdownStoreReader` is always fresh-as-served, hence `false`. */
+  readonly stale: boolean;
   index(): IndexFile;
   stats(): StatsFile;
   getPerson(slug: string): PersonFile | null;
@@ -142,6 +147,8 @@ export class MarkdownStoreReader implements StoreReader {
   get generatedAt(): string {
     return this.statsFile.generated_at;
   }
+
+  readonly stale = false;
 
   index(): IndexFile {
     return this.indexFile;

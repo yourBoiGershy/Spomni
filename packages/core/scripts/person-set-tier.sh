@@ -5,13 +5,19 @@
 #
 # Usage:
 #   person-set-tier.sh <store-dir> <slug> --tier <t> --source <derived|stated-by-user> \
-#       [--today <YYYY-MM-DD>] \
+#       [--today <YYYY-MM-DD>] [--no-index] \
 #       [--feedback-text "<words>"] [--feedback-channel <c>] \
 #       [--feedback-source reply|session]
 #   person-set-tier.sh <store-dir> <slug> --clear --source stated-by-user \
-#       [--today <YYYY-MM-DD>] \
+#       [--today <YYYY-MM-DD>] [--no-index] \
 #       [--feedback-text "<words>"] [--feedback-channel <c>] \
 #       [--feedback-source reply|session]
+#
+# Reindex (plan 38 D2): on a successful write (set or --clear), this script
+# calls packages/core/scripts/reindex.sh <store-dir> --quiet so index.json
+# and stats.json are fresh at return. --no-index skips this — for batch
+# callers (e.g. review-tiers' per-person loop) that reindex once themselves
+# after the whole batch instead of once per person.
 #
 # Feedback ledger (plan 34):
 #   - --feedback-text / --feedback-channel / --feedback-source are only
@@ -58,7 +64,7 @@ die() {
 }
 
 if [ "$#" -lt 2 ]; then
-    die "usage: person-set-tier.sh <store-dir> <slug> --tier <t> --source <derived|stated-by-user> [--today <YYYY-MM-DD>] | --clear --source stated-by-user" 1
+    die "usage: person-set-tier.sh <store-dir> <slug> --tier <t> --source <derived|stated-by-user> [--today <YYYY-MM-DD>] [--no-index] | --clear --source stated-by-user" 1
 fi
 
 store_dir="$1"; shift
@@ -68,6 +74,7 @@ new_tier=""
 new_source=""
 today=""
 do_clear=0
+no_index=0
 feedback_text=""
 feedback_channel=""
 feedback_source="session"
@@ -78,6 +85,7 @@ while [ "$#" -gt 0 ]; do
         --source) new_source="${2:-}"; shift 2 ;;
         --today) today="${2:-}"; shift 2 ;;
         --clear) do_clear=1; shift ;;
+        --no-index) no_index=1; shift ;;
         --feedback-text) feedback_text="${2:-}"; shift 2 ;;
         --feedback-channel) feedback_channel="${2:-}"; shift 2 ;;
         --feedback-source) feedback_source="${2:-}"; shift 2 ;;
@@ -196,6 +204,11 @@ fi
 
 mv "$tmp_file" "$person_file"
 trap - EXIT
+
+# --- reindex (plan 38 D2): keep index.json/stats.json fresh at return ---
+if [ "$no_index" -ne 1 ]; then
+    bash "$(dirname "$0")/reindex.sh" "$store_dir" --quiet
+fi
 
 # --- feedback ledger (plan 34): only a stated-by-user write earns an entry ---
 if [ "$new_source" != "stated-by-user" ]; then

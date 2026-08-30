@@ -49,7 +49,7 @@ async function main(): Promise<void> {
 
   const { reader, generatedAt } = ensureFresh(storeDir);
   process.stderr.write(
-    `spomni-query: store ready (generated_at=${generatedAt})\n`,
+    `spomni-query: store ready (generated_at=${generatedAt}, stale=${String(reader.stale)})\n`,
   );
 
   const server = new McpServer({

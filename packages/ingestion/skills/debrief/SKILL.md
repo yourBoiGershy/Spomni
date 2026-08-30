@@ -421,8 +421,8 @@ timestamps, no model call in the loop (`specs/thread-summary.md`,
 Once every person file and the interaction file for this event are
 written:
 
-1. Rebuild the index: `bash packages/core/scripts/build-index.sh
-   <store-dir>`.
+1. Rebuild the index and stats: `bash packages/core/scripts/reindex.sh
+   <store-dir>` (index.json + stats.json together, plan 38 D2).
 2. Validate: `bash packages/core/scripts/validate-store.sh <store-dir>`.
    A validation failure on a case this skill just filed is a bug in this
    skill's writes, not the store — do not silently continue; surface it.
@@ -445,7 +445,7 @@ whatever was actually filed so far. Step 4 runs once per batch (or once
 per event in single-event mode) — never per episode within a multi-episode
 event, and never per shard worker.
 
-**Shard mode deviation.** Steps 1-2 (`build-index.sh` + `validate-store.sh`)
+**Shard mode deviation.** Steps 1-2 (`reindex.sh` + `validate-store.sh`)
 are skipped per event in shard mode — the wave orchestrator runs both
 exactly once, after all shard workers finish, per `packages/ingestion/
 specs/parallel-filing.md` D2/D3. Step 3 appends the capture event's `id` to

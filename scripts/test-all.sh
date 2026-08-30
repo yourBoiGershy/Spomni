@@ -43,6 +43,8 @@ packages/attention/tests/run-queue-tests.sh
 packages/attention/tests/run-staleness-tests.sh
 packages/attention/tests/run-learn-tests.sh
 packages/query/tests/run-who-next-direct-tests.sh
+packages/query/tests/run-bench-smoke-tests.sh
+packages/query/tests/run-bench-guard.sh
 .claude/scripts/tests/run-oss-guard-tests.sh
 .claude/scripts/tests/run-gitignore-tests.sh
 .claude/scripts/oss-guard.sh

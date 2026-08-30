@@ -1,17 +1,28 @@
 #!/usr/bin/env node
 // perf-harness.mjs — performance envelope check for the query MCP server,
 // per docs/plans/2026-08-29-08-chat-mcp-query-layer.md "Performance envelope"
-// (BINDING targets):
+// and docs/plans/2026-08-30-38-retrieval-speed.md unit H (BINDING targets):
 //   - build-stats.sh full regeneration < 5s
-//   - warm tool latency p95 < 200ms (get_person p95 < 100ms)
+//   - warm tool latency p95 < 200ms (get_person p95 < 100ms, who_next_pool
+//     p95 < 200ms)
 //   - server startup-to-initialized < 1s
+//   - build-index.sh full regeneration <= 2s
+//   - validate-store.sh full <= 8s
+//   - scripts/who-next-direct.sh <store> --mode all --limit 20, with
+//     index+stats present, <= 2s
+//   - server startup-to-initialized with a STALE store copy (one person
+//     file touched after index/stats were built), pointed at a fresh empty
+//     cache dir, <= 1s (the server serves the stale copy immediately and
+//     regenerates in the background — plan 38 unit F)
 //
 // Generates a scratch 1000-person / ~10k-interaction store via
-// packages/core/scripts/gen-scale-store.sh, times build-stats.sh (3 runs),
+// packages/core/scripts/gen-scale-store.sh, times build-stats.sh, build-
+// index.sh, validate-store.sh and who-next-direct.sh (3 runs each, median),
 // times server startup (spawn -> MCP initialize response) via the MCP SDK's
-// stdio client transport, and times >=50 warm calls per tool. Prints a
-// numbers table, PASS/FAIL per target, and exits 0 only if every target is
-// met. Cleans up its scratch store on exit (success or failure).
+// stdio client transport for both a fresh and an artificially-staled store
+// copy, and times >=50 warm calls per tool. Prints a numbers table,
+// PASS/FAIL per target, and exits 0 only if every target is met. Cleans up
+// its scratch store on exit (success or failure).
 //
 // Usage: node packages/query/tests/perf-harness.mjs
 // (invoked by run-perf.sh, which also makes it executable from a shell)
@@ -27,8 +38,10 @@ import { performance } from "node:perf_hooks";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const CORE_SCRIPTS_DIR = path.join(REPO_ROOT, "packages/core/scripts");
+const QUERY_SCRIPTS_DIR = path.join(REPO_ROOT, "packages/query/scripts");
 const SERVER_DIR = path.join(REPO_ROOT, "packages/query/server");
 const SERVER_ENTRY = path.join(SERVER_DIR, "src/index.ts");
+const WHO_NEXT_DIRECT_SCRIPT = path.join(QUERY_SCRIPTS_DIR, "who-next-direct.sh");
 
 // The MCP SDK client is only installed under packages/query/server/
 // node_modules/ (this tests/ dir has no package.json of its own); resolve it
@@ -47,6 +60,10 @@ const TARGETS = {
   serverStartupMs: 1000,
   warmP95Ms: 200,
   getPersonP95Ms: 100,
+  buildIndexMs: 2000,
+  validateStoreMs: 8000,
+  whoNextDirectMs: 2000,
+  staleStartupMs: 1000,
 };
 
 function log(msg) {
@@ -110,12 +127,41 @@ function runBuildStatsOnce(storeDir) {
 }
 
 function runBuildIndexOnce(storeDir) {
+  const start = nowMs();
   const result = spawnSync("bash", [path.join(CORE_SCRIPTS_DIR, "build-index.sh"), storeDir], {
     encoding: "utf8",
   });
+  const elapsed = nowMs() - start;
   if (result.status !== 0) {
     throw new Error(`build-index.sh failed (exit ${String(result.status)}): ${result.stderr}`);
   }
+  return elapsed;
+}
+
+function runValidateStoreOnce(storeDir) {
+  const start = nowMs();
+  const result = spawnSync("bash", [path.join(CORE_SCRIPTS_DIR, "validate-store.sh"), storeDir], {
+    encoding: "utf8",
+  });
+  const elapsed = nowMs() - start;
+  if (result.status !== 0) {
+    throw new Error(`validate-store.sh failed (exit ${String(result.status)}): ${result.stderr}`);
+  }
+  return elapsed;
+}
+
+function runWhoNextDirectOnce(storeDir) {
+  const start = nowMs();
+  const result = spawnSync(
+    "bash",
+    [WHO_NEXT_DIRECT_SCRIPT, storeDir, "--mode", "all", "--limit", "20"],
+    { encoding: "utf8" },
+  );
+  const elapsed = nowMs() - start;
+  if (result.status !== 0) {
+    throw new Error(`who-next-direct.sh failed (exit ${String(result.status)}): ${result.stderr}`);
+  }
+  return elapsed;
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +181,42 @@ async function measureStartupAndConnect(storeDir) {
   const elapsed = nowMs() - start;
 
   return { client, transport, elapsed };
+}
+
+/**
+ * Measures server startup-to-initialized against a STALE store copy: one
+ * person file's mtime is pushed past index.json/stats.json's generated_at,
+ * and the server is pointed at a fresh (empty) SPOMNI_CACHE_DIR so no cached
+ * copy can mask the staleness. Per plan 38 unit F, ensureFresh() serves the
+ * stale store copy immediately (stale: true) and regenerates in the
+ * background, so this should measure close to the fresh-store startup time,
+ * not a full build-index.sh + build-stats.sh regeneration.
+ */
+async function measureStaleStartupAndConnect(storeDir) {
+  const peopleDir = path.join(storeDir, "people");
+  const [firstPersonFile] = fs.readdirSync(peopleDir).filter((f) => f.endsWith(".md"));
+  const staleFuture = new Date(Date.now() + 5000);
+  fs.utimesSync(path.join(peopleDir, firstPersonFile), staleFuture, staleFuture);
+
+  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "ra-perf-cache-"));
+  try {
+    const transport = new StdioClientTransport({
+      command: "node",
+      args: ["--experimental-strip-types", SERVER_ENTRY, "--store", storeDir],
+      env: { SPOMNI_CACHE_DIR: cacheDir },
+      stderr: "pipe",
+    });
+    const client = new Client({ name: "perf-harness-stale", version: "0.1.0" });
+
+    const start = nowMs();
+    await client.connect(transport);
+    const elapsed = nowMs() - start;
+
+    return { client, transport, elapsed, cacheDir };
+  } catch (err) {
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+    throw err;
+  }
 }
 
 async function timeCall(client, name, args) {
@@ -179,6 +261,9 @@ async function main() {
   let storeDir;
   let client;
   let transport;
+  let staleClient;
+  let staleTransport;
+  let staleCacheDir;
   const results = {};
   let allPass = true;
 
@@ -187,11 +272,21 @@ async function main() {
     fs.rmdirSync(storeDir); // gen-scale-store.sh refuses to write into an existing dir
     genStore(storeDir);
 
-    // (a) build-stats.sh timing — 3 runs, report each + median. build-index.sh
-    // runs once first (untimed, out of scope of the envelope target) so the
-    // store has a valid index.json alongside stats.json for the later server
-    // startup measurement.
-    runBuildIndexOnce(storeDir);
+    // (a) build-index.sh timing — 3 runs, report each + median. The last run
+    // leaves a valid index.json in the store for the later server startup
+    // measurement and for who-next-direct.sh below.
+    const buildIndexTimings = [];
+    for (let i = 0; i < BUILD_STATS_RUNS; i++) {
+      const elapsed = runBuildIndexOnce(storeDir);
+      buildIndexTimings.push(elapsed);
+      log(`build-index.sh run ${String(i + 1)}: ${fmt(elapsed)}`);
+    }
+    results.buildIndex = {
+      runs: buildIndexTimings,
+      median: median(buildIndexTimings),
+    };
+
+    // (b) build-stats.sh timing — 3 runs, report each + median.
     const buildStatsTimings = [];
     for (let i = 0; i < BUILD_STATS_RUNS; i++) {
       const elapsed = runBuildStatsOnce(storeDir);
@@ -203,7 +298,32 @@ async function main() {
       median: median(buildStatsTimings),
     };
 
-    // (b) server startup-to-initialized. index.json/stats.json are already
+    // (c) validate-store.sh timing — 3 runs, report each + median.
+    const validateStoreTimings = [];
+    for (let i = 0; i < BUILD_STATS_RUNS; i++) {
+      const elapsed = runValidateStoreOnce(storeDir);
+      validateStoreTimings.push(elapsed);
+      log(`validate-store.sh run ${String(i + 1)}: ${fmt(elapsed)}`);
+    }
+    results.validateStore = {
+      runs: validateStoreTimings,
+      median: median(validateStoreTimings),
+    };
+
+    // (d) who-next-direct.sh timing — 3 runs, report each + median. index.json
+    // and stats.json are already fresh in storeDir from (a)/(b) above.
+    const whoNextDirectTimings = [];
+    for (let i = 0; i < BUILD_STATS_RUNS; i++) {
+      const elapsed = runWhoNextDirectOnce(storeDir);
+      whoNextDirectTimings.push(elapsed);
+      log(`who-next-direct.sh run ${String(i + 1)}: ${fmt(elapsed)}`);
+    }
+    results.whoNextDirect = {
+      runs: whoNextDirectTimings,
+      median: median(whoNextDirectTimings),
+    };
+
+    // (e) server startup-to-initialized. index.json/stats.json are already
     // fresh in storeDir (last build-stats.sh run above), so ensureFresh()
     // serves them directly rather than regenerating on this timed run.
     const connected = await measureStartupAndConnect(storeDir);
@@ -211,6 +331,19 @@ async function main() {
     transport = connected.transport;
     results.startup = { ms: connected.elapsed };
     log(`server startup-to-initialized: ${fmt(connected.elapsed)}`);
+
+    // (f) server startup-to-initialized against a STALE store copy (one
+    // person file touched past index/stats' generated_at) with a fresh,
+    // empty SPOMNI_CACHE_DIR, so ensureFresh() must serve the stale copy
+    // immediately and regenerate in the background rather than block.
+    const staleConnected = await measureStaleStartupAndConnect(storeDir);
+    staleClient = staleConnected.client;
+    staleTransport = staleConnected.transport;
+    staleCacheDir = staleConnected.cacheDir;
+    results.staleStartup = { ms: staleConnected.elapsed };
+    log(`server startup-to-initialized (stale store): ${fmt(staleConnected.elapsed)}`);
+    await staleTransport.close();
+    fs.rmSync(staleCacheDir, { recursive: true, force: true });
 
     // (c) warm latencies, >=50 calls per tool.
     const slugs = loadSlugs(storeDir);
@@ -238,6 +371,13 @@ async function main() {
           limit: 1 + (i % 10),
         })),
       },
+      {
+        name: "who_next_pool",
+        argsList: Array.from({ length: WARM_CALLS_PER_TOOL }, (_, i) => ({
+          mode: ["friends", "coffee", "all"][i % 3],
+          limit: 20,
+        })),
+      },
     ];
 
     for (const spec of warmSpecs) {
@@ -259,6 +399,15 @@ async function main() {
     // ------------------------------------------------------------------
 
     const rows = [];
+    const buildIndexPass = results.buildIndex.median < TARGETS.buildIndexMs;
+    rows.push([
+      "build-index.sh regen (median of 3)",
+      fmt(results.buildIndex.median),
+      `< ${String(TARGETS.buildIndexMs)}ms`,
+      buildIndexPass ? "PASS" : "FAIL",
+    ]);
+    allPass &&= buildIndexPass;
+
     const buildStatsPass = results.buildStats.median < TARGETS.buildStatsMs;
     rows.push([
       "build-stats.sh regen (median of 3)",
@@ -268,6 +417,24 @@ async function main() {
     ]);
     allPass &&= buildStatsPass;
 
+    const validateStorePass = results.validateStore.median < TARGETS.validateStoreMs;
+    rows.push([
+      "validate-store.sh full (median of 3)",
+      fmt(results.validateStore.median),
+      `< ${String(TARGETS.validateStoreMs)}ms`,
+      validateStorePass ? "PASS" : "FAIL",
+    ]);
+    allPass &&= validateStorePass;
+
+    const whoNextDirectPass = results.whoNextDirect.median < TARGETS.whoNextDirectMs;
+    rows.push([
+      "who-next-direct.sh --mode all --limit 20 (median of 3)",
+      fmt(results.whoNextDirect.median),
+      `< ${String(TARGETS.whoNextDirectMs)}ms`,
+      whoNextDirectPass ? "PASS" : "FAIL",
+    ]);
+    allPass &&= whoNextDirectPass;
+
     const startupPass = results.startup.ms < TARGETS.serverStartupMs;
     rows.push([
       "server startup-to-initialized",
@@ -276,6 +443,15 @@ async function main() {
       startupPass ? "PASS" : "FAIL",
     ]);
     allPass &&= startupPass;
+
+    const staleStartupPass = results.staleStartup.ms < TARGETS.staleStartupMs;
+    rows.push([
+      "server startup-to-initialized (stale store)",
+      fmt(results.staleStartup.ms),
+      `< ${String(TARGETS.staleStartupMs)}ms`,
+      staleStartupPass ? "PASS" : "FAIL",
+    ]);
+    allPass &&= staleStartupPass;
 
     for (const spec of warmSpecs) {
       const r = results[spec.name];
@@ -316,6 +492,14 @@ async function main() {
       if (transport) await transport.close();
     } catch {
       // best-effort
+    }
+    try {
+      if (staleTransport) await staleTransport.close();
+    } catch {
+      // best-effort
+    }
+    if (staleCacheDir && fs.existsSync(staleCacheDir)) {
+      fs.rmSync(staleCacheDir, { recursive: true, force: true });
     }
     if (storeDir && fs.existsSync(storeDir)) {
       fs.rmSync(storeDir, { recursive: true, force: true });

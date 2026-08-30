@@ -34,10 +34,15 @@ wrapping them is mechanical.
   the given store. Superseded by plan 38's `bench-retrieval.sh` once that
   folds these stages in as rows.
 - The nudge-card render consumed by output adapters
-- `server/` (`packages/query/server/`): an MCP tool surface, seven read-only tools over
-  stdio (streamable HTTP behind `--http`, stubbed): `search_people`, `get_person`,
-  `list_interactions`, `get_interaction`, `get_contact_stats`, `suggest_reachouts`,
-  `upcoming_meetings`. Entry point `server/src/index.ts` (run via `node
+- `server/` (`packages/query/server/`): an MCP tool surface, eight read-only tools over
+  stdio (streamable HTTP behind `--http`, stubbed): `search_people`, `get_person`
+  (optional `include_interactions: N` inlines the person's N most recent filed
+  interactions — id, date, summary excerpt — newest first), `list_interactions`,
+  `get_interaction`, `get_contact_stats`, `suggest_reachouts`, `upcoming_meetings`,
+  `who_next_pool` (the `/who-next` skill's whole candidate pool in one call — same
+  pre-filtered/pre-ranked objects as `scripts/who-next-direct.sh`, facts/open-threads
+  text inline, so the skill costs ≤2 tool round-trips before judging instead of up to
+  22 — plan 38 unit G). Entry point `server/src/index.ts` (run via `node
   --experimental-strip-types`, `--store` flag), transport seam, store-reader, and all
   seven tool handlers are in place and tested (`tests/test-tools.mjs` and
   `tests/test-upcoming-meetings.mjs`). Registered project-wide via the repo root
@@ -48,6 +53,16 @@ wrapping them is mechanical.
   fallback) and serves from there; the store itself
   is never written to (single-writer holds). Smoke test: `tests/smoke-live.sh`.
 
+- `tests/bench-retrieval.sh <store-dir> [--json] [--scale N] [--runs K]` —
+  read-only retrieval-speed benchmark (docs/plans/2026-08-30-38-retrieval-speed.md
+  §1/§2 rows: `build-index.sh`/`build-stats.sh`/`validate-store.sh` full,
+  `who-next-direct.sh` fresh/missing, MCP cold start fresh/stale, warm
+  per-tool latency) on a scratch copy of the given store, never writing to
+  it; `tests/bench-mcp-client.mjs` is its JSON-RPC-over-stdio timing helper.
+  Smoke test: `tests/run-bench-smoke-tests.sh`. `--guard` compares every row
+  against the plan's fixture-store thresholds plus a jq-spawn-count check on
+  `build-index.sh`/`who-next-direct.sh`, exiting 1 on any GUARD FAIL —
+  wired into `scripts/test-all.sh` via `tests/run-bench-guard.sh`.
 - Eval suite: `evals/` — `eval-case@1` cases (`packages/core/contracts/
   eval-case.md`) under `evals/cases/`, manifest at `evals/suite.txt`. T2
   (`tier: agent`) cases against `packages/core/scripts/eval-run.sh`:

@@ -90,7 +90,7 @@ path and a shard index `k`, process ONLY the ids listed in that shard file,
 oldest-first. The per-event judgment/filing flow is otherwise unchanged from
 batch mode, with three deviations:
 
-- **§5c deferred.** Steps 1–2 of §5c (`build-index.sh` +
+- **§5c deferred.** Steps 1–2 of §5c (`reindex.sh` +
   `validate-store.sh`) are skipped after each event in shard mode; the wave
   orchestrator runs both exactly once, after all shard workers finish.
   Rationale: within one shard, any people who co-occur are handled inside the
@@ -153,7 +153,7 @@ Full protocol, end to end:
 5. Merge per-shard ledgers into `debrief-filed.log` (D2) — every shard's
    `debrief-filed.shard-<k>.log` is merged, whether or not that shard's
    worker otherwise succeeded (see failure handling below).
-6. Run `build-index.sh` once, over the merged state.
+6. Run `reindex.sh` once, over the merged state (index.json + stats.json).
 7. Run `validate-store.sh` once.
 8. Run a serial leftover pass — a normal (non-sharded) debrief session over
    `leftover.ids` plus any ids individual shard workers reported as

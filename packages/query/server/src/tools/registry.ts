@@ -4,9 +4,11 @@
 // `suggest_reachouts` here (see
 // docs/plans/2026-08-29-08-chat-mcp-query-layer.md); `upcoming_meetings`
 // joins them per docs/plans/2026-08-29-21-calendar-intelligence.md's "Query
-// surface" section. The entry point only ever imports `registerTools` — it
-// never knows about individual tool modules, and tool modules never import
-// the transport.
+// surface" section, and `who_next_pool` per
+// docs/plans/2026-08-30-38-retrieval-speed.md unit G (the /who-next
+// candidate pool in one call). The entry point only ever imports
+// `registerTools` — it never knows about individual tool modules, and tool
+// modules never import the transport.
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { StoreReader } from "../store/reader.ts";
@@ -17,6 +19,7 @@ import { registerListInteractions } from "./list-interactions.ts";
 import { registerGetInteraction } from "./get-interaction.ts";
 import { registerGetContactStats } from "./get-contact-stats.ts";
 import { registerUpcomingMeetings } from "./upcoming-meetings.ts";
+import { registerWhoNextPool } from "./who-next-pool.ts";
 
 /**
  * A registrar calls `server.registerTool(...)` for exactly one tool. Each
@@ -35,6 +38,7 @@ export const registrars: ToolRegistrar[] = [
   registerGetContactStats,
   registerSuggestReachouts,
   registerUpcomingMeetings,
+  registerWhoNextPool,
 ];
 
 /** Runs every registered tool registrar against `server`. */

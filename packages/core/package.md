@@ -74,7 +74,11 @@ nothing.
 - Store scripts: `scripts/build-index.sh` (people/ → index.json; projects the
   1.1.0 `kind`/`kind_source`/`kind_expires` columns when present, per plan 30),
   `scripts/build-stats.sh` (people/ + interactions/ → stats.json, per
-  `contracts/derived-index.md`), `scripts/validate-store.sh` (also validates
+  `contracts/derived-index.md`), `scripts/reindex.sh` (the one call every
+  store writer makes after touching `people/` or `interactions/` — runs
+  `build-index.sh` then `build-stats.sh`, idempotent, exits non-zero on
+  either's failure, per `contracts/derived-index.md` 1.1.0, plan 38),
+  `scripts/validate-store.sh` (also validates
   person.md 1.1.0 kind fields, 1.2.0 `tier_source`, 1.3.0
   `inferred-from-thread` Facts provenance, and 1.4.0 Open threads as-of/
   `## Resolved`/Facts `[stale]`, the optional
