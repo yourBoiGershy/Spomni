@@ -177,5 +177,6 @@ checker can hand-verify:
 - Recurring proposed events.
 - The connector create itself, the confirm/decline lifecycle mechanics, and
   the ranking/budget/sweep machinery — those belong to the event-confirm
-  skill, `proposal-confirm.sh`, and plans 05/06/12 respectively; this spec
+  skill, `wakeup-queue.sh` (confirm/decline ops), and plans 05/06/12
+  respectively; this spec
   covers detection, confidence, gating, and slot selection only.

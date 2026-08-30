@@ -18,7 +18,7 @@ scheduling-intent/`) and never touches any wake-up that isn't a fired
 **Invariant, stated once and binding everywhere below:** `created-event-id`
 must never be written to `wakeups/<id>.md` except in step 3's post-create
 record, and only immediately after `confirmed-on` is written in that same
-`proposal-confirm.sh confirm` call. No other step, path, or branch in this
+`wakeup-queue.sh confirm` call. No other step, path, or branch in this
 skill may set it, guess it, or leave it non-null on any other outcome.
 
 ## 1. Render the card
@@ -108,7 +108,7 @@ resolved.
   loud, visible line (this is not a quiet skip — the human confirmed and is
   owed a clear explanation of why nothing happened) and stop. The wake-up
   entry stays untouched — `status: fired`, `confirmed-on: null`,
-  `created-event-id: null`. Do not run `proposal-confirm.sh` in any form
+  `created-event-id: null`. Do not run `wakeup-queue.sh confirm` in any form
   when this branch is hit; there is nothing to record.
 - **Create call fails** (any other error — auth, rate limit, malformed
   request, etc.): log the failure loudly, record nothing. The proposal
@@ -124,7 +124,7 @@ resolved.
 Run, immediately after a successful create:
 
 ```sh
-packages/attention/scripts/proposal-confirm.sh <store-dir> confirm <wakeup-id> --event-id <id>
+packages/attention/scripts/wakeup-queue.sh <store-dir> confirm <wakeup-id> --event-id <id>
 ```
 
 `<id>` is the event id the connector returned in 3b — never invented, never
@@ -134,7 +134,7 @@ and only call site in this skill (or anywhere else) that writes
 this line only runs after step 3b's create actually succeeded and step 2's
 explicit affirmative actually happened.
 
-If `proposal-confirm.sh` itself fails after a successful create (e.g. the
+If `wakeup-queue.sh confirm` itself fails after a successful create (e.g. the
 store write errors), log this loudly and distinctly from a create failure —
 an event now exists in the user's calendar that the store doesn't yet
 reflect, which is a state a human should be told about explicitly rather
@@ -145,7 +145,7 @@ than have silently retried or papered over.
 Only reached after an unambiguous decline from step 2.
 
 ```sh
-packages/attention/scripts/proposal-confirm.sh <store-dir> decline <wakeup-id> --reason <enum>
+packages/attention/scripts/wakeup-queue.sh <store-dir> decline <wakeup-id> --reason <enum>
 ```
 
 Pick the `dismiss-reason` enum value from `wakeup.md` (`not-now`,

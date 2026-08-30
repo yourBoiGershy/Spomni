@@ -25,7 +25,7 @@ move; the shareable build-plan artifact is the pretty view, this file is the tru
 | 03 | Filing engine | ingestion | 01 | Done (2026-08-29, stream-filing; 16 goldens green, 16 T3 eval cases wired) |
 | 04 | Calendar connector & matching | connectors/calendar-in + ingestion | 01 | Ready — connector half folded into 17; the ingestion-side matching (co-attendance) is what remains here |
 | 05 | Signal engine | attention (detection/ranking) | 01, capture lanes (13, 17), 04 (co-attendance) | Done (2026-08-29, chunk-05-signal-engine; ranking spec w/ plan 12 capacity inversion + budget/hold/floor, 5 new detector specs, signal-scan skill (8 detectors), signals fixture store verified by hand — 3 promoted/1 held/1 suppressed; wakeup-add.sh `--signal-type`; tier-drift evals flip on with 06) |
-| 06 | Wake-up scheduler | attention (queue/sweeps) | 01; orchestrates 03/05 outputs | Ready — blocked on 12's amendment unit; briefs must honor plan 15 touchpoints |
+| 06 | Wake-up scheduler | attention (queue/sweeps) | 01; orchestrates 03/05 outputs | Done (2026-08-30, chunk-06-wakeup-scheduler; wakeup-queue.sh 7 ops incl. absorbed confirm/decline + acted-on, budget/adjacency/idempotent fired-batch, proposal-confirm.sh retired; sweep skill = daily-attention entry (skip-when-unbuilt: calendar-reconcile 04, output adapter 07); undebriefed-mention spec; queue suite 48 green; Wave C unattended run PASS. Residual: mention path exercised only via its ≥3-give gate — first real mention lands with 07's rendered batches) |
 | 07 | Output skills & adapters (briefs, nudge cards, file-out/gmail-out; query skill superseded by 08; + nudge-delivery channel — how a nudge physically reaches the user, see the 07 amendment block) | query + connectors/file-out, gmail-out | 01; 06 for nudge firing; 28 for scheduled delivery | Ready — gmail-out must target the first-party Gmail connector (composio-retired); nudge-delivery unit added 2026-08-29 |
 | 08 | Chat MCP & query data layer | query (MCP server) + core (stats contract, fixtures) | 01 | Done (2026-08-29, stream-mcp; 6 read-only tools implemented) — live wiring is chunk 18 |
 | 09 | Infrastructure: cloud runtime, data-repo discipline, egress | core (sync script) + harness guards + docs | 01; integrates 06, 19 | In progress (2026-08-29, stream-infrastructure; data repo live) |
@@ -377,7 +377,9 @@ then its independent consumers — speed, timing, fleet, judgment):
 2. **27** — import speed & scaling, immediately on 26's heels (mechanical
    once the stages are deterministic).
 3. **12 (amendment unit) → 05 + 06** — the attention layer on its own
-   stream, in parallel with 26/27, honoring plan 15 touchpoints.
+   stream, in parallel with 26/27, honoring plan 15 touchpoints. **Done
+   2026-08-30** (12 PR #15, 05 PR #18, 06 chunk-06-wakeup-scheduler) — 07
+   is now unblocked on 06.
 4. **28 → 29** — sync timing & autonomous runtime, then the connector
    fleet (28 needs 26's thin fetch; 29 needs 28's runtime).
 5. **30** — scoring accuracy/judgment/weights (needs 26; independent of
