@@ -19,10 +19,11 @@
 //
 // Never writes into the store or the repo — the only filesystem writes are
 // whatever the server itself makes under
-// ${RA_CACHE_DIR:-~/.cache/relationship-agent}/derived/ (staleness-cache
-// decision, packages/query/server/src/store/staleness.ts). RA_CACHE_DIR is
-// left exactly as the caller's environment sets it (no override) so this
-// smoke exercises the same cache path a real session would.
+// ${SPOMNI_CACHE_DIR:-~/.cache/spomni}/derived/ (staleness-cache
+// decision, packages/query/server/src/store/staleness.ts). SPOMNI_CACHE_DIR
+// (or its deprecated RA_CACHE_DIR fallback) is left exactly as the caller's
+// environment sets it (no override) so this smoke exercises the same cache
+// path a real session would.
 //
 // Exit nonzero if: any tool call errors, the store yields zero people
 // (empty store), or contact stats come back degraded (staleness.ts's

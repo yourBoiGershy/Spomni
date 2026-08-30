@@ -26,7 +26,8 @@ wrapping them is mechanical.
   `.mcp.json`, which defaults `--store` to `data/store` — the convention every checkout
   points at its own private store through (see `docs/chat-setup.md`). If the store's
   `index.json`/`stats.json` are missing or stale, the server regenerates them into
-  `${RA_CACHE_DIR:-~/.cache/relationship-agent}` and serves from there; the store itself
+  `${SPOMNI_CACHE_DIR:-~/.cache/spomni}` (RA_CACHE_DIR honored as a deprecated
+  fallback) and serves from there; the store itself
   is never written to (single-writer holds). Smoke test: `tests/smoke-live.sh`.
 
 - Eval suite: `evals/` — `eval-case@1` cases (`packages/core/contracts/

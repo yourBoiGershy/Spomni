@@ -1,8 +1,24 @@
+# Harness run state
 .claude/logs/
 .claude/reports/
 .claude/settings.local.json
+.claude/worktrees/
+
+# YOUR data never lives in this repo (see data/README.md)
 data/*
 !data/README.md
+
+# Secrets and local env — never tracked
+.env
+.env.*
+*.pem
+*.key
+
+# Node
+node_modules/
+*.log
+
+# OS
 .DS_Store
 
 # eval-suite.sh run state (per-manifest last-outcomes sidecar; see

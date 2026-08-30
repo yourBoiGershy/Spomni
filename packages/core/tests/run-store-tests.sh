@@ -190,4 +190,36 @@ else
   STORE_TESTS_STATUS=1
 fi
 
+# --- delegate to the demo-store.sh golden test, tallying its exit status
+#     alongside this script's own ---
+DEMO_STORE_TEST="$SCRIPT_DIR/test-demo-store.sh"
+echo ""
+echo "--- test-demo-store.sh ---"
+if [ -x "$DEMO_STORE_TEST" ]; then
+  "$DEMO_STORE_TEST"
+  demo_store_status=$?
+  if [ "$demo_store_status" -ne 0 ]; then
+    STORE_TESTS_STATUS=1
+  fi
+else
+  echo "FAIL: $DEMO_STORE_TEST not found or not executable"
+  STORE_TESTS_STATUS=1
+fi
+
+# --- delegate to the init-store.sh / check-store-location.sh golden test,
+#     tallying its exit status alongside this script's own ---
+INIT_STORE_TEST="$SCRIPT_DIR/test-init-store.sh"
+echo ""
+echo "--- test-init-store.sh ---"
+if [ -x "$INIT_STORE_TEST" ]; then
+  "$INIT_STORE_TEST"
+  init_store_status=$?
+  if [ "$init_store_status" -ne 0 ]; then
+    STORE_TESTS_STATUS=1
+  fi
+else
+  echo "FAIL: $INIT_STORE_TEST not found or not executable"
+  STORE_TESTS_STATUS=1
+fi
+
 exit "$STORE_TESTS_STATUS"

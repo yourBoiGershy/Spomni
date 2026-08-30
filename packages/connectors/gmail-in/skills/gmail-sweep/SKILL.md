@@ -81,6 +81,9 @@ these even to test), confirmed present in a live session:
 such tool found in step 0's enumeration explicitly in this run's summary as
 "present but never called."
 
+Draft, never send: this skill is read-only against Gmail; the tools above
+are listed only so they are never called.
+
 ## Step 1 — determine the query window and page budget
 
 Read `data/connectors/gmail/checkpoint`.
