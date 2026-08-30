@@ -1,0 +1,1 @@
+{"type":"result","subtype":"success","result":"{\"schema_version\": \"1.0.0\", \"capture_id\": \"thread-fixture-pat-001\", \"chat_id\": \"chat-pat-example\", \"chat_type\": \"single\", \"skip\": {\"reason\": \"bot\"}, \"people\": [], \"relationship_kind_guess\": \"unknown\", \"gist\": \"\", \"open_threads\": [], \"commitments\": [], \"facts\": []}"}

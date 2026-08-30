@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0.0",
+  "capture_id": "thread-fixture-stranger-001",
+  "chat_id": "chat-stranger",
+  "chat_type": "single",
+  "skip": null,
+  "people": [
+    {"display_name": "Alex Stranger", "sender_ids": ["@example:stranger"], "is_self": false, "role_guess": "unsolicited"}
+  ],
+  "relationship_kind_guess": "unsolicited",
+  "gist": "A cold outreach message from a stranger pitching a networking app.",
+  "open_threads": [],
+  "commitments": [],
+  "facts": []
+}

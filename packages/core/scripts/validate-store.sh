@@ -13,7 +13,8 @@
 #   4. No orphan interactions (every interaction links >=1 existing person).
 #   5. No duplicate person slugs (kebab-cased `name` collisions).
 #   Plus a contract-called-out rule: every person `## Facts` bullet carries a
-#   provenance tag ([told-by-user] or [inferred-public-web]).
+#   provenance tag ([told-by-user], [inferred-public-web], or
+#   [inferred-from-thread] — the last per plan 32, person.md 1.3.0).
 #   6. `profile.md` (singleton, optional — absence is not an error): only the
 #      four fixed sections, every bullet provenance-tagged
 #      ([stated-by-user]/[observed-from-behavior]), Style notes bullets must
@@ -30,7 +31,7 @@
 #      present without `kind: event-proposal` is an error; a non-null
 #      `created-event-id` requires both a non-null `confirmed-on` and
 #      `kind: event-proposal`.
-#   8. person.md accepts schema_version 1.0.0, 1.1.0, and 1.2.0. 1.1.0 kind
+#   8. person.md accepts schema_version 1.0.0, 1.1.0, 1.2.0, and 1.3.0. 1.1.0 kind
 #      fields (optional, plan 30): when `kind` is present it must be one of
 #      the D3 vocabulary
 #      (friend/family/collaborator/professional/community/scheduling/
@@ -305,7 +306,7 @@ if [ -d "$store_dir/people" ]; then
         person_sv_line=$(require_field "$f" "$fm_start" "$fm_body_end" "schema_version")
         if [ -n "$person_sv_line" ]; then
             person_sv_val=$(scalar_value "$f" "$person_sv_line" "schema_version")
-            check_enum "$f" "$person_sv_line" "schema_version" "$person_sv_val" "1\.0\.0|1\.1\.0|1\.2\.0"
+            check_enum "$f" "$person_sv_line" "schema_version" "$person_sv_val" "1\.0\.0|1\.1\.0|1\.2\.0|1\.3\.0"
         fi
         name_line=$(require_field "$f" "$fm_start" "$fm_body_end" "name")
 
@@ -397,8 +398,8 @@ if [ -d "$store_dir/people" ]; then
                 [ -n "$entry" ] || continue
                 ln="${entry%%:*}"
                 txt="${entry#*:}"
-                if ! printf '%s' "$txt" | grep -qE '^- \*\*\[(told-by-user|inferred-public-web)\]\*\*'; then
-                    report "$f" "$ln" "Facts bullet missing provenance tag ([told-by-user] or [inferred-public-web])"
+                if ! printf '%s' "$txt" | grep -qE '^- \*\*\[(told-by-user|inferred-public-web|inferred-from-thread)\]\*\*'; then
+                    report "$f" "$ln" "Facts bullet missing provenance tag ([told-by-user], [inferred-public-web], or [inferred-from-thread])"
                 fi
             done <<EOF
 $untagged

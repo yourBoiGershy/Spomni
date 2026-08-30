@@ -39,6 +39,29 @@
 > (`scripts/suggest-tiers.sh`, not run by default) for comparing the
 > legacy frequency-only score against review-tiers' semantic judgment.
 
+> **Superseded further still (plan 32, 2026-08-30 —
+> `docs/plans/2026-08-30-32-thread-summaries-one-call-per-thread.md` D5).**
+> Within onboarding-seed's step 2, the model-filing sub-step no longer sees
+> `chat-message` events at all: those file through one model call per
+> thread (`scripts/summarize-thread.sh`, `specs/thread-summary.md`) plus a
+> deterministic writer (`scripts/file-thread.sh`, D2/D3), never the debrief
+> skill's per-day episode-split model pass this section's step 2 note above
+> still describes for non-chat free text. This is a running-cost cut only
+> (one call + one script pass per thread, replacing a per-day agentic
+> filing task); it changes nothing about the tier-suggestion scoring model
+> below or its inputs — `stats.json`/`build-stats.sh` read the resulting
+> `interactions/*.md` files identically either way.
+
+> **Progress narration (plan 31 amendment).** The session-driven flow
+> above is also bound by `packages/ingestion/skills/onboarding-seed/
+> SKILL.md`'s "Progress narration (binding)" section: before each step/
+> sub-step it prints one `▶ Step N(x) — <what's about to happen>` line,
+> and after it one or two `✓ Step N(x) <elapsed>s — <what was found>`
+> lines sourced only from that step's own script summary line, never
+> invented numbers — a pure running-cost cut so the user never has to ask
+> what's happening mid-run. This spec does not restate that contract; the
+> SKILL.md is the model of record for it.
+
 Status: spec (plan 11 unit 13, cold-start phase; amended by plan 24 unit 2 —
 6-month configurable window + participation-signal scoring). Package:
 `packages/ingestion` (the confirmation write, per the single-writer rule)

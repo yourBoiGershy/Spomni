@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0.0",
+  "capture_id": "thread-fixture-group-001",
+  "chat_id": "chat-group-fixture",
+  "chat_type": "group",
+  "skip": null,
+  "people": [
+    {"display_name": "Alex Group", "sender_ids": ["alex1"], "is_self": false, "role_guess": "colleague"},
+    {"display_name": "user", "sender_ids": ["self1"], "is_self": true, "role_guess": "unknown"}
+  ],
+  "relationship_kind_guess": "group",
+  "gist": "Team group chat check-in; Alex shipped a feature update.",
+  "open_threads": [],
+  "commitments": [],
+  "facts": []
+}

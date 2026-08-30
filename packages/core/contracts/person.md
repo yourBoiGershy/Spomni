@@ -1,6 +1,6 @@
 # Contract: person
 
-`schema_version: 1.2.0`
+`schema_version: 1.3.0`
 
 ## Store location
 
@@ -52,7 +52,10 @@ direction only. Unkinded and untiered remain valid end states. The writer of
 kind fields is `packages/core/scripts/person-set-kind.sh`; the writer of
 tier + tier_source is `packages/core/scripts/person-set-tier.sh` (plan 31).
 
-Versioning: `1.2.0` = additive `tier_source` field per plan 31 (a derived
+Versioning: `1.3.0` = additive third Facts provenance label
+`inferred-from-thread` per plan 32 (a fact the model inferred from a
+conversation the user is party to — never the same as told-by-user or
+inferred-from-public-web); `1.2.0` = additive `tier_source` field per plan 31 (a derived
 write to `tier` never overwrites a stated one, mirroring `kind_source`);
 `1.1.0` = additive optional kind fields per plan 30; `1.0.0` files remain
 valid. A `1.1.0`-or-earlier file with `tier` set and no `tier_source` is
@@ -65,15 +68,22 @@ tier write required user confirmation, so this reading is safe).
 
 A bullet list. **Every fact carries a provenance tag** — the binding rule
 from `docs/DECISIONS.md#provenance-labeling`: told-by-user vs.
-inferred-from-public-web, never mixed or defaulted. Tag format, at the start
-of the bullet:
+inferred-from-public-web vs. inferred-from-thread, never mixed or defaulted.
+Tag format, at the start of the bullet:
 
 ```
 - **[told-by-user]** <fact text>
 - **[inferred-public-web]** <fact text>
+- **[inferred-from-thread]** <fact text>
 ```
 
-Both tags may carry an optional trailing date in parens, `(2026-08-29)`,
+`inferred-from-thread` (1.3.0, plan 32) marks a fact the model inferred from
+a conversation the user is party to (a chat thread, an email body) — it is
+neither the user's own stated word nor public-web research, so it gets its
+own label rather than masquerading as either. Writers: the filing engine's
+`packages/ingestion/scripts/file-thread.sh`, and the debrief skill.
+
+All three tags may carry an optional trailing date in parens, `(2026-08-29)`,
 noting when the fact was captured/inferred — useful for staleness checks.
 Facts with no tag are a validator error (see `validate-store.sh`).
 
@@ -87,8 +97,8 @@ factual claims).
 
 Free prose (or bullets) for texture that doesn't fit the terse `Facts` list —
 family, hobbies, preferences. Apply the same `**[told-by-user]**` /
-`**[inferred-public-web]**` tagging convention wherever a claim of fact is
-made; pure connective prose does not need a tag.
+`**[inferred-public-web]**` / `**[inferred-from-thread]**` tagging convention
+wherever a claim of fact is made; pure connective prose does not need a tag.
 
 ## Example
 

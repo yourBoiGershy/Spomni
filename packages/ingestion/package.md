@@ -16,6 +16,11 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   user confirmation, style notes); `user-model.md` (single writer at runtime — the
   draft/confirmed investment-mix singleton, plan 30); `index/embeddings.jsonl`
   (single writer at runtime — `scripts/embed-people.sh`, plan 30)
+- `thread-summary 1.0.0` (contract in `specs/thread-summary.md`; produced by
+  `scripts/summarize-thread.sh`, consumed by `scripts/file-thread.sh` — one
+  model call's strict-JSON output per chat thread, replacing the debrief
+  skill's per-day episode-split model pass for `chat-message` captures
+  during onboarding/backfill, plan 32)
 - Skills: `skills/debrief/` (filing engine), `skills/calendar-reconcile/`
   (attendee↔person matching, event links, un-debriefed + upcoming-briefworthy
   artifacts), `skills/onboarding-seed/` (session-driven, one-shot fresh-install
@@ -68,7 +73,14 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   through, plan 30), `scripts/profile-set-notify.sh` (sole writer of
   `profile.md`'s `## Notify` section — the stated-by-user notification
   channel/beeper-chat-id/gmail-address/quiet-hours bullets, per
-  `contracts/profile.md` 1.1.0, plan 33)
+  `contracts/profile.md` 1.1.0, plan 33),
+  through, plan 30), `scripts/summarize-thread.sh` (one headless model call
+  per `chat-message` capture, emitting `thread-summary` 1.0.0 strict JSON —
+  no store writes, per `specs/thread-summary.md`, plan 32),
+  `scripts/file-thread.sh` (deterministic writer consuming that JSON —
+  timestamp-derived episode split, chatID dedup union (D3), person upsert,
+  `debrief-filed.log` append, no model call and no `tier`/`kind` opinion,
+  plan 32)
 - Specs: `specs/stated-preference-filing.md` — how tier utterances, signal opt-outs,
   priorities, and cadence wishes file into `person.md`/`profile.md`, including the
   tier-change confirmation path (amends plan 03's filing-engine brief; plan 03 is
@@ -93,7 +105,11 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   suggested-tier recompute `scripts/rescale-scores.sh` implements (plan 30);
   `specs/structured-filing.md` — the eligibility rule (`calendar-event` or
   metadata-only gmail), the no-invented-provenance template writes, and the
-  D3 hold-vs-guess rule `scripts/file-structured.sh` implements (plan 31)
+  D3 hold-vs-guess rule `scripts/file-structured.sh` implements (plan 31);
+  `specs/thread-summary.md` — the one-call-per-thread prompt/output contract
+  (`thread-summary` 1.0.0: skip/people/relationship_kind_guess/gist/
+  open_threads/commitments/facts) `scripts/summarize-thread.sh` implements
+  and `scripts/file-thread.sh` consumes (plan 32)
 - Ledgers/artifacts: `data/ingestion/triage-held.log` (sole writer:
   `scripts/triage-inbox.sh`) — append-only, tab-separated
   `<capture-id>\t<rule-name>\t<held-at ISO 8601 Z>`, one line per held
@@ -205,3 +221,10 @@ Plan 31 (deterministic filing & cold-start priors,
 collapse to triage → structured filing → debrief-remainder →
 `/review-tiers --all` cold start (D7), and `specs/onboarding-tiering-seed.md`'s
 further supersession note.
+Plan 32 (thread summaries, one model call per thread,
+`docs/plans/2026-08-30-32-thread-summaries-one-call-per-thread.md`):
+`scripts/summarize-thread.sh`, `scripts/file-thread.sh`,
+`specs/thread-summary.md`, and `skills/onboarding-seed/`'s step 2 split into
+triage → structured filing → thread summaries/filing → debrief-remainder
+(D5) — `chat-message` captures no longer route through `skills/debrief/`'s
+per-day episode-split model pass during onboarding/backfill.

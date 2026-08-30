@@ -15,6 +15,18 @@ wrapping them is mechanical.
 
 - Skills: `skills/query/` (index-first retrieval, citations, honest "no match"),
   `skills/brief/` (one-page pre-meeting brief)
+- `skills/who-next/` (`/who-next [friends|coffee|all] [--limit N]`) — condensed,
+  action-first "who should I reach out to" answer, hand-judged from each
+  person's facts rather than trusting raw `suggest_reachouts` order; renders
+  per `packages/core/contracts/answer-style.md` 1.0.0; read-only, drafts on
+  request only, never sends.
+- `scripts/who-next-direct.sh` (`<store-dir> [--mode friends|coffee|all]
+  [--limit N] [--today YYYY-MM-DD]`) — zero-dependency (bash + jq) read path
+  for `/who-next` used when the `spomni-query` MCP server is unavailable
+  (cold cloud/phone session), reading `index.json`/`stats.json`/`people/*.md`
+  directly and emitting a pre-filtered, pre-ranked JSON-lines candidate
+  pool; read-only, never writes to the store (generates `index.json`/
+  `stats.json` into a scratch copy if either is missing).
 - The nudge-card render consumed by output adapters
 - `server/` (`packages/query/server/`): an MCP tool surface, seven read-only tools over
   stdio (streamable HTTP behind `--http`, stubbed): `search_people`, `get_person`,

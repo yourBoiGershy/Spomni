@@ -336,6 +336,29 @@ Revisit if: a contributor needs Linux (scheduler backend + drop the macOS-only
 CI runner), or the plugin manifest format becomes a better discovery surface than
 symlinks.
 
+**thread-summary-one-call** · 2026-08-30
+Chat captures are filed by ONE model call per thread, not by per-day model filing.
+`summarize-thread.sh` sends the whole thread (max ~75 KB in practice) to a headless
+`claude -p` call constrained to the `thread-summary` 1.0.0 JSON (who, role guess,
+gist, open threads, commitments, facts with provenance); `file-thread.sh` then derives
+one interaction per active UTC day from message timestamps (text messages only — no
+reactions/notices), upserts people (no tier/kind), unions duplicate captures sharing a
+chatID, and ledgers every contributing id. `person.md` 1.3.0 adds the provenance label
+`inferred-from-thread` so a thread-derived fact is never dressed as told-by-user or
+public-web. Cold outreach is filed as a person with role `unsolicited` (never skipped);
+`skip` is reserved for bots, broadcast channels, self-notes, security notices.
+Why: on the 2026-08-30 private-store onboarding the deterministic filer handled 221
+structured events in 18 s, while the debrief skill's episode-split rule turned 45 chat
+captures (< 700 KB total) into ~40 min of agentic per-day filing across six worker
+passes and still left 12 ids pending — the cost was agency (tool turns, file writes,
+collision checks per day), not tokens. The per-day *summary* the old path produced is
+the only thing lost; dates, counts, and gaps are timestamp-derived on both paths.
+Supersedes the debrief skill's chat-episode model pass for backfill/onboarding; the
+skill keeps chats for the incremental single-event path and debrief notes. Plan 32.
+Revisit if: nudges need per-day detail a thread gist cannot give (then add a second,
+targeted call for the last N days), or `claude -p` startup overhead (~10–20 s/call,
+CLI not model) makes a direct API call the cheaper transport.
+
 **derived-tiers-provisional** · 2026-08-30
 Tiers and the user-model start from observed behavior with no user input. `person.md`
 1.2.0 adds `tier_source: derived | stated-by-user`; `review-tiers` writes derived
