@@ -23,6 +23,30 @@
       "work"
     ]
   },
+  "dana-whitfield": {
+    "kind": "scheduling",
+    "kind_expires": "2026-08-01",
+    "kind_source": "stated-by-user",
+    "last-touch": "2026-07-15",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": [
+      "logistics"
+    ]
+  },
+  "felix-marsh": {
+    "kind": "professional",
+    "kind_expires": "2026-08-01",
+    "kind_source": "stated-by-user",
+    "last-touch": "2026-07-18",
+    "location": null,
+    "org": "Contract role",
+    "role": "Interim consultant",
+    "tags": [
+      "work"
+    ]
+  },
   "harlan-voss": {
     "kind": null,
     "kind_expires": null,
@@ -93,6 +117,18 @@
     "role": null,
     "tags": [
       "name-from-email"
+    ]
+  },
+  "quinn-bramwell": {
+    "kind": "unsolicited",
+    "kind_expires": null,
+    "kind_source": "stated-by-user",
+    "last-touch": "2026-07-10",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": [
+      "cold-outreach"
     ]
   },
   "taylor-reyes": {

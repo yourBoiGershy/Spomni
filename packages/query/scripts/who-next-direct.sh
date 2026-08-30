@@ -13,9 +13,15 @@
 # of the store under mktemp — the direct-read path never writes into the
 # user's store (single-writer rule; query is read-only).
 #
-# kind: transactional (landlords, mail, closed one-offs) is dropped in
-# coffee and all modes (friends mode already excludes it via its kind
-# allowlist) unless --include-transactional is passed.
+# Non-relational kinds (scheduling, transactional, unsolicited — see
+# packages/core/contracts/relationship-scoring.md's kind vocabulary table)
+# and any expired kind (kind_expires in the past, per contracts/person.md's
+# read-state rule) are dropped in coffee and all modes (friends mode already
+# excludes them via its kind allowlist) unless --include-transactional is
+# passed, which re-admits ONLY effective kind "transactional" — an expired
+# transactional stays dropped. This is the jq twin of
+# packages/query/server/src/store/kind-semantics.ts's NON_RELATIONAL_KINDS /
+# effectiveKind / warrantsProactiveSuggestion — keep both in sync.
 #
 # Emits one JSON object per line on stdout (at most 20), per the contract in
 # packages/query/skills/who-next/SKILL.md section 0. Exit 0 on success (even
@@ -53,7 +59,11 @@ Options:
                                (default: today's date)
   --include-transactional     Keep kind: transactional people (landlords,
                                mail, closed one-offs) — dropped by default
-                               in coffee and all modes
+                               in coffee and all modes along with
+                               scheduling/unsolicited kinds and any expired
+                               kind (kind_expires past); an expired
+                               transactional person stays dropped even with
+                               this flag
   --help                      Show this help and exit
 
 Read-only: never writes to <store-dir>. If index.json/stats.json are
@@ -292,6 +302,7 @@ if [ -s "$TMP_AWK" ]; then
         name: (if .name == "" then .slug else .name end),
         tags: ($ie.tags // []),
         kind: ($ie.kind // null),
+        kind_expires: ($ie.kind_expires // null),
         last_interaction: ($se.last_interaction // $ie["last-touch"] // null),
         touchpoints: ($se.touchpoints // 0),
         open_threads: ($se.open_threads // 0),
@@ -315,37 +326,61 @@ jq -s -c \
   --arg today "$TODAY" \
   --argjson include_transactional "$INCLUDE_TRANSACTIONAL" \
   '
-  map(
-    . + {
-      days_since: (
-        if .last_interaction == null then null
-        else (
-          (($today | strptime("%Y-%m-%d") | mktime)
-            - (.last_interaction | strptime("%Y-%m-%d") | mktime)) / 86400
-          | floor
+  # Non-relational kinds — no relationship rhythm worth proactively
+  # surfacing (relationship-scoring.md D3 kind vocabulary table). Jq twin
+  # of packages/query/server/src/store/kind-semantics.ts NON_RELATIONAL_KINDS
+  # — keep both in sync.
+  (["scheduling", "transactional", "unsolicited"]) as $non_relational_kinds
+  # effective_kind: "expired" when kind_expires is set and strictly before
+  # today (plain string compare — store dates are YYYY-MM-DD); else the
+  # stored kind (null stays null). Twin of kind-semantics.ts effectiveKind.
+  | map(
+      . + {
+        effective_kind: (
+          if (.kind_expires != null and .kind_expires < $today)
+          then "expired"
+          else .kind
+          end
         )
-        end
-      ),
-      stub: (
-        (.tags | index("name-from-email") != null)
-        or ((.name | test(" ") | not) and (.facts | length) == 0)
-      )
-    }
-  )
+      }
+    )
+  | map(
+      . + {
+        days_since: (
+          if .last_interaction == null then null
+          else (
+            (($today | strptime("%Y-%m-%d") | mktime)
+              - (.last_interaction | strptime("%Y-%m-%d") | mktime)) / 86400
+            | floor
+          )
+          end
+        ),
+        stub: (
+          (.tags | index("name-from-email") != null)
+          or ((.name | test(" ") | not) and (.facts | length) == 0)
+        )
+      }
+    )
   # exclude people touched in the last 14 days
   | map(select(.days_since == null or .days_since >= 14))
   # coffee mode: exclude inbound LinkedIn pitches
   | map(select($mode != "coffee" or (.tags | index("linkedin-outreach") == null)))
-  # coffee/all modes: drop kind: transactional (landlords, mail, closed
-  # one-offs) unless --include-transactional was passed; friends mode
-  # already excludes it via its kind allowlist below.
+  # coffee/all modes: drop non-relational kinds (scheduling, transactional,
+  # unsolicited) and any expired kind unless --include-transactional was
+  # passed, which re-admits ONLY effective_kind == "transactional" (an
+  # expired transactional stays "expired", never "transactional", so it
+  # stays dropped). friends mode already excludes all of these via its
+  # kind allowlist below.
   | map(select(
-      $include_transactional == 1
-      or $mode == "friends"
-      or .kind != "transactional"
+      .effective_kind as $ek
+      | $mode == "friends"
+      or $ek == null
+      or (($non_relational_kinds | index($ek) == null) and $ek != "expired")
+      or ($include_transactional == 1 and $ek == "transactional")
     ))
-  # friends mode: keep friend/family/null kind
-  | map(select($mode != "friends" or (.kind == null or .kind == "friend" or .kind == "family")))
+  # friends mode: keep friend/family/null effective kind (expired thus
+  # drops automatically, since it never equals friend/family/null)
+  | map(select($mode != "friends" or (.effective_kind == null or .effective_kind == "friend" or .effective_kind == "family")))
   | map(
       . + {
         rank_tier: (
@@ -360,5 +395,5 @@ jq -s -c \
   | sort_by([(if .stub then 1 else 0 end), -.rank_tier, -(.days_since // -1)])
   | .[0:$limit]
   | .[]
-  | del(.today, .rank_tier)
+  | del(.today, .rank_tier, .kind_expires, .effective_kind)
   ' "$TMP_RAW"

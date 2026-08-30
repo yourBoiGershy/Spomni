@@ -15,6 +15,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { StoreReader } from "../store/reader.ts";
 import type { StatsEntry, WakeupFile } from "../store/types.ts";
+import { warrantsProactiveSuggestion } from "../store/kind-semantics.ts";
 
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT = 10;
@@ -187,7 +188,12 @@ function scoreFallbackCandidate(
  * interaction (zero-interaction people have no staleness signal — per plan
  * 08, they're only reachable through wake-ups, never given an invented
  * score). Excludes anyone already surfaced via `alreadySurfaced` (attention
- * slugs) so the same person isn't double-listed.
+ * slugs) so the same person isn't double-listed. Also excludes stub
+ * contacts (index tag `name-from-email`) and anyone whose kind doesn't
+ * warrant a proactive suggestion (landlord/vendor/cold-pitch/expired —
+ * see kind-semantics.ts) — this is a raw heuristic surface, not a
+ * fact-judgment one, so kind exclusion is the only relationship-semantics
+ * filter applied here.
  */
 function fallbackCandidates(
   reader: StoreReader,
@@ -195,11 +201,24 @@ function fallbackCandidates(
   alreadySurfaced: Set<string>,
 ): FallbackSuggestion[] {
   const stats = reader.stats();
+  const index = reader.index();
+  const today = new Date(nowMs).toISOString().slice(0, 10);
   const out: FallbackSuggestion[] = [];
 
   for (const [slug, entry] of Object.entries(stats.people)) {
     if (alreadySurfaced.has(slug)) continue;
     if (!entry.last_interaction || entry.touchpoints === 0) continue;
+
+    const indexEntry = index[slug];
+    if (indexEntry?.tags?.includes("name-from-email")) continue;
+    if (
+      !warrantsProactiveSuggestion(
+        { kind: indexEntry?.kind ?? null, kind_expires: indexEntry?.kind_expires ?? null },
+        today,
+      )
+    ) {
+      continue;
+    }
 
     out.push(scoreFallbackCandidate(slug, entry, nowMs));
   }
@@ -247,11 +266,15 @@ export function registerSuggestReachouts(server: McpServer, reader: StoreReader)
     {
       title: "Suggest reachouts",
       description:
-        "Who to reach out to next: pending wake-ups from the attention queue first " +
-        "(source: attention), then a transparent staleness/tier/open-threads heuristic " +
-        "to fill remaining slots (source: heuristic-fallback, each with a full score " +
-        "breakdown — never a bare score). Read-only — never mutates the wake-up queue; " +
-        "absence of wake-ups is normal, not an error.",
+        "NOT the answer path for \"who should I reach out to?\" — use who_next_pool for " +
+        "that (it is pre-filtered per relationship-scoring.md kind/currency semantics " +
+        "plus fact-judgment inputs). This tool surfaces pending wake-ups from the " +
+        "attention queue first (source: attention), then falls back to a transparent " +
+        "staleness/tier/open-threads heuristic to fill remaining slots " +
+        "(source: heuristic-fallback, each with a full score breakdown — never a bare " +
+        "score). The fallback excludes non-relational/expired kinds (landlord, vendor, " +
+        "cold pitch) and stub contacts, but does no fact-level judgment. Read-only — " +
+        "never mutates the wake-up queue; absence of wake-ups is normal, not an error.",
       inputSchema,
     },
     (args) => {
