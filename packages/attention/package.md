@@ -31,13 +31,20 @@ attention-merge).
 - `scripts/capacity.sh` — deterministic week-plan writer per
   `packages/core/contracts/week-plan.md`, sole writer of `signals/week-plan.json`,
   per plan 12 cadence-capacity (docs/plans/2026-08-29-12-cadence-capacity.md)
-- Queue lifecycle: `scripts/wakeup-queue.sh` (list-due, fire, snooze, dismiss —
-  creation stays with core's `wakeup-add.sh` so any package may append)
-- Event-proposal confirm/decline lifecycle: `scripts/proposal-confirm.sh`
-  (interim — plan 21's `confirm <id> --event-id <id>` / `decline <id>
-  --reason <enum>` ops on `kind: event-proposal` wake-ups; absorbed by
-  `scripts/wakeup-queue.sh` once plan 06 lands, per plan 21's amendment to
-  plan 06)
+- Queue lifecycle: `scripts/wakeup-queue.sh` — all six ops over
+  `wakeups/*.md` (creation stays with core's `wakeup-add.sh` so any package
+  may append): `list-due` (pending, due <= today), `fire` (budget + meeting-
+  adjacency gated; writes `status: fired`/`fired-on` and emits one batch
+  artifact at `wakeups/fired/<today>T<HHMMSS>Z-batch.json` — entries carry
+  id/due/people/why/origin/kind/signal_type/context/draft/proposed_event,
+  plus `held_budget`/`held_adjacent` id lists), `snooze`, `dismiss`, and the
+  event-proposal `confirm <id> --event-id <id>` / `decline <id> --reason
+  <enum>` ops absorbed from the retired `proposal-confirm.sh` per plan 21's
+  amendment to plan 06. Budget: `origin: signal|standing` entries fire only
+  while `fired_this_week < budget.max` from `signals/week-plan.json`
+  (missing/stale >8 days falls back to `budget.max = 3`, WARN);
+  `origin: user-ask` is exempt. Adjacency: a `--now` within 30 minutes
+  (default) of a same-day timed calendar event holds the entire run.
 - Outcome recording: `fired-on`/`dismiss-reason`/`snooze-count`/`acted-on` writes on
   `wakeups/*.md` per `specs/outcome-recording.md` (sole writer of the wakeup lifecycle
   fields, per `wakeup.md`'s writer table and `docs/DECISIONS.md#attention-merge`)
@@ -58,9 +65,10 @@ attention-merge).
 
 - `signal-event@^1`, `wakeup@1.2` (core) — outcome recording targets the 1.1 fields
   specifically (`fired-on`, `dismiss-reason`, `acted-on`, `snooze-count`); a 1.0 file
-  is upgraded to 1.1 in place the first time a 1.1 writer (dismiss) touches it.
-  `scripts/proposal-confirm.sh` targets the 1.2 fields (`confirmed-on`,
-  `created-event-id`) on `kind: event-proposal` entries specifically
+  is upgraded to 1.1 in place the first time a 1.1 writer (`wakeup-queue.sh`
+  fire/snooze/dismiss) touches it. `wakeup-queue.sh`'s `confirm`/`decline` ops
+  target the 1.2 fields (`confirmed-on`, `created-event-id`) on
+  `kind: event-proposal` entries specifically
 - `profile@1` (core) — signal-scan applies `## Signal opt-outs` before ranking;
   calibration reads style-note context. Read-only: attention never writes `profile.md`
   (revealed preferences propose via a wake-up, they never overwrite stated ones)
@@ -87,8 +95,8 @@ attention-merge).
 ## Owned paths
 
 `packages/attention/**`; at runtime: the `wakeups/` lifecycle (fire/snooze/dismiss
-state, including the outcome fields), `ranking-weights.json`, and `signals/week-plan.json`
-in the private data dir.
+state, including the outcome fields), `wakeups/fired/` (fire batch artifacts),
+`ranking-weights.json`, and `signals/week-plan.json` in the private data dir.
 
 ## Built by
 
