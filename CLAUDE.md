@@ -1,10 +1,20 @@
 # Relationship Agent — Project Doctrine
 
-An open-source, local-first personal assistant that helps its user maintain
-relationships (business, friends, family) by remembering — people, context,
-signals, and reasons to reach out. It nudges and drafts; the human always
-sends. This repo holds the machinery; user data never lives here (see
-`data/README.md`).
+**Mission: what a friendship is made of, without what it costs to keep.**
+A relationship is made of trust, care, intent, and time; what makes it hard
+to keep is its *running cost* (coordinating, following up, scheduling,
+restarting, remembering-to), which adds nothing to the bond. Spomni — an
+open-source, local-first personal assistant — carries the running cost
+(business, friends, family) and never touches the ingredients. It nudges and
+drafts; the human always sends. This repo holds the machinery; user data
+never lives here (see `data/README.md`). Full mission + scenario map:
+`docs/USE-CASES.md`.
+
+**The mission test** (every chunk, plan, and brief §1 answers it): *does
+this cut a running cost, or substitute for an ingredient?* Only cost-cutting
+is built. Substituting for trust/care/intent/time — auto-send, generic
+drafts, engagement metrics, performing the relationship for the user — is
+permanently out of scope.
 
 ## Standing principles (non-negotiable)
 
@@ -105,8 +115,10 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   `bash packages/connectors/tests/run-beeper-capture-tests.sh`,
   `bash packages/connectors/tests/run-scheduler-tests.sh`,
   `bash packages/ingestion/tests/run-seed-tests.sh`,
-  `bash packages/ingestion/tests/run-triage-tests.sh`, and
-  `bash packages/ingestion/tests/run-shard-tests.sh`.
+  `bash packages/ingestion/tests/run-triage-tests.sh`,
+  `bash packages/ingestion/tests/run-shard-tests.sh`,
+  `bash packages/attention/tests/run-attention-tests.sh`, and
+  `bash packages/attention/tests/run-capacity-tests.sh`.
   Store sanity: `bash packages/core/scripts/validate-store.sh <store-dir>`
   (checks people/interactions/wakeups only — not inbox/).
   Capture-sync audit: `bash packages/connectors/scripts/check-sync.sh <store-dir>`

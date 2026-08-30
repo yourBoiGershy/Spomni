@@ -13,10 +13,24 @@ attention-merge).
 
 ## Provides
 
-- Skills: `skills/signal-scan/` (the ToS-clean detector set + warmth×rarity ranking,
-  ~5-nudge cap, two-signal rule), `skills/sweep/` (the background run: capture-sweep →
-  calendar-reconcile → filing → signal-scan → fire due wake-ups → acted-on detection →
-  calibrate → hand batch to an output adapter)
+- Skills: `skills/signal-scan/` (plan 05: runs the eight-detector set — debrief-harvest,
+  scheduling-intent, co-attendance, job-change, company-news, tier-drift, birthday,
+  linkedin-post — in fixed order, logs `signal-event@1` candidates, ranks via
+  warmth×rarity×confidence per `specs/ranking.md`, and promotes the winners into
+  wake-ups under the sweep's budget/hold/two-signal rules), `skills/sweep/` (the
+  background run: capture-sweep → calendar-reconcile → filing → signal-scan → fire due
+  wake-ups → acted-on detection → calibrate → hand batch to an output adapter),
+  `skills/weekly-planning/` (the Sunday routine: store-sync pull → `scripts/capacity.sh`
+  → commit week-plan; per plan 12 cadence-capacity)
+- `specs/` (plan 05 detector/ranking specs): `ranking.md` (score formula,
+  capacity-mode inversion, two-signal rule, suppression floor, budget/hold, due-date
+  table, ammunition assembly — the single source of truth every detector spec cites),
+  plus the detector specs `debrief-harvest.md`, `scheduling-intent.md`, `birthday.md`,
+  `co-attendance.md`, `job-change.md`, `company-news.md`, `tier-drift.md` (confidence
+  rubrics, evidence format, opt-out/dedup mechanics, due-date rule per type)
+- `scripts/capacity.sh` — deterministic week-plan writer per
+  `packages/core/contracts/week-plan.md`, sole writer of `signals/week-plan.json`,
+  per plan 12 cadence-capacity (docs/plans/2026-08-29-12-cadence-capacity.md)
 - Queue lifecycle: `scripts/wakeup-queue.sh` (list-due, fire, snooze, dismiss —
   creation stays with core's `wakeup-add.sh` so any package may append)
 - Event-proposal confirm/decline lifecycle: `scripts/proposal-confirm.sh`
@@ -36,7 +50,9 @@ attention-merge).
   `tests/fixtures/tier-drift-upward` and `tests/fixtures/declined-proposal`
   to pin the tier-drift detector's never-demote and silence-on-decline
   guardrails (`specs/tier-drift.md`) as executable graders. Both cases carry
-  `runnable-when: "05"` until the detector lands; see `evals/README.md`.
+  `runnable-when: "06"` — the detector itself landed with plan 05, but the
+  cases wait on plan 06's sweep wiring to expose it as a `claude -p` skill
+  invocation; see `evals/README.md`.
 
 ## Consumes
 
@@ -54,15 +70,31 @@ attention-merge).
 - Typed `linkedin-notification`/`event-confirmation` events (connectors/gmail-in),
   contact artifacts (connectors/contacts-in), `same-event-as` links and calendar
   artifacts (ingestion), `needs-follow-up` markers (ingestion)
+- Calendar `calendar-event` capture events (connectors/calendar-in) — `scripts/capacity.sh`'s
+  input for computing `signals/week-plan.json` (`week-plan@1` is provided by this
+  package, not consumed)
+- `week-plan@1` (`signals/week-plan.json`) — provided by this package's own
+  `scripts/capacity.sh`/`weekly-planning` routine, and read back by `skills/signal-scan/`
+  for the capacity-mode warmth inversion and the budget/hold decision
+  (`specs/ranking.md` §2/§8); same-package read, no cross-package consume needed.
+  A missing/stale (>8 days) file is treated as `weekly_tier: normal`,
+  `budget.max = 3` and logged, never recomputed by signal-scan itself.
+- `ranking-weights@1` (`ranking-weights.json`) — read by `skills/signal-scan/` as the
+  per-signal-type/per-tag score multiplier (`specs/ranking.md` §5); this package's own
+  sweep `calibrate` step is its sole writer (see above), so this is also a same-package
+  read, not a cross-package consume.
 
 ## Owned paths
 
 `packages/attention/**`; at runtime: the `wakeups/` lifecycle (fire/snooze/dismiss
-state, including the outcome fields) and `ranking-weights.json` in the private data
-dir.
+state, including the outcome fields), `ranking-weights.json`, and `signals/week-plan.json`
+in the private data dir.
 
 ## Built by
 
 Plans 05 (detection/ranking) and 06 (queue/sweeps) — two plans, one package.
 Outcome-recording and calibration specs (plan 11, units 8–9) slot into 06's
-implementation briefs verbatim.
+implementation briefs verbatim. Plan 05's detection/ranking landed:
+`skills/signal-scan/` plus `specs/ranking.md` and the five new detector specs
+(`docs/plans/2026-08-29-05-signal-engine.md`); the tier-drift/declined-proposal
+evals flip to `runnable-when: "06"` pending the sweep wiring that invokes it.

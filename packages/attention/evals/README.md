@@ -95,17 +95,19 @@ each `expected/README.md` for the derivation.
 
 ## Flip-on: plan 05 / plan 06
 
-The two tier-drift cases (`tier-drift-upward`, `declined-proposal`) carry
-`runnable-when: "05"` (the tier-drift detector itself is built by plan 05's
-detector set; plan 06 wires the sweep that invokes it). Until then,
-`eval-run-skill.sh` reports `SKIP` with that reason — never silence. Once
-plan 05 lands the detector and plan 06's sweep exposes it as something a
-`claude -p` skill invocation can act out per `specs/tier-drift.md`, flip
-`runnable-when` off (or bump it if the sweep wiring needs plan 06
-specifically) in the same change that lands the integration, per the
-harness's xfail/runnable-when discipline. The `scheduling-intent-proposal`,
-`zero-create-without-confirm`, and `decline-files-silently` cases carry no
-`runnable-when` gate — the skills they evaluate ship in plan 21 itself.
+The two tier-drift cases (`tier-drift-upward`, `declined-proposal`) carried
+`runnable-when: "05"` until plan 05 landed the tier-drift detector spec
+(`specs/tier-drift.md`) and the `skills/signal-scan/` skill that runs it
+(`docs/plans/2026-08-29-05-signal-engine.md`). Both cases now carry
+`runnable-when: "06"`: the detector itself is built, but a bare skill isn't
+yet something a `claude -p` invocation can act out end to end — plan 06's
+sweep wiring (`skills/sweep/`) is what exposes it as a runnable eval
+subject. Until plan 06 lands, `eval-run-skill.sh` reports `SKIP` with that
+reason — never silence. Flip `runnable-when` off in the same change that
+lands the sweep integration, per the harness's xfail/runnable-when
+discipline. The `scheduling-intent-proposal`, `zero-create-without-confirm`,
+and `decline-files-silently` cases carry no `runnable-when` gate — the
+skills they evaluate ship in plan 21 itself.
 
 ## Manual verification performed (no live `claude` runs)
 

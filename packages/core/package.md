@@ -1,6 +1,6 @@
 # package: core
 
-version: 0.4.0
+version: 0.5.0
 
 ## Purpose
 
@@ -29,13 +29,18 @@ nothing.
   the user-configurable onboarding-backfill window + self-identity config, per
   plan 24),
   `contracts/import-pipeline.md` (the five-stage fetch/normalize/triage/
-  judgment/file pipeline spanning connectors + ingestion, per plan 26)
+  judgment/file pipeline spanning connectors + ingestion, per plan 26),
+  `contracts/week-plan.md` (`signals/week-plan.json`, the capacity-model
+  weekly nudge budget artifact, per plan 12 — this is the RENUMBERED cadence
+  plan, docs/plans/2026-08-29-12-cadence-capacity.md, not the earlier plan 12
+  eval-harness numbering)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
   `templates/profile.md`, `templates/sync-lanes.tsv`
 - Store scripts: `scripts/build-index.sh` (people/ → index.json),
   `scripts/build-stats.sh` (people/ + interactions/ → stats.json, per
   `contracts/derived-index.md`), `scripts/validate-store.sh`, `scripts/wakeup-add.sh`
-  (the one sanctioned way any package appends a wake-up entry),
+  (the one sanctioned way any package appends a wake-up entry;
+  `--signal-type` sets the 1.1 outcome fields at creation (plan 05)),
   `scripts/gen-scale-store.sh` (generates an uncommitted synthetic large store for
   perf runs), `scripts/eval-run.sh` (T2 agent-tier eval runner, forward-declared —
   written by plan 12), `scripts/eval-run-skill.sh` (T3 skill-tier eval runner,
@@ -74,3 +79,4 @@ event-proposal creation flags are a later work unit of the same plan.
 (docs/plans/2026-08-29-24-onboarding-backfill-priority-seeding.md).
 `contracts/import-pipeline.md` by plan 26
 (docs/plans/2026-08-29-26-standard-import-pipeline.md).
+`contracts/week-plan.md` by plan 12 (docs/plans/2026-08-29-12-cadence-capacity.md).
