@@ -1,6 +1,6 @@
 # Contract: user-model
 
-`schema_version: 1.0.0`
+`schema_version: 1.1.0`
 
 ## Store location
 
@@ -37,15 +37,29 @@ confirmed edit (the user re-runs the confirm flow) bumps `revision` by one
 and re-triggers prior seeding in `ranking-weights.json` (plan 30 D6) —
 scores are expected to change when this file changes; that is the point.
 
-**Pairing rule** (validator-enforced): `status: draft` if-and-only-if
-`provenance: observed-from-behavior` and `confirmed_at: null`; `status:
-confirmed` if-and-only-if `provenance: stated-by-user` and `confirmed_at`
-is a set date. `revision` starts at `0` on a draft and becomes `1` on first
-confirmation.
+**`provisional` status (plan 31 D6).** Cold-start supersedes waiting on the
+user: when a scoring/seeding step (e.g. review-tiers step 1) finds
+`user-model.md` absent or still `draft`, it derives one and auto-adopts it
+as `status: provisional` with no confirm dialogue — same fields as a fresh
+draft (`provenance: observed-from-behavior`, `confirmed_at: null`,
+`revision: 0`). Every consumer of this contract (seeding, calibration,
+ranking) treats `provisional` exactly like `confirmed` — the whole point is
+that the user spends zero effort *stating* and only ever *corrects*. The
+confirm dialogue (`/review-tiers --confirm-model`) only runs when the user
+asks for it; running it against a `provisional` model moves it to
+`status: confirmed`, `provenance: stated-by-user`, `confirmed_at` set, and
+bumps `revision` to `1`, exactly as it would from `draft`.
 
-**Draft files are never read by any scoring/judgment step** — only a
-`confirmed` `user-model.md` is consumed by ranking or calibration; a draft
-exists solely for the confirm flow.
+**Pairing rule** (validator-enforced): `status: draft` or `status:
+provisional` if-and-only-if `provenance: observed-from-behavior` and
+`confirmed_at: null`; `status: confirmed` if-and-only-if `provenance:
+stated-by-user` and `confirmed_at` is a set date. `revision` starts at `0`
+on a draft or provisional model and becomes `1` on first confirmation.
+
+**Draft files are never read by any scoring/judgment step** — a
+`confirmed` *or* `provisional` `user-model.md` is consumed by ranking or
+calibration; a plain `draft` exists solely for the confirm flow and is
+never read by scoring.
 
 ## Shape
 
@@ -57,7 +71,7 @@ in this order, always present (empty/placeholder is valid on a draft).
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `schema_version` | semver string | yes | Contract version this file conforms to. |
-| `status` | enum | yes | One of `draft`, `confirmed`. |
+| `status` | enum | yes | One of `draft`, `provisional`, `confirmed`. `provisional` (plan 31 D6): derived, auto-adopted with no confirm dialogue — `revision: 0`, `provenance: observed-from-behavior`, `confirmed_at: null`, same pairing as `draft`. Consumers (seeding, scoring) treat `provisional` the same as `confirmed`; a stated confirm moves it to `confirmed` and bumps `revision`. |
 | `derived_at` | ISO 8601 date | yes | `YYYY-MM-DD`. When the draft was computed from the corpus. |
 | `confirmed_at` | ISO 8601 date or `null` | yes | `YYYY-MM-DD` once confirmed; `null` while `status: draft`. |
 | `revision` | integer | yes | `0` on a fresh draft; bumps by one on every confirmed edit. |
@@ -161,6 +175,10 @@ frontmatter field, new optional line in `## Revealed vs stated`, widening
 the axis set) is a `schema_version` minor bump (additive) — same convention
 as `profile.md`. A change that alters the meaning of an existing field,
 removes a fixed section, or changes the fixed axis set is major.
+`1.1.0` = additive `status: provisional` enum value per plan 31 D6 (a
+derived, no-dialogue auto-adopted model, treated like `confirmed` by every
+consumer); `1.0.0` files (`status` in `draft`/`confirmed` only) remain
+valid.
 
 ## Notes
 

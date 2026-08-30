@@ -9,6 +9,36 @@
 > adjust/skip semantics, and the no-guilt framing remain binding and are
 > inherited by review-tiers.
 
+> **Superseded further (plan 31, 2026-08-30 —
+> `docs/plans/2026-08-30-31-deterministic-filing-cold-start-priors.md`
+> D7).** The model of record for the cold-start flow is now
+> `packages/ingestion/skills/onboarding-seed/SKILL.md` plus
+> `specs/review-tiers.md`, not the per-person confirmation batch described
+> below. Sequence steps 4–6 and the whole "Presentation rule" section are
+> superseded: "Filing produces interactions" (step 2) is now three
+> sub-steps — deterministic triage, deterministic structured filing
+> (`scripts/file-structured.sh`, `specs/structured-filing.md`, D1–D3, no
+> tier/kind opinion either), then model filing for the free-text
+> remainder; steps 4–6 (frequency-derived suggestion → batched
+> presentation → per-person confirm/adjust/skip before any write) are
+> replaced by one `/review-tiers --all` cold-start invocation, which (a)
+> auto-adopts a `status: provisional` `user-model.md` with no dialogue
+> when one is absent (D6) and (b) writes both a derived `kind` and a
+> derived `tier` — `tier_source: derived` / `kind_source: derived`,
+> `person@^1.2.0` (D4) — for every person that clears its scope/gate,
+> ending in a correction digest rather than a blocking per-person
+> confirmation. A stated correction, at any time, outranks a derived write
+> and sticks (D5); a `--source derived` write can never overwrite
+> `tier_source: stated-by-user` (`person-set-tier.sh`, D4). The
+> insufficient-data gate, the 20-person cap, the one-session/no-backlog
+> rule, and the no-guilt framing survive into review-tiers' own version of
+> these rules (see that spec) — only the *confirmation-before-write* model
+> is gone. The "Tier suggestions (deterministic scoring model)" section
+> below and its participation-derivation inputs are unaffected by this
+> note: they remain exactly as plan 30 left them, a read-only diagnostic
+> (`scripts/suggest-tiers.sh`, not run by default) for comparing the
+> legacy frequency-only score against review-tiers' semantic judgment.
+
 Status: spec (plan 11 unit 13, cold-start phase; amended by plan 24 unit 2 —
 6-month configurable window + participation-signal scoring). Package:
 `packages/ingestion` (the confirmation write, per the single-writer rule)

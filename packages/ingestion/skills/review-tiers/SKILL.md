@@ -1,19 +1,20 @@
 ---
 name: review-tiers
-description: User-invoked review of relationship kinds and tiers — derives evidence, judges kind + attention warrant with priors (user model, ranking weights, nearest confirmed neighbors when local embeddings are available), presents one capped batch with breakdowns; never writes a tier without explicit per-person confirmation; never runs unprompted.
+description: User-invoked review of relationship kinds and tiers — cold-starts the user model with no dialogue, derives evidence, judges kind + attention warrant with priors (user model, ranking weights, nearest confirmed neighbors when local embeddings are available), writes derived kinds and derived tiers directly, and presents a capped correction digest; a stated kind/tier always outranks a derived one and the user may correct any line at any time; never runs unprompted.
 ---
 
 # Review tiers
 
-Sequences `packages/ingestion/specs/review-tiers.md` end to end: gate on a
-confirmed user model, prepare priors, judge each in-scope person with the
-model, validate every record before it is written or shown, present at
-most 20 suggestions with breakdown strings, and write only what the user
-explicitly confirms or adjusts. This document is the session's runbook;
-the spec is the model of record — where this document and the spec
-disagree, the spec wins. `packages/core/contracts/relationship-scoring.md`
-is the model of record for the judgment record shape, the kind vocabulary,
-the rules (gate/caps/expiry/sticky-stated), and the breakdown string.
+Sequences `packages/ingestion/specs/review-tiers.md` end to end:
+cold-start-adopt the user model with no dialogue, prepare priors, judge
+each in-scope person with the model, validate every record before it is
+written, write the derived kind and derived tier directly, and present a
+capped correction digest — the user corrects, now or later, rather than
+confirming before anything is written. This document is the session's
+runbook; the spec is the model of record — where this document and the
+spec disagree, the spec wins. `packages/core/contracts/relationship-
+scoring.md` is the model of record for the judgment record shape, the
+kind vocabulary, and the rules (gate/caps/expiry/sticky-stated).
 
 Invoked explicitly only ("review tiers" / "review kinds"). It is not a
 scheduled job, it never runs unprompted, and it never re-runs the one-time
@@ -23,10 +24,16 @@ onboarding seed (`skills/onboarding-seed/`) itself.
 
 - **User-invoked only, never on a schedule.** Nothing in this flow
   triggers itself; every run starts from an explicit user request.
-- **Zero tier writes without confirmation.** Steps 1–3 derive, judge, and
-  validate; nothing is written to a person's `tier` field until that
-  person is confirmed or adjusted in Step 4. Confirm and adjust are both,
-  at the filing layer, the same event: an explicit user-stated tier value.
+- **Derived tier writes ARE made (plan 31 D5, supersedes the old "zero
+  tier writes without confirmation" rule).** Step 3 derives, judges,
+  validates, and writes both the derived kind and the derived tier for
+  every accepted record — labeled `tier_source: derived` /
+  `kind_source: derived` — with no per-person prompt. A `--source
+  derived` write never overwrites a `tier_source: stated-by-user` value
+  (`person-set-tier.sh` exits `2`, logged "kept stated," not an error).
+  Step 4 is a correction digest, not a confirm gate: a correction is, at
+  the filing layer, an explicit user-stated tier/kind value, and it
+  always outranks whatever step 3 derived.
 - **Stated kinds are never overwritten.** A person whose current
   `kind_source: stated-by-user` is still judged (a warrant/tier suggestion
   may still be offered), but the judgment record's `kind` field must equal
@@ -47,11 +54,15 @@ onboarding seed (`skills/onboarding-seed/`) itself.
   "dormant" used as a verdict. A low-warrant or dormant suggestion is a
   neutral read of observed behavior, not a judgment on the user or the
   relationship.
-- **One session, no backlog, 20-cap.** All suggestions from a given
-  invocation are batched and presented together, capped at 20; nothing
-  left over is queued for a follow-up prompt. Ending the session mid-batch
-  is treated as a skip for everyone not yet acted on — never resurfaced
-  automatically.
+- **One session, no backlog, 20-cap.** All derived writes from a given
+  invocation happen together (step 3, before presentation); the
+  correction digest (step 4) shows at most 20 lines, ordered
+  `attention_warrant` descending then `days_since_last` ascending then
+  slug ascending — people beyond the cap are already derived-written,
+  simply not digested this run, never queued for a follow-up prompt.
+  Ending the session mid-digest changes nothing already written; nothing
+  is resurfaced automatically except via a later `--all` /
+  `--include-skipped` invocation.
 - **The 2026-08-29 all-skip onboarding batch** (and any other skipped
   batch) is re-presented only via `--all` or `--include-skipped` — this
   flow never re-prompts on its own.
@@ -59,7 +70,7 @@ onboarding seed (`skills/onboarding-seed/`) itself.
 ## Invocation & flags
 
 ```
-review tiers [--all | --unkinded | --person <slug>] [--include-skipped] [--rescale] [--today <YYYY-MM-DD>]
+review tiers [--all | --unkinded | --person <slug>] [--include-skipped] [--rescale] [--confirm-model] [--today <YYYY-MM-DD>]
 ```
 
 - `--all` — widen scope to every person in the store with at least one
@@ -78,18 +89,49 @@ review tiers [--all | --unkinded | --person <slug>] [--include-skipped] [--resca
 - `--today <YYYY-MM-DD>` — override "today" for every script this flow
   invokes (tests only; default omitted, letting each script use its own
   `date -u +%Y-%m-%d` default).
+- `--confirm-model` — run the confirm dialogue (below) regardless of the
+  user-model's current status, and only that dialogue; it does not also
+  run steps 2–4. This is the sole way this flow ever writes `status:
+  confirmed` — the default path (no flag) never asks and never confirms,
+  it only ever adopts `provisional`.
 
-## Step 1 — gate on the user model
+## Step 1 — gate on the user model (cold-start adoption, plan 31 D6)
 
-Nothing else in this flow proceeds while `<store>/user-model.md` is
-absent or `status: draft`.
+Default path (no `--confirm-model` flag): **no dialogue, ever.** If
+`<store>/user-model.md` is absent or `status: draft`:
 
 ```sh
 bash packages/ingestion/scripts/derive-user-model.sh <store> --today <today>
 ```
 
-If this writes (or the existing file already is) `status: draft`, run the
-confirm dialogue now:
+then set `status: provisional` on that file in place (this skill edits
+the frontmatter directly — `derive-user-model.sh` never writes
+`provisional` itself): `revision` stays `0`, `provenance` stays
+`observed-from-behavior`, `derived_at: <today>`. No question is asked.
+Then:
+
+```sh
+bash packages/core/scripts/validate-store.sh <store>
+bash packages/attention/scripts/calibrate.sh --seed-from-user-model <store>
+```
+
+`calibrate.sh` is attention's script — invoked here, never edited
+(single-writer rule: `ranking-weights.json` stays attention's alone).
+`--seed-from-user-model` accepts `confirmed` or `provisional`. If
+`--seed-from-user-model` isn't available yet, log `seed: skipped
+(calibrate.sh --seed-from-user-model unavailable)` and continue — Step
+3's priors then simply read every `kinds.*`/`evidence.*` weight as its
+1.0 default (absent key).
+
+If `user-model.md` was already `status: provisional` or `status:
+confirmed` when this step started, skip straight to Step 2 — no
+re-derive, no dialogue, no re-seed.
+
+### `--confirm-model` mode
+
+Only when the user explicitly invokes `review tiers --confirm-model` does
+this flow run the confirm dialogue below. This mode runs **only** this
+dialogue — it does not also run Steps 2–4 in the same invocation.
 
 1. Show the user the `## Revealed vs stated` block's `revealed
    (observed-from-behavior):` lines verbatim (the five axis shares, the
@@ -99,37 +141,15 @@ confirm dialogue now:
    initialized weight/rationale or replace it; same for `## Protected
    time` and `## Season` (both start empty — invite freeform text, with
    the optional trailing `until: <YYYY-MM-DD>` on Season).
-3. On confirmation, write the file directly (this skill edits the
-   frontmatter/body in place — `derive-user-model.sh` never writes
-   `status: confirmed` itself): set `status: confirmed`, `provenance:
-   stated-by-user`, `confirmed_at: <today>`, bump `revision` (0→1 the
-   first time; +1 on every subsequent reconfirm). The revealed block is
-   never overwritten or removed — it stays labeled
-   `revealed (observed-from-behavior)` for audit; only the `##
-   Investment mix` lines above it become the confirmed source of truth.
-4. Validate the write:
-
-   ```sh
-   bash packages/core/scripts/validate-store.sh <store>
-   ```
-
-5. Seed priors from the freshly-confirmed model:
-
-   ```sh
-   bash packages/attention/scripts/calibrate.sh --seed-from-user-model <store>
-   ```
-
-   `calibrate.sh` is attention's script — invoked here, never edited
-   (single-writer rule: `ranking-weights.json` stays attention's alone).
-   If `--seed-from-user-model` isn't available yet (this flag lands with
-   attention's own plan-30 unit, which may not have shipped when this flow
-   first runs), log `seed: skipped (calibrate.sh --seed-from-user-model
-   unavailable)` and continue — Step 3's priors then simply read every
-   `kinds.*`/`evidence.*` weight as its 1.0 default (absent key).
-
-If `user-model.md` was already `status: confirmed` when this step started,
-skip the confirm dialogue and the seed call entirely — proceed straight to
-Step 2.
+3. On confirmation, write the file directly: set `status: confirmed`,
+   `provenance: stated-by-user`, `confirmed_at: <today>`, bump `revision`
+   (0→1 the first time; +1 on every subsequent reconfirm). The revealed
+   block is never overwritten or removed — it stays labeled `revealed
+   (observed-from-behavior)` for audit; only the `## Investment mix`
+   lines above it become the confirmed source of truth.
+4. Validate the write (`validate-store.sh <store>`) and re-run
+   `calibrate.sh --seed-from-user-model <store>` so priors reflect the
+   newly-confirmed model.
 
 ## Step 2 — prepare priors
 
@@ -198,9 +218,9 @@ two ever disagree, `specs/review-tiers.md` wins):
 ```
 Inputs, in order:
 
-1. The confirmed user-model file verbatim (data/store/user-model.md,
-   status: confirmed only — per contracts/user-model.md's pairing rule
-   and "drafts are never read by judgment").
+1. The user-model file verbatim (data/store/user-model.md, status:
+   confirmed or provisional — never draft — per contracts/user-model.md's
+   pairing rule and "drafts are never read by judgment").
 
 2. The priors block: ranking-weights.json's `kinds` and `evidence`
    entries (contracts/ranking-weights.md 1.1.0), each key's weight
@@ -283,9 +303,36 @@ bash packages/core/scripts/person-set-kind.sh <store> <slug> \
 
 A person whose current `kind_source` is already `stated-by-user` gets no
 `person-set-kind.sh` call here at all (their `kind` field is untouched
-until/unless Step 4's confirm/adjust explicitly restates it).
+until/unless a later correction explicitly restates it).
 
-## Step 4 — skew check + present
+**Derived tier writes (plan 31 D5)** — immediately after the kind write,
+for every accepted record carrying a non-null `suggested_tier`:
+
+```sh
+bash packages/core/scripts/person-set-tier.sh <store> <slug> \
+  --tier <suggested_tier> --source derived --today <today>
+```
+
+A `--source derived` write never overwrites `tier_source:
+stated-by-user` — `person-set-tier.sh` exits `2` in that case; treat
+exit `2` as "kept stated," not an error, and log `tier: kept stated
+(<slug>)` (no retry, no error surfaced to the user; the person's
+existing stated tier is left byte-identical). Every judgment record
+appended to the run artifact — whether its tier write succeeded or was
+kept-stated — carries `tier_source: derived`, since the record itself is
+always this flow's derived *suggestion*, never a user statement; a
+record must never carry `tier_source: stated-by-user` (that value can
+only ever land on `people/<slug>.md` via an explicit user correction,
+never via this judgment artifact). `check-judgment.sh`'s
+`tier-source-invalid` check enforces this shape.
+
+## Step 4 — skew check + correction digest (plan 31 D5)
+
+By the time this step runs, Step 3 has already written every accepted
+record's derived kind and derived tier (or logged "kept stated" where a
+stated value blocked the write). Nothing below is gated on a per-person
+answer — this step only checks for skew, then shows what was already
+written.
 
 ```sh
 bash packages/ingestion/scripts/rescale-scores.sh <data-dir>/ingestion/review-judgments/<today>.jsonl --report
@@ -307,70 +354,67 @@ prompt now, replace the batch:
 bash packages/ingestion/scripts/rescale-scores.sh <data-dir>/ingestion/review-judgments/<today>.jsonl --rescale --today <today>
 ```
 
-and append `| rescaled: <from>→<to>` (using that record's `rescaled_from`
-and its new `attention_warrant`) to each of that record's breakdown
-strings below. A batch shown without `--rescale` never carries this
-segment. `--rescale` is never auto-applied on a skewed batch that the user
-hasn't explicitly authorized (at invocation or in this prompt).
+and append `· rescaled: <from>→<to>` (using that record's `rescaled_from`
+and its new `attention_warrant`) to that record's digest line below. A
+digest shown without `--rescale` never carries this segment. `--rescale`
+is never auto-applied on a skewed batch that the user hasn't explicitly
+authorized (at invocation or in this prompt).
 
-Build each presented person's breakdown string exactly per
-`relationship-scoring.md`'s `## Breakdown string`:
+Build the **correction digest**: one line per person judged this run,
+capped at 20, ordered `attention_warrant` descending, then
+`days_since_last` ascending, then slug ascending:
 
 ```
-warrant: <0-100> | kind: <kind> (<kind_source>[, expires <date>]) — <kind_note ≤80c> | evidence: touchpoints=<n> median_gap_days=<n> days_since_last=<n> meetings=<n> chat_days=<n> participation=<v> | priors: user-model.<axis>=<w> (rev <n>[, protected]) kinds.<kind>=<w> evidence.<used keys>=<w> [| neighbors: [[slug]] (<kind>[, <tier>], confirmed) ...] | rationale: <text> | suggested: <tier>
+<slug>: tier <t> (derived) · kind <k> (derived) — <one-clause rationale>
 ```
 
-omitting the `neighbors:` segment entirely when embeddings were
-unavailable for that person (record `embeddings: unavailable` in the run
-summary instead — see Step 5).
+with the trailing line `… and N more (see people/)` when the judged
+batch exceeds 20 — the remainder is never queued for a follow-up prompt,
+it is simply already on disk in `people/`, derived and inspectable
+directly. A person whose tier or kind stayed stated (Step 3 logged "kept
+stated") is shown with `(stated)` in place of `(derived)` for that
+field. Use the `<one-clause rationale>` from that person's judgment
+record's `rationale` field, trimmed to one clause. Never frame a
+low-warrant, dormant, expired, or no-rhythm line as a verdict — use the
+neutral wording ("scheduling contact — event passed"), never
+"neglected."
 
-**Present at most 20** records, ordered `attention_warrant` descending,
-then `days_since_last` ascending, then slug ascending — records beyond
-the cap are left untouched exactly like a skip, not queued for later.
-Never frame a low-warrant, dormant, expired, or no-rhythm suggestion as a
-verdict — use the neutral wording above ("scheduling contact — event
-passed"), never "neglected."
-
-Per person, one of three explicit actions:
-
-- **Confirm** — accept the suggested kind and/or tier as-is.
-- **Adjust** — pick a different kind and/or a different tier value (not
-  restricted to an adjacent one; the suggestion is a starting point, not a
-  constraint).
-- **Skip** — no write for this person, this pass.
-
-Confirm or adjust writes, in this order:
+**Framing binding: nothing in this digest needs an answer.** Say so
+explicitly in the session (e.g. "nothing here needs a response — correct
+anything now or later"). The user may correct any line now, in this same
+session, or at any later time — there is no window that closes. A
+correction ("`<slug>` is close" / "no tier for `<slug>`") is written, in
+this order:
 
 1. The tier, via `specs/stated-preference-filing.md` (a).2 — the same
    unambiguous existing-person frontmatter `tier` overwrite
-   `onboarding-seed` uses (every presented slug already resolved out of
+   `onboarding-seed` uses (every digested slug already resolved out of
    `stats.json`/`people/`, never free text; (a).4's new-person flow only
-   applies as a fallback if a presented slug's person file is somehow
+   applies as a fallback if a digested slug's person file is somehow
    missing at write time).
 2. The kind, via:
 
    ```sh
    bash packages/core/scripts/person-set-kind.sh <store> <slug> \
-     --kind <confirmed-or-adjusted-kind> --note <note> \
+     --kind <corrected-kind> --note <note> \
      --source stated-by-user --today <today>
    ```
 
-   — overriding any `derived` kind Step 3 may have written for that
-   person, since an explicit confirm/adjust is now a user statement.
+   — overriding any `derived` kind Step 3 wrote for that person, since a
+   correction is now a user statement.
 
-Skip appends one line to the skip ledger (sole writer this skill,
-append-only, tab-separated):
+A stated value always outranks a derived one, now and on every future
+derived pass. **Never enumerate excluded people** — people outside this
+run's scope (skip-ledger, beyond the 20-cap, or out of the resolved
+`--all`/`--unkinded`/`--person` scope) are not named or counted
+individually in the digest or its summary.
 
-```
-<data-dir>/ingestion/review-skips.log
-```
-
-format: `<slug>\t<ISO 8601 Z>`.
-
-Ending the session mid-batch is a skip for every not-yet-acted-on person
-in this pass — never logged (only an explicit skip action writes a skip
-ledger line), never resurfaced automatically (only `--all` /
-`--include-skipped` re-admits them on a later, explicit invocation).
+The skip ledger (`data/ingestion/review-skips.log`) is read-only history
+under this flow — this step appends no new lines to it, since every
+in-scope person now gets a derived write (or a "kept stated" log line)
+rather than a per-person skip action. It is still consulted (via
+`--include-skipped`) to exclude people carried over from the
+2026-08-29 pre-plan-31 all-skip batch and any other legacy entries.
 
 ## Step 5 — close
 
@@ -385,15 +429,13 @@ bash packages/core/scripts/validate-store.sh <store>
   normally; `nearest-confirmed.sh <store> <slug> --k 3` is called per
   in-scope person and its neighbor line (`most similar confirmed people:
   [[slug]] (<kind>[, <tier>]), ...`) is included in the judgment prompt
-  (input 3d) and, when non-empty, in the presented breakdown string's
-  `| neighbors: ...` segment.
+  (input 3d).
 - **Embeddings unavailable:** any of `embed-people.sh`, `cluster-people.sh`,
   or `nearest-confirmed.sh` printing `embeddings: unavailable` means the
   judgment prompt's neighbor line becomes the literal `neighbors: none
-  (embeddings unavailable)` for every affected person, the presented
-  breakdown string omits its `| neighbors: ...` segment entirely, and the
-  Step 5 summary records `embeddings: unavailable` — the flow never stalls
-  or errors on this condition, it degrades exactly as each script's own
+  (embeddings unavailable)` for every affected person, and the Step 5
+  summary records `embeddings: unavailable` — the flow never stalls or
+  errors on this condition, it degrades exactly as each script's own
   usage header documents.
 
 ## Summary
@@ -401,13 +443,16 @@ bash packages/core/scripts/validate-store.sh <store>
 End with a short summary, counts only (no per-person callouts of
 skipped/excluded people, per the no-guilt rule):
 
-- Whether the user-model gate was already confirmed, or was confirmed in
-  this session (and, if so, the new `revision` number).
+- Whether the user model was already `provisional`/`confirmed`, or was
+  freshly adopted `provisional` in this session (or, under
+  `--confirm-model`, freshly `confirmed` and the new `revision` number).
 - Scope resolved (flag used, count of people in scope, count excluded by
   the skip ledger unless `--include-skipped`).
 - Embeddings available or not (`embeddings: unavailable` if so).
 - How many records were judged, how many rejected-then-retried, how many
   ended up presented as `kind: unknown` after a failed retry.
+- How many derived kind/tier writes succeeded, how many were "kept
+  stated" (no write, existing stated value untouched).
 - Skew: `yes`/`no`, and whether `--rescale` was applied.
-- How many presented (capped at 20 if more cleared), how many
-  confirmed / adjusted / skipped in this session.
+- How many people were digested (capped at 20 if more cleared), how many
+  corrections were made in this session (before or after the digest).

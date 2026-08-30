@@ -61,8 +61,9 @@ attention-merge).
   writer, three modes: ordinary sweep mode aggregates `wakeups/` outcome history into
   bounded per-signal-type and per-tag adjustments (calibration mechanics specced by a
   sibling unit, not this file), carrying `kinds`/`evidence` forward unchanged;
-  `--seed-from-user-model` seeds `kinds`/`evidence` from the confirmed
-  `user-model.md` (`specs/calibration.md` "Seeding from user-model"); `--rescale
+  `--seed-from-user-model` seeds `kinds`/`evidence` from `user-model.md` when
+  `status` is `confirmed` or `provisional` (`specs/calibration.md` "Seeding
+  from user-model"; plan 31 D6); `--rescale
   <dimension>` geometric-mean renormalizes one dimension in place (`specs/
   calibration.md` "Rescale"). The latter two are user-invoked only, never part of
   the sweep pipeline.
@@ -118,10 +119,12 @@ attention-merge).
 - `user-model@^1` (core) — read-only, **confirmed only**: the `tier-drift` judgment
   pass reads `data/store/user-model.md` for its axis/protected-time priors when
   `status: confirmed` (absent or `status: draft` → judge without user-model priors,
-  disclosed as `user-model: none` in the breakdown string); `scripts/calibrate.sh
-  --seed-from-user-model` reads it to seed `ranking-weights.json`'s `kinds`/
-  `evidence` dimensions, refusing (exit 3) on anything but `confirmed`. Attention
-  never writes `user-model.md`.
+  disclosed as `user-model: none` in the breakdown string; provisional is also
+  treated as not-yet-confirmed here — the drift judgment keeps the stricter
+  gate); `scripts/calibrate.sh --seed-from-user-model` reads it to seed
+  `ranking-weights.json`'s `kinds`/`evidence` dimensions, accepting `confirmed`
+  or `provisional` and refusing (exit 3) on anything else (plan 31 D6).
+  Attention never writes `user-model.md`.
 - `relationship-scoring@^1` (core) — the kind vocabulary, judgment record shape, and
   breakdown-string format the `tier-drift` step's prefilter and judgment pass
   transcribe from and produce, per `specs/tier-drift.md`.

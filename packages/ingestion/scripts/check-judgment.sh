@@ -46,6 +46,11 @@
 #                            slug's evidence carries kind_source:
 #                            stated-by-user with a non-null kind that
 #                            differs from this record's kind
+#   tier-source-invalid     tier_source, when present, must be exactly
+#                            "derived" — a judgment record (this flow's
+#                            model-emitted suggestion) may never claim
+#                            tier_source: stated-by-user (plan 31 D5); the
+#                            field is optional (absent = ok, no opinion)
 #
 # --evidence <evidence.jsonl>  derive-evidence.sh's JSON-lines output
 # (slug-keyed records; touchpoints and kind/kind_source are read from it
@@ -173,6 +178,8 @@ def check($rec; $today; $evmap; $has_evidence):
     then "reject:expired-nonzero"
     elif $has_evidence and ($evmap[$rec.slug]?.kind_source == "stated-by-user") and ($evmap[$rec.slug].kind != null) and ($evmap[$rec.slug].kind != $rec.kind)
     then "reject:stated-kind-changed"
+    elif ($rec.tier_source? != null) and ($rec.tier_source != "derived")
+    then "reject:tier-source-invalid"
     else "ok"
     end;
 

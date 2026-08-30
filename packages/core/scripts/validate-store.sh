@@ -30,25 +30,29 @@
 #      present without `kind: event-proposal` is an error; a non-null
 #      `created-event-id` requires both a non-null `confirmed-on` and
 #      `kind: event-proposal`.
-#   8. person.md 1.1.0 kind fields (optional, plan 30): when `kind` is
-#      present it must be one of the D3 vocabulary
+#   8. person.md accepts schema_version 1.0.0, 1.1.0, and 1.2.0. 1.1.0 kind
+#      fields (optional, plan 30): when `kind` is present it must be one of
+#      the D3 vocabulary
 #      (friend/family/collaborator/professional/community/scheduling/
 #      transactional/unsolicited/unknown); `kind_note`, `kind_source`
 #      (stated-by-user|derived), and `kind_updated` (YYYY-MM-DD) must then
 #      be present and non-empty; `kind_expires`, if present, must be
 #      YYYY-MM-DD; `kind: scheduling` requires `kind_expires`. Any
-#      `kind_*` field present without `kind` is an error.
+#      `kind_*` field present without `kind` is an error. 1.2.0 `tier_source`
+#      (optional, plan 31 D4): when present, `tier` must also be present
+#      (else an error), and `tier_source` must be `derived` or
+#      `stated-by-user`.
 #   9. `user-model.md` (singleton, optional — absence is not an error, per
 #      `contracts/user-model.md`): frontmatter parseable; `schema_version`
-#      present; `status` in draft|confirmed; `provenance` in
-#      observed-from-behavior|stated-by-user; pairing (draft <=>
-#      observed-from-behavior + confirmed_at: null; confirmed <=>
-#      stated-by-user + confirmed_at a date); `revision` a non-negative
-#      integer; `derived_at` a date; only the four fixed `## ` sections, in
-#      order (Investment mix, Protected time, Season, Revealed vs stated);
-#      `## Investment mix` has exactly the five axis lines
-#      (business/friends/family/community/transactional), each with a
-#      weight in [0, 1].
+#      present; `status` in draft|provisional|confirmed (plan 31 D6 adds
+#      `provisional`); `provenance` in observed-from-behavior|stated-by-user;
+#      pairing (draft or provisional <=> observed-from-behavior +
+#      confirmed_at: null; confirmed <=> stated-by-user + confirmed_at a
+#      date); `revision` a non-negative integer; `derived_at` a date; only
+#      the four fixed `## ` sections, in order (Investment mix, Protected
+#      time, Season, Revealed vs stated); `## Investment mix` has exactly
+#      the five axis lines (business/friends/family/community/
+#      transactional), each with a weight in [0, 1].
 #  10. `index/embeddings.jsonl` (optional, per `contracts/embeddings-index.md`):
 #      each non-empty line must be valid JSON with a `slug` resolving to
 #      people/<slug>.md, a non-empty `model`, an integer `dims` > 0, a
@@ -298,7 +302,11 @@ if [ -d "$store_dir/people" ]; then
         fm_body_end=$((fm_end - 1))
         check_frontmatter_lines_parseable "$f" "$fm_start" "$fm_body_end"
 
-        require_field "$f" "$fm_start" "$fm_body_end" "schema_version" > /dev/null
+        person_sv_line=$(require_field "$f" "$fm_start" "$fm_body_end" "schema_version")
+        if [ -n "$person_sv_line" ]; then
+            person_sv_val=$(scalar_value "$f" "$person_sv_line" "schema_version")
+            check_enum "$f" "$person_sv_line" "schema_version" "$person_sv_val" "1\.0\.0|1\.1\.0|1\.2\.0"
+        fi
         name_line=$(require_field "$f" "$fm_start" "$fm_body_end" "name")
 
         if [ -n "$name_line" ]; then
@@ -311,6 +319,17 @@ if [ -d "$store_dir/people" ]; then
         if [ -n "$tier_line" ]; then
             tier_val=$(scalar_value "$f" "$tier_line" "tier")
             check_enum "$f" "$tier_line" "tier" "$tier_val" "inner-circle|close|active|dormant"
+        fi
+
+        # --- person.md 1.2.0 tier_source (optional, plan 31 D4) ---
+        tier_source_line=$(find_field_line "$f" "$fm_start" "$fm_body_end" "tier_source")
+        if [ -n "$tier_source_line" ]; then
+            if [ -z "$tier_line" ]; then
+                report "$f" "$tier_source_line" "tier_source is set without tier"
+            else
+                tier_source_val=$(scalar_value "$f" "$tier_source_line" "tier_source")
+                check_enum "$f" "$tier_source_line" "tier_source" "$tier_source_val" "derived|stated-by-user"
+            fi
         fi
 
         # --- person.md 1.1.0 kind fields (optional, plan 30) ---
@@ -502,7 +521,7 @@ if [ -f "$store_dir/user-model.md" ]; then
         status_val=""
         if [ -n "$status_line" ]; then
             status_val=$(scalar_value "$f" "$status_line" "status")
-            check_enum "$f" "$status_line" "status" "$status_val" "draft|confirmed"
+            check_enum "$f" "$status_line" "status" "$status_val" "draft|provisional|confirmed"
         fi
 
         provenance_line=$(require_field "$f" "$fm_start" "$fm_body_end" "provenance")
@@ -519,12 +538,12 @@ if [ -f "$store_dir/user-model.md" ]; then
         fi
 
         if [ -n "$status_line" ] && [ -n "$provenance_line" ] && [ -n "$confirmed_at_line" ]; then
-            if [ "$status_val" = "draft" ]; then
+            if [ "$status_val" = "draft" ] || [ "$status_val" = "provisional" ]; then
                 if [ "$provenance_val" != "observed-from-behavior" ]; then
-                    report "$f" "$status_line" "status: draft requires provenance: observed-from-behavior (found '${provenance_val}')"
+                    report "$f" "$status_line" "status: ${status_val} requires provenance: observed-from-behavior (found '${provenance_val}')"
                 fi
                 if [ "$confirmed_at_val" != "null" ]; then
-                    report "$f" "$confirmed_at_line" "status: draft requires confirmed_at: null (found '${confirmed_at_val}')"
+                    report "$f" "$confirmed_at_line" "status: ${status_val} requires confirmed_at: null (found '${confirmed_at_val}')"
                 fi
             elif [ "$status_val" = "confirmed" ]; then
                 if [ "$provenance_val" != "stated-by-user" ]; then

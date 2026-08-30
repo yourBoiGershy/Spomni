@@ -12,8 +12,10 @@ nothing.
 ## Provides
 
 - Contracts (semver'd, each with a `schema_version`): `contracts/capture-event.md`,
-  `contracts/person.md` (1.1.0 — optional `kind`/`kind_note`/`kind_source`/
-  `kind_expires`/`kind_updated`, per plan 30), `contracts/interaction.md`,
+  `contracts/person.md` (1.2.0 — `tier_source` provenance field alongside
+  `tier`, derived writes never overwrite a stated tier, per plan 31; 1.1.0 —
+  optional `kind`/`kind_note`/`kind_source`/`kind_expires`/`kind_updated`,
+  per plan 30), `contracts/interaction.md`,
   `contracts/signal-event.md`,
   `contracts/wakeup.md` (1.2.0 — `kind`/`proposed-event`/`confirmed-on`/
   `created-event-id` event-proposal additions, per plan 21; 1.1.0 added
@@ -35,9 +37,12 @@ nothing.
   `contracts/import-pipeline.md` (the five-stage fetch/normalize/triage/
   judgment/file pipeline spanning connectors + ingestion, per plan 26),
   `contracts/user-model.md` (`data/store/user-model.md`, the user's
-  relationship-investment model — draft→confirmed lifecycle, per plan 30),
-  `contracts/relationship-scoring.md` (kind vocabulary, judgment record,
-  priors, breakdown string, drift prefilter, warrant rescale, per plan 30),
+  relationship-investment model — draft→provisional/confirmed lifecycle,
+  per plan 30; 1.1.0 — `status: provisional` cold-start auto-adopt value,
+  per plan 31), `contracts/relationship-scoring.md` (kind vocabulary,
+  judgment record, priors, breakdown string, drift prefilter, warrant
+  rescale, per plan 30; 2.0.0 — unconfirmed tier writes are always
+  `tier_source: derived`, per plan 31),
   `contracts/embeddings-index.md` (`<store>/index/embeddings.jsonl`, local
   optional embeddings, per plan 30),
   `contracts/week-plan.md` (`signals/week-plan.json`, the capacity-model
@@ -50,8 +55,9 @@ nothing.
   1.1.0 `kind`/`kind_source`/`kind_expires` columns when present, per plan 30),
   `scripts/build-stats.sh` (people/ + interactions/ → stats.json, per
   `contracts/derived-index.md`), `scripts/validate-store.sh` (also validates
-  person.md 1.1.0 kind fields, the optional `user-model.md` singleton, and the
-  optional `index/embeddings.jsonl` incl. unit-norm vectors, per plan 30),
+  person.md 1.1.0 kind fields and 1.2.0 `tier_source`, the optional
+  `user-model.md` singleton incl. `status: provisional`, and the optional
+  `index/embeddings.jsonl` incl. unit-norm vectors, per plans 30 and 31),
   `scripts/init-store.sh` (idempotent store layout creation +
   README.md + index/stats + validate, refuses the code checkout itself),
   `scripts/check-store-location.sh` (flags a store-dir inside the code
@@ -63,6 +69,9 @@ nothing.
   `scripts/person-set-kind.sh` (the one sanctioned way ingestion writes the
   five `kind*` person.md frontmatter fields — derived writes never overwrite
   a stated kind, per plan 30),
+  `scripts/person-set-tier.sh` (the one sanctioned way ingestion writes
+  `tier`/`tier_source` — derived writes never overwrite a stated tier;
+  `--clear` only from `stated-by-user`, per plan 31),
   `scripts/demo-store.sh` (materializes `fixtures/store/`'s 30 synthetic people
   into a runnable demo store — index/stats built, validated, self-describing
   `DEMO-STORE.md`; lets a stranger try the assistant without any real account),
@@ -110,3 +119,7 @@ plan 30 (docs/plans/2026-08-29-30-semantic-scoring-user-model.md).
 `contracts/relationship-scoring.md`, and `contracts/embeddings-index.md`
 by plan 30 (docs/plans/2026-08-29-30-semantic-scoring-user-model.md).
 `contracts/week-plan.md` by plan 12 (docs/plans/2026-08-29-12-cadence-capacity.md).
+The `person.md` 1.2.0 `tier_source` field, `scripts/person-set-tier.sh`, the
+`user-model.md` 1.1.0 `provisional` status, and the `relationship-scoring.md`
+2.0.0 derived-tier-write rule are by plan 31
+(docs/plans/2026-08-30-31-deterministic-filing-cold-start-priors.md).

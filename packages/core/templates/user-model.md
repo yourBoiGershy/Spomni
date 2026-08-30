@@ -1,6 +1,9 @@
 ---
-schema_version: 1.0.0
+schema_version: 1.1.0
 status: draft
+# status: provisional is the cold-start auto-adopt value (plan 31 D6) —
+# same fields as draft, but consumed like confirmed until the user runs
+# /review-tiers --confirm-model.
 derived_at:
 confirmed_at: null
 revision: 0

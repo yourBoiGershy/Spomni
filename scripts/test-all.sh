@@ -23,6 +23,7 @@ packages/connectors/tests/run-scheduler-tests.sh
 packages/ingestion/tests/run-seed-tests.sh
 packages/ingestion/tests/run-triage-tests.sh
 packages/ingestion/tests/run-shard-tests.sh
+packages/ingestion/tests/run-structured-tests.sh
 packages/ingestion/tests/run-scoring-tests.sh
 packages/attention/tests/run-attention-tests.sh
 packages/attention/tests/run-capacity-tests.sh

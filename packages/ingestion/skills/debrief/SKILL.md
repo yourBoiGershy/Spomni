@@ -81,6 +81,17 @@ batch pass to populate `triage-held.log` with the current inbox's
 deterministic junk holds — batch mode itself must not spend judgment
 re-deciding a class of event triage has already, conservatively, held out.
 
+**Structured events are pre-filed, not re-filed.** When
+`packages/ingestion/scripts/file-structured.sh` has already run over this
+`inbox/` (plan 31, `specs/structured-filing.md`), the events it filed are
+already in `data/ingestion/debrief-filed.log` — the same shared ledger
+this mode checks above — so batch mode naturally skips them without any
+special-casing. `data/ingestion/structured-held.log` (that script's D3
+hold ledger — an ambiguous name hint, or an email with no name and no
+existing person) is **not** an exclusion list: those ids are ordinary,
+unfiled debrief input and this mode files them normally like any other
+event.
+
 ### Shard mode
 
 Given a shard file path (one `inbox/` capture-id per line, as emitted by
