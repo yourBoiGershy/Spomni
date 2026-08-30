@@ -52,9 +52,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# mtime_epoch <file> — portable (BSD/GNU) mtime as an epoch integer.
+# mtime_epoch <file> — portable (GNU/BSD) mtime as an epoch integer. GNU
+# stat's `-c '%Y'` form is tried first: on BSD stat, `-c` is not a
+# recognized option and it exits non-zero with an error to stderr, so the
+# fallback correctly engages. The reverse order is NOT safe: BSD's
+# `-f '%m'` form passed to GNU stat is silently accepted as GNU's
+# "-f = filesystem status" flag with %m as an unrecognized token — it
+# exits 0 printing a garbled multi-line "File: ..." block instead of
+# failing, so a `-f`-first / `-c`-fallback chain never reaches the GNU
+# branch on Linux (the CI failure this fixes).
 mtime_epoch() {
-  stat -f '%m' "$1" 2>/dev/null || stat -c '%Y' "$1" 2>/dev/null
+  stat -c '%Y' "$1" 2>/dev/null || stat -f '%m' "$1" 2>/dev/null
 }
 
 # =============================================================================

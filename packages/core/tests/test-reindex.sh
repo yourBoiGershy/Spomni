@@ -40,6 +40,16 @@ summary_and_exit() {
   fi
 }
 
+# Portable mtime-in-epoch-seconds: try GNU coreutils form first (`-c`) --
+# BSD/macOS stat rejects `-c` with a clean "illegal option" exit failure,
+# so the `||` correctly falls through to the BSD form (`-f '%m'`). The
+# reverse order is NOT safe: GNU stat's `-f` flag means "filesystem status"
+# (not file status) and exits 0 while printing the wrong thing, so it
+# never trips the `||` fallback on Linux.
+mtime() {
+  stat -c '%Y' "$1" 2>/dev/null || stat -f '%m' "$1" 2>/dev/null
+}
+
 # --- reindex.sh must exist ---
 if [ ! -f "$REINDEX" ]; then
   echo "SKIP: $REINDEX not found — cannot run reindex.sh golden test yet."
@@ -117,13 +127,19 @@ fi
 #     interactions/
 # =====================================================================
 
-newest_source_mtime="$(find "$TMP_STORE/people" "$TMP_STORE/interactions" -type f -name '*.md' -exec stat -f '%m' {} \; 2>/dev/null | sort -n | tail -1)"
-if [ -z "$newest_source_mtime" ]; then
-  newest_source_mtime="$(find "$TMP_STORE/people" "$TMP_STORE/interactions" -type f -name '*.md' -exec stat -c '%Y' {} \; 2>/dev/null | sort -n | tail -1)"
-fi
+newest_source_mtime=""
+source_files="$(find "$TMP_STORE/people" "$TMP_STORE/interactions" -type f -name '*.md' 2>/dev/null)"
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  m="$(mtime "$f")"
+  [ -z "$m" ] && continue
+  if [ -z "$newest_source_mtime" ] || [ "$m" -gt "$newest_source_mtime" ]; then
+    newest_source_mtime="$m"
+  fi
+done <<< "$source_files"
 
-index_mtime="$(stat -f '%m' "$TMP_STORE/index.json" 2>/dev/null || stat -c '%Y' "$TMP_STORE/index.json" 2>/dev/null)"
-stats_mtime="$(stat -f '%m' "$TMP_STORE/stats.json" 2>/dev/null || stat -c '%Y' "$TMP_STORE/stats.json" 2>/dev/null)"
+index_mtime="$(mtime "$TMP_STORE/index.json")"
+stats_mtime="$(mtime "$TMP_STORE/stats.json")"
 
 if [ -n "$newest_source_mtime" ] && [ -n "$index_mtime" ] && [ "$index_mtime" -ge "$newest_source_mtime" ]; then
   pass "index.json mtime >= newest mtime under people/+interactions/"
