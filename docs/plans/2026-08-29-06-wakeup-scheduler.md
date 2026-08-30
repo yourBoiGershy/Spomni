@@ -1,5 +1,5 @@
 # Plan 06: Wake-up scheduler (the heartbeat)
-Status: Ready
+Status: Done (2026-08-30, chunk-06-wakeup-scheduler — all 6 units; Wave C checker PASS after one doc fix (event-confirm skill re-pointed to wakeup-queue.sh); queue suite 48 green, attention 17, capacity 18. Found+fixed a BSD `date -vNd` set-vs-add bug in date arithmetic. Residual: un-debriefed mention verified by gate logic (≥3 give entries), not by a delivered mention — lands with plan 07)
 Package: attention (queue/sweeps half; detection/ranking is Plan 05, same package)
 Depends-on: 01; integrates 02, 04, 05 sweeps
 
