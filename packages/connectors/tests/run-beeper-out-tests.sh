@@ -20,6 +20,12 @@
 #      send-failed.
 #   7. --reminder posts a second request to /v1/chats/1/reminders with
 #      .reminder.remindAt set.
+#   9. --notify-reminder, stub GET returns {"reminder":null} -> POST to
+#      /reminders with remindAt ~ now, "reminder set at=<iso>".
+#  10. --notify-reminder, stub GET returns a future remindAt -> no POST,
+#      "reminder kept (user) at=<iso>".
+#  11. --notify-reminder, stub GET returns a PAST remindAt -> POST
+#      (replaced), "reminder set at=<iso>".
 #
 # bash 3.2 portable (no associative arrays, no mapfile, no ${var,,}) — must
 # run under macOS's stock /bin/bash. Same pass/fail/SUMMARY style as
@@ -168,8 +174,11 @@ case "$path" in
   */reminders)
     cat "$STUB_REMINDER_FIXTURE"
     ;;
-  *)
+  */messages)
     cat "$STUB_SEND_FIXTURE"
+    ;;
+  *)
+    cat "$STUB_CHAT_FIXTURE"
     ;;
 esac
 EOF
@@ -391,6 +400,95 @@ assert_eq "template comment guard: exit 0" "$t8_rc" "0"
 assert_eq "template comment guard: prints sent chat=1" "$t8_out" "sent chat=1 message_id=msg-123"
 assert_eq "template comment guard: exactly one HTTP call" "$(call_count "$t8_log")" "1"
 assert_eq "template comment guard: POST to /v1/chats/1/messages" "$(awk '{print $1, $2}' "$t8_log")" "POST /v1/chats/1/messages"
+
+# =============================================================================
+# 9. --notify-reminder, stub GET returns {"reminder":null} -> POST to
+#    /reminders with remindAt ~ now.
+# =============================================================================
+
+t9_store="$(make_root notify-null 1)"
+t9_log="$SANDBOX/notify-null/stub.log"
+
+t9_out="$(
+  export STUB_LOG="$t9_log"
+  export STUB_CHAT_FIXTURE="$FIXTURES_DIR/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$FIXTURES_DIR/send-ok.json"
+  BEEPER_HTTP_STUB="$recording_stub" "$SEND_SCRIPT" "$t9_store" --notify-reminder
+)"
+t9_rc=$?
+
+assert_eq "notify-reminder null: exit 0" "$t9_rc" "0"
+assert_eq "notify-reminder null: two HTTP calls" "$(grep -c . "$t9_log" 2>/dev/null)" "2"
+assert_eq "notify-reminder null: first call is GET /v1/chats/1" "$(sed -n '1p' "$t9_log" | awk '{print $1, $2}')" "GET /v1/chats/1"
+assert_eq "notify-reminder null: second call is the reminders POST" "$(sed -n '2p' "$t9_log" | awk '{print $1, $2}')" "POST /v1/chats/1/reminders"
+
+case "$t9_out" in
+  "reminder set at="*) pass "notify-reminder null: prints reminder set" ;;
+  *) fail "notify-reminder null: prints reminder set (got [$t9_out])" ;;
+esac
+
+t9_remind_at="${t9_out#reminder set at=}"
+t9_epoch="$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$t9_remind_at" +%s 2>/dev/null || date -u -d "$t9_remind_at" +%s 2>/dev/null)"
+t9_now_epoch="$(date -u +%s)"
+if [ -n "$t9_epoch" ]; then
+  t9_diff=$((t9_now_epoch - t9_epoch))
+  [ "$t9_diff" -lt 0 ] && t9_diff=$((-t9_diff))
+  if [ "$t9_diff" -le 60 ]; then
+    pass "notify-reminder null: remindAt is within the last minute"
+  else
+    fail "notify-reminder null: remindAt is within the last minute (diff=${t9_diff}s)"
+  fi
+else
+  fail "notify-reminder null: remindAt parses as a valid ISO timestamp (got [$t9_remind_at])"
+fi
+
+t9_reminder_body="$(sed -n '2p' "$t9_log" | sed 's/^POST \/v1\/chats\/1\/reminders //')"
+t9_body_remind_at="$(printf '%s' "$t9_reminder_body" | jq -r '.reminder.remindAt')"
+assert_eq "notify-reminder null: POST body remindAt matches printed value" "$t9_body_remind_at" "$t9_remind_at"
+
+# =============================================================================
+# 10. --notify-reminder, stub GET returns a future remindAt -> no POST,
+#     "reminder kept (user) at=<iso>".
+# =============================================================================
+
+t10_store="$(make_root notify-future 1)"
+t10_log="$SANDBOX/notify-future/stub.log"
+
+t10_out="$(
+  export STUB_LOG="$t10_log"
+  export STUB_CHAT_FIXTURE="$FIXTURES_DIR/chat-reminder-future.json"
+  BEEPER_HTTP_STUB="$recording_stub" "$SEND_SCRIPT" "$t10_store" --notify-reminder
+)"
+t10_rc=$?
+
+assert_eq "notify-reminder future: exit 0" "$t10_rc" "0"
+assert_eq "notify-reminder future: exactly one HTTP call (GET only)" "$(grep -c . "$t10_log" 2>/dev/null)" "1"
+assert_eq "notify-reminder future: call is GET /v1/chats/1" "$(awk '{print $1, $2}' "$t10_log")" "GET /v1/chats/1"
+assert_eq "notify-reminder future: prints reminder kept (user)" "$t10_out" "reminder kept (user) at=2026-09-03T13:00:00.000Z"
+
+# =============================================================================
+# 11. --notify-reminder, stub GET returns a PAST remindAt -> POST (replaced),
+#     "reminder set at=<iso>".
+# =============================================================================
+
+t11_store="$(make_root notify-past 1)"
+t11_log="$SANDBOX/notify-past/stub.log"
+
+t11_out="$(
+  export STUB_LOG="$t11_log"
+  export STUB_CHAT_FIXTURE="$FIXTURES_DIR/chat-reminder-past.json"
+  export STUB_REMINDER_FIXTURE="$FIXTURES_DIR/send-ok.json"
+  BEEPER_HTTP_STUB="$recording_stub" "$SEND_SCRIPT" "$t11_store" --notify-reminder
+)"
+t11_rc=$?
+
+assert_eq "notify-reminder past: exit 0" "$t11_rc" "0"
+assert_eq "notify-reminder past: two HTTP calls (GET + replacing POST)" "$(grep -c . "$t11_log" 2>/dev/null)" "2"
+assert_eq "notify-reminder past: second call is the reminders POST" "$(sed -n '2p' "$t11_log" | awk '{print $1, $2}')" "POST /v1/chats/1/reminders"
+case "$t11_out" in
+  "reminder set at="*) pass "notify-reminder past: prints reminder set (replaced)" ;;
+  *) fail "notify-reminder past: prints reminder set (replaced) (got [$t11_out])" ;;
+esac
 
 # =============================================================================
 # summary

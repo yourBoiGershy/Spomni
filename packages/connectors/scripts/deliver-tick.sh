@@ -83,6 +83,14 @@
 #      exit to 1 like a failed batch send). The final summary line gets a
 #      trailing `drafts=<k>` counting every draft that reached a terminal
 #      non-failed state this run.
+#   7. Reminder (plan 33 D5b): after the batch loop and the draft loop, if
+#      at least one beeper-self send succeeded this tick (batch or draft),
+#      call beeper-send.sh once (not per message) with `--notify-reminder
+#      --private-data-root <p>` so the note-to-self chat's reminder rings —
+#      Beeper never notifies on the user's own outgoing message, only the
+#      chat reminder does. Its stdout line is logged prefixed `deliver: `.
+#      A non-zero exit is logged `deliver: reminder failed (exit n)` and
+#      does NOT change the tick's own exit status.
 #
 # jq resolution: launchd's PATH is the minimal
 # /usr/bin:/bin:/usr/sbin:/sbin, which usually has no jq. Resolve it via
@@ -421,6 +429,7 @@ done < "$NEW_TMP"
 # the outbox audit trail via file-out.sh first, regardless of channel.
 # ---------------------------------------------------------------------------
 DRAFT_DONE_COUNT=0
+DRAFT_SENT_COUNT=0
 
 while IFS= read -r dname; do
   [ -z "$dname" ] && continue
@@ -455,6 +464,7 @@ while IFS= read -r dname; do
               printf '%s\t%s\t%s\t%s\n' "$dname" "draft:beeper-self" "$ts" "$message_id" >> "$DELIVERED_LOG"
               echo "deliver: draft sent ${dname}"
               DRAFT_DONE_COUNT=$((DRAFT_DONE_COUNT + 1))
+              DRAFT_SENT_COUNT=$((DRAFT_SENT_COUNT + 1))
               ;;
             *)
               echo "deliver: draft send-failed ${dname}: ${send_out}"
@@ -485,6 +495,25 @@ while IFS= read -r dname; do
       ;;
   esac
 done < "$DRAFT_NEW_TMP"
+
+# ---------------------------------------------------------------------------
+# Step 7: reminder (plan 33 D5b). A post to the note-to-self chat is the
+# user's own outgoing message — Beeper never notifies on it, only the chat
+# reminder rings. Once per tick (not per message), only when at least one
+# beeper-self send succeeded this tick.
+# ---------------------------------------------------------------------------
+if [ $((SENT_COUNT + DRAFT_SENT_COUNT)) -gt 0 ]; then
+  reminder_args=("$STORE_DIR_ABS" --notify-reminder)
+  [ -n "$PRIVATE_DATA_ROOT" ] && reminder_args=("${reminder_args[@]}" --private-data-root "$PRIVATE_DATA_ROOT")
+
+  reminder_out="$("$BEEPER_SEND_SCRIPT" "${reminder_args[@]}" 2>"$ERR_TMP")"
+  reminder_rc=$?
+  if [ "$reminder_rc" -eq 0 ]; then
+    echo "deliver: ${reminder_out}"
+  else
+    echo "deliver: reminder failed (exit ${reminder_rc})"
+  fi
+fi
 
 echo "deliver: done sent=${SENT_COUNT} outbox=${OUTBOX_COUNT} pending=${PENDING_COUNT} held=${HELD_COUNT} drafts=${DRAFT_DONE_COUNT}"
 

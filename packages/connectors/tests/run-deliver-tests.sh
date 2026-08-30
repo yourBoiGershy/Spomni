@@ -33,6 +33,12 @@
 #      line, deliver-tick exits 1; a later successful run then delivers it.
 #  11. file-out.sh: two batches filed the same day produce two `## <batch>`
 #      sections in the same outbox file.
+#  12-15. Template comment guard, on-demand drafts (send/rerun/quiet-hours/
+#      gmail-self).
+#  16. Reminder (plan 33 D5b): a successful beeper-self batch send triggers
+#      exactly one post-tick `--notify-reminder` call — no user reminder set
+#      -> one /reminders POST; a user-set future reminder -> GET only, "
+#      deliver: reminder kept (user)" logged, zero /reminders POSTs.
 #
 # bash 3.2 portable (no associative arrays, no mapfile, no ${var,,}). Never
 # edits the shipped scripts — only reads them, plus test-local sandbox
@@ -188,9 +194,32 @@ method="$1"
 path="$2"
 body="$3"
 [ -n "${STUB_LOG:-}" ] && printf '%s %s %s\n' "$method" "$path" "$body" >> "$STUB_LOG"
-cat "$STUB_SEND_FIXTURE"
+case "$path" in
+  */reminders)
+    cat "$STUB_REMINDER_FIXTURE"
+    ;;
+  */messages)
+    cat "$STUB_SEND_FIXTURE"
+    ;;
+  *)
+    cat "$STUB_CHAT_FIXTURE"
+    ;;
+esac
 EOF
 chmod +x "$recording_stub"
+
+# messages_post_count/reminders_post_count <log> — number of calls whose
+# path targets /messages or /reminders respectively (deliver-tick's own
+# beeper-self send vs. the post-tick --notify-reminder call, distinguished
+# from the reminder-check GET which also hits the log).
+messages_post_count() {
+  [ -f "$1" ] || { echo 0; return; }
+  awk '$1 == "POST" && $2 ~ /\/messages$/' "$1" | wc -l | tr -d ' '
+}
+reminders_post_count() {
+  [ -f "$1" ] || { echo 0; return; }
+  awk '$1 == "POST" && $2 ~ /\/reminders$/' "$1" | wc -l | tr -d ' '
+}
 
 # --- failing stub: logs the call, prints an error body, exits non-zero
 # (curl-style transport failure). ---
@@ -248,6 +277,8 @@ t1_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t1_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t1_store" --today 2026-08-30 --now 09:00
 )"
 t1_rc=$?
@@ -255,8 +286,10 @@ t1_rc=$?
 assert_eq "first run: exit 0" "$t1_rc" "0"
 assert_contains "first run: channel=beeper-self printed" "$t1_out" "deliver: channel=beeper-self"
 assert_contains "first run: summary sent=1" "$t1_out" "deliver: done sent=1 outbox=0 pending=0 held=0"
-assert_eq "first run: exactly one POST" "$(call_count "$t1_log")" "1"
-assert_eq "first run: POST to /v1/chats/1/messages" "$(awk '{print $1, $2}' "$t1_log")" "POST /v1/chats/1/messages"
+assert_eq "first run: one messages POST" "$(messages_post_count "$t1_log")" "1"
+assert_eq "first run: exactly one /reminders POST" "$(reminders_post_count "$t1_log")" "1"
+assert_eq "first run: POST to /v1/chats/1/messages" "$(awk '$1=="POST" && $2 ~ /\/messages$/ {print $1, $2}' "$t1_log")" "POST /v1/chats/1/messages"
+assert_contains "first run: reminder line logged" "$t1_out" "deliver: reminder set at="
 
 t1_delivered="$t1_store/outbox/delivered.log"
 assert_eq "first run: delivered.log has one line" "$(call_count "$t1_delivered")" "1"
@@ -282,6 +315,8 @@ t2_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t2_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t1_store" --today 2026-08-30 --now 09:00
 )"
 t2_rc=$?
@@ -310,6 +345,8 @@ t3a_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t3a_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t3_store" --today 2026-08-30 --now 23:30
 )"
 assert_contains "quiet hours 23:30: hold line" "$t3a_out" "deliver: quiet-hours hold n=1"
@@ -321,6 +358,8 @@ t3b_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t3b_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t3_store" --today 2026-08-30 --now 07:30
 )"
 assert_contains "quiet hours 07:30: hold line" "$t3b_out" "deliver: quiet-hours hold n=1"
@@ -332,10 +371,13 @@ t3c_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t3c_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t3_store" --today 2026-08-30 --now 09:00
 )"
 assert_contains "09:00: sends (not held)" "$t3c_out" "deliver: done sent=1 outbox=0 pending=0 held=0"
-assert_eq "09:00: exactly one POST" "$(call_count "$t3c_log")" "1"
+assert_eq "09:00: one messages POST" "$(messages_post_count "$t3c_log")" "1"
+assert_eq "09:00: one reminders POST" "$(reminders_post_count "$t3c_log")" "1"
 assert_eq "09:00: delivered.log has one line" "$(call_count "$t3_delivered")" "1"
 
 # =============================================================================
@@ -355,6 +397,8 @@ t4_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t4_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t4_store" --today 2026-08-30 --now 09:00
 )"
 
@@ -397,6 +441,8 @@ t6_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t6_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t6_store" --today 2026-08-30 --now 09:00
 )"
 
@@ -419,6 +465,8 @@ t7_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t7_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t7_store" --today 2026-08-30 --now 09:00
 )"
 
@@ -444,6 +492,8 @@ t8_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t8_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t8_store" --today 2026-08-30 --now 09:00
 )"
 
@@ -502,13 +552,16 @@ t10b_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t10b_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t10_store" --today 2026-08-30 --now 09:00
 )"
 t10b_rc=$?
 
 assert_eq "send-failed retry: exit 0" "$t10b_rc" "0"
 assert_contains "send-failed retry: sends" "$t10b_out" "deliver: done sent=1 outbox=0 pending=0 held=0"
-assert_eq "send-failed retry: one POST" "$(call_count "$t10b_log")" "1"
+assert_eq "send-failed retry: one messages POST" "$(messages_post_count "$t10b_log")" "1"
+assert_eq "send-failed retry: one reminders POST" "$(reminders_post_count "$t10b_log")" "1"
 assert_eq "send-failed retry: delivered.log now has one line" "$(call_count "$t10_delivered")" "1"
 
 # =============================================================================
@@ -555,12 +608,15 @@ t12_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t12_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t12_store" --today 2026-08-30 --now 09:00
 )"
 
 assert_contains "template comment guard: channel=beeper-self" "$t12_out" "deliver: channel=beeper-self"
-assert_eq "template comment guard: exactly one POST" "$(call_count "$t12_log")" "1"
-assert_eq "template comment guard: POST to /v1/chats/1/messages" "$(awk '{print $1, $2}' "$t12_log")" "POST /v1/chats/1/messages"
+assert_eq "template comment guard: one messages POST" "$(messages_post_count "$t12_log")" "1"
+assert_eq "template comment guard: one reminders POST" "$(reminders_post_count "$t12_log")" "1"
+assert_eq "template comment guard: POST to /v1/chats/1/messages" "$(awk '$1=="POST" && $2 ~ /\/messages$/ {print $1, $2}' "$t12_log")" "POST /v1/chats/1/messages"
 
 # =============================================================================
 # 13. Draft file + beeper-self: one POST whose body starts with
@@ -581,6 +637,8 @@ t13_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t13_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t13_store" --today 2026-08-30 --now 09:00
 )"
 t13_rc=$?
@@ -588,8 +646,9 @@ t13_rc=$?
 assert_eq "draft first run: exit 0" "$t13_rc" "0"
 assert_contains "draft first run: draft sent line" "$t13_out" "deliver: draft sent 2026-08-30T130000Z-batch.json-1-draft.txt"
 assert_contains "draft first run: summary drafts=1" "$t13_out" "drafts=1"
-assert_eq "draft first run: exactly one POST" "$(call_count "$t13_log")" "1"
-t13_json="$(sed -e 's|^POST /v1/chats/1/messages ||' "$t13_log")"
+assert_eq "draft first run: one messages POST" "$(messages_post_count "$t13_log")" "1"
+assert_eq "draft first run: one reminders POST" "$(reminders_post_count "$t13_log")" "1"
+t13_json="$(grep '^POST /v1/chats/1/messages ' "$t13_log" | sed -e 's|^POST /v1/chats/1/messages ||')"
 t13_text="$(printf '%s' "$t13_json" | jq -r '.text')"
 case "$t13_text" in
   "Draft (unsent):"*) pass "draft first run: POST body .text starts with Draft (unsent):" ;;
@@ -610,6 +669,8 @@ t13b_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t13b_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t13_store" --today 2026-08-30 --now 09:00
 )"
 assert_eq "draft rerun: nothing new" "$t13b_out" "deliver: nothing new"
@@ -635,6 +696,8 @@ t14_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t14_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t14_store" --today 2026-08-30 --now 23:30
 )"
 assert_contains "draft quiet hours: hold line" "$t14_out" "deliver: quiet-hours hold n=1"
@@ -646,10 +709,13 @@ t14b_out="$(
   export BEEPER_HTTP_STUB="$recording_stub"
   export STUB_LOG="$t14b_log"
   export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-null.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
   "$DELIVER_SCRIPT" "$t14_store" --today 2026-08-30 --now 09:00
 )"
 assert_contains "draft quiet hours: 09:00 sends" "$t14b_out" "drafts=1"
-assert_eq "draft quiet hours: 09:00 one POST" "$(call_count "$t14b_log")" "1"
+assert_eq "draft quiet hours: 09:00 one messages POST" "$(messages_post_count "$t14b_log")" "1"
+assert_eq "draft quiet hours: 09:00 one reminders POST" "$(reminders_post_count "$t14b_log")" "1"
 
 # =============================================================================
 # 15. Draft file + gmail-self: pending file exists, no delivered.log line.
@@ -667,6 +733,37 @@ assert_contains "draft gmail-self: pending line" "$t15_out" "deliver: draft pend
 assert_eq "draft gmail-self: pending file exists" "$([ -f "$t15_store/outbox/pending-gmail/2026-08-30T130000Z-batch.json-1-draft.txt.txt" ] && echo yes || echo no)" "yes"
 t15_delivered="$t15_store/outbox/delivered.log"
 assert_eq "draft gmail-self: no delivered.log line" "$(call_count "$t15_delivered")" "0"
+
+# =============================================================================
+# 16. Reminder kept (user): the chat already has a user-set future reminder
+#     (plan 33 D5b) -> after a successful batch send, the GET fires but no
+#     /reminders POST does; log line "deliver: reminder kept (user) at=...".
+# =============================================================================
+
+t16_store="$(make_store t16)"
+t16_root="$(cd "$t16_store/../.." && pwd)"
+enable_beeper "$t16_root"
+write_profile "$t16_store" "- **[stated-by-user]** channel: beeper-self (2026-08-30)
+- **[stated-by-user]** beeper_chat_id: 1 (2026-08-30)"
+place_batch "$t16_store" "2026-08-30T130000Z-batch.json"
+t16_log="$SANDBOX/t16/stub.log"
+mkdir -p "$SANDBOX/t16"
+
+t16_out="$(
+  export BEEPER_HTTP_STUB="$recording_stub"
+  export STUB_LOG="$t16_log"
+  export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  export STUB_CHAT_FIXTURE="$BEEPER_OUT_FIXTURES/chat-reminder-future.json"
+  export STUB_REMINDER_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  "$DELIVER_SCRIPT" "$t16_store" --today 2026-08-30 --now 09:00
+)"
+t16_rc=$?
+
+assert_eq "reminder kept: exit 0" "$t16_rc" "0"
+assert_contains "reminder kept: summary sent=1" "$t16_out" "deliver: done sent=1 outbox=0 pending=0 held=0"
+assert_eq "reminder kept: one messages POST" "$(messages_post_count "$t16_log")" "1"
+assert_eq "reminder kept: zero reminders POST" "$(reminders_post_count "$t16_log")" "0"
+assert_contains "reminder kept: log line" "$t16_out" "deliver: reminder kept (user) at=2026-09-03T13:00:00.000Z"
 
 # =============================================================================
 # summary

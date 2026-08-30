@@ -2,8 +2,11 @@
 # beeper-send.sh — the self-only Beeper send lane.
 #
 # Usage:
-#   beeper-send.sh <store-dir> --text-file <f> [--chat-id <id>]
-#                  [--reminder <iso>] [--private-data-root <p>]
+#   beeper-send.sh <store-dir> [--text-file <f>] [--chat-id <id>]
+#                  [--reminder <iso>] [--notify-reminder [--reminder-at <iso>]]
+#                  [--private-data-root <p>]
+#
+# At least one of --text-file / --notify-reminder is required.
 #
 # Posts the contents of <f> (a rendered nudge, already drafted by another
 # package) as a text message to the user's own Beeper "Note to self" chat,
@@ -36,12 +39,22 @@
 #      non-success response)
 #
 # --reminder <iso>: after a successful send, also POST a reminder for the
-# same chat at the given ISO-8601 timestamp. The Reminder POST body shape
-# below is NOT recorded in beeper-in/api-notes.md (that file only covers
-# the read-only surface this package's sibling uses) — verify live before
-# relying on it in production; the shape used here is Beeper's documented
-# `{"reminder":{"remindAt":"<iso>"}}` convention, unverified against a live
-# instance by this unit.
+# same chat at the given ISO-8601 timestamp (explicit set, no keep-check).
+# The Reminder POST body shape below is Beeper's documented
+# `{"reminder":{"remindAt":"<iso>"}}` convention — verified live 2026-08-30
+# (plan 33 D5b): `GET /v1/chats/{id}` returns
+# `{"reminder":{"remindAt":"<iso>","dismissOnIncomingMessage":false}, ...}`
+# (or `reminder: null`); one reminder per chat, a new POST replaces it.
+#
+# --notify-reminder: a post to the note-to-self chat is the user's own
+# outgoing message, so Beeper never notifies on it — the only thing that
+# rings is the chat reminder (plan 33 D5b). GET the chat's current reminder;
+# if it has a `remindAt` later than now (UTC) — i.e. the user set their own
+# future reminder — leave it alone and print "reminder kept (user)
+# at=<iso>". Otherwise (no reminder, or one already in the past) POST a new
+# reminder at now (UTC), or at --reminder-at <iso> if given, and print
+# "reminder set at=<iso>". Independent of --text-file: usable standalone
+# (deliver-tick.sh's post-tick call) or alongside a send.
 #
 # Portable to bash 3.2 (macOS default): no associative arrays, no mapfile.
 
@@ -59,7 +72,7 @@ OUT_LIB="${SCRIPT_DIR}/lib.sh"
 . "$OUT_LIB"
 
 usage() {
-  echo "usage: beeper-send.sh <store-dir> --text-file <f> [--chat-id <id>] [--reminder <iso>] [--private-data-root <p>]" >&2
+  echo "usage: beeper-send.sh <store-dir> [--text-file <f>] [--chat-id <id>] [--reminder <iso>] [--notify-reminder [--reminder-at <iso>]] [--private-data-root <p>]" >&2
   exit 1
 }
 
@@ -70,6 +83,8 @@ shift
 TEXT_FILE=""
 CHAT_ID_ARG=""
 REMINDER_ISO=""
+NOTIFY_REMINDER=""
+REMINDER_AT_ARG=""
 PRIVATE_DATA_ROOT=""
 
 while [ $# -gt 0 ]; do
@@ -86,6 +101,14 @@ while [ $# -gt 0 ]; do
       REMINDER_ISO="${2:-}"
       shift 2
       ;;
+    --notify-reminder)
+      NOTIFY_REMINDER=1
+      shift
+      ;;
+    --reminder-at)
+      REMINDER_AT_ARG="${2:-}"
+      shift 2
+      ;;
     --private-data-root)
       PRIVATE_DATA_ROOT="${2:-}"
       shift 2
@@ -96,8 +119,10 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -z "$TEXT_FILE" ] && usage
-if [ ! -f "$TEXT_FILE" ]; then
+if [ -z "$TEXT_FILE" ] && [ -z "$NOTIFY_REMINDER" ]; then
+  usage
+fi
+if [ -n "$TEXT_FILE" ] && [ ! -f "$TEXT_FILE" ]; then
   echo "beeper-send: no such text file: ${TEXT_FILE}" >&2
   exit 1
 fi
@@ -166,53 +191,120 @@ fi
 CHAT_ID="$RESOLVED_CHAT_ID"
 ENCODED_CHAT_ID="$(beeper_urlencode "$CHAT_ID")"
 
-# ---------------------------------------------------------------------------
-# Send: POST /v1/chats/<id>/messages {"text": <file contents>}
-# ---------------------------------------------------------------------------
-MESSAGE_TEXT_JSON="$(jq -Rs '.' "$TEXT_FILE")"
-SEND_BODY="$(jq -cn --argjson text "$MESSAGE_TEXT_JSON" '{text: $text}')"
+if [ -n "$TEXT_FILE" ]; then
+  # -------------------------------------------------------------------------
+  # Send: POST /v1/chats/<id>/messages {"text": <file contents>}
+  # -------------------------------------------------------------------------
+  MESSAGE_TEXT_JSON="$(jq -Rs '.' "$TEXT_FILE")"
+  SEND_BODY="$(jq -cn --argjson text "$MESSAGE_TEXT_JSON" '{text: $text}')"
 
-send_resp="$(beeper_post "/v1/chats/${ENCODED_CHAT_ID}/messages" "$SEND_BODY")"
-send_rc=$?
+  send_resp="$(beeper_post "/v1/chats/${ENCODED_CHAT_ID}/messages" "$SEND_BODY")"
+  send_rc=$?
 
-if [ "$send_rc" -ne 0 ] || [ -z "$send_resp" ]; then
-  echo "send-failed chat=${CHAT_ID} reason=transport-error" >&2
-  exit 5
-fi
-
-send_error="$(printf '%s' "$send_resp" | jq -r '.error // .message // empty' 2>/dev/null)"
-if [ -n "$send_error" ]; then
-  echo "send-failed chat=${CHAT_ID} reason=${send_error}" >&2
-  exit 5
-fi
-
-message_id="$(printf '%s' "$send_resp" | jq -r '.id // .messageID // .pendingMessageID // empty' 2>/dev/null)"
-[ -z "$message_id" ] && message_id="-"
-
-echo "sent chat=${CHAT_ID} message_id=${message_id}"
-
-# ---------------------------------------------------------------------------
-# Optional reminder: POST /v1/chats/<id>/reminders
-# {"reminder":{"remindAt":"<iso>"}} — shape unverified against a live
-# instance by this unit; see header note.
-# ---------------------------------------------------------------------------
-if [ -n "$REMINDER_ISO" ]; then
-  REMINDER_BODY="$(jq -cn --arg at "$REMINDER_ISO" '{reminder: {remindAt: $at}}')"
-  reminder_resp="$(beeper_post "/v1/chats/${ENCODED_CHAT_ID}/reminders" "$REMINDER_BODY")"
-  reminder_rc=$?
-
-  if [ "$reminder_rc" -ne 0 ]; then
-    echo "send-failed chat=${CHAT_ID} reason=reminder-transport-error" >&2
+  if [ "$send_rc" -ne 0 ] || [ -z "$send_resp" ]; then
+    echo "send-failed chat=${CHAT_ID} reason=transport-error" >&2
     exit 5
   fi
 
-  reminder_error="$(printf '%s' "$reminder_resp" | jq -r '.error // .message // empty' 2>/dev/null)"
-  if [ -n "$reminder_error" ]; then
-    echo "send-failed chat=${CHAT_ID} reason=reminder-${reminder_error}" >&2
+  send_error="$(printf '%s' "$send_resp" | jq -r '.error // .message // empty' 2>/dev/null)"
+  if [ -n "$send_error" ]; then
+    echo "send-failed chat=${CHAT_ID} reason=${send_error}" >&2
     exit 5
   fi
 
-  echo "reminder chat=${CHAT_ID} at=${REMINDER_ISO}"
+  message_id="$(printf '%s' "$send_resp" | jq -r '.id // .messageID // .pendingMessageID // empty' 2>/dev/null)"
+  [ -z "$message_id" ] && message_id="-"
+
+  echo "sent chat=${CHAT_ID} message_id=${message_id}"
+
+  # -------------------------------------------------------------------------
+  # Optional reminder: POST /v1/chats/<id>/reminders
+  # {"reminder":{"remindAt":"<iso>"}} — explicit set, no keep-check.
+  # -------------------------------------------------------------------------
+  if [ -n "$REMINDER_ISO" ]; then
+    REMINDER_BODY="$(jq -cn --arg at "$REMINDER_ISO" '{reminder: {remindAt: $at}}')"
+    reminder_resp="$(beeper_post "/v1/chats/${ENCODED_CHAT_ID}/reminders" "$REMINDER_BODY")"
+    reminder_rc=$?
+
+    if [ "$reminder_rc" -ne 0 ]; then
+      echo "send-failed chat=${CHAT_ID} reason=reminder-transport-error" >&2
+      exit 5
+    fi
+
+    reminder_error="$(printf '%s' "$reminder_resp" | jq -r '.error // .message // empty' 2>/dev/null)"
+    if [ -n "$reminder_error" ]; then
+      echo "send-failed chat=${CHAT_ID} reason=reminder-${reminder_error}" >&2
+      exit 5
+    fi
+
+    echo "reminder chat=${CHAT_ID} at=${REMINDER_ISO}"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# --notify-reminder: a post to the note-to-self chat is the user's own
+# outgoing message, so Beeper never notifies on it — the only thing that
+# rings is the chat reminder (plan 33 D5b). GET the chat's current reminder
+# first; keep it if the user already set a future one, otherwise (re)set it
+# to now (or --reminder-at, if given). See header note for the verified
+# GET/POST shapes.
+# ---------------------------------------------------------------------------
+if [ -n "$NOTIFY_REMINDER" ]; then
+  chat_resp="$(beeper_get_json "/v1/chats/${ENCODED_CHAT_ID}")"
+  chat_rc=$?
+
+  if [ "$chat_rc" -ne 0 ] || [ -z "$chat_resp" ]; then
+    echo "send-failed chat=${CHAT_ID} reason=reminder-get-transport-error" >&2
+    exit 5
+  fi
+
+  chat_error="$(printf '%s' "$chat_resp" | jq -r '.error // .message // empty' 2>/dev/null)"
+  if [ -n "$chat_error" ]; then
+    echo "send-failed chat=${CHAT_ID} reason=reminder-get-${chat_error}" >&2
+    exit 5
+  fi
+
+  current_remind_at="$(printf '%s' "$chat_resp" | jq -r '.reminder.remindAt // empty' 2>/dev/null)"
+  now_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  target_iso="${REMINDER_AT_ARG:-$now_iso}"
+
+  # iso_to_epoch <iso> — portable ISO-8601 (optionally millisecond-precision,
+  # Z-suffixed) -> epoch seconds, GNU date first then BSD date. Empty output
+  # (no epoch) if unparsable.
+  iso_to_epoch() {
+    stripped="$(printf '%s' "$1" | sed -E 's/\.[0-9]+Z$/Z/')"
+    date -u -d "$stripped" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$stripped" +%s 2>/dev/null
+  }
+
+  KEEP_EXISTING=0
+  if [ -n "$current_remind_at" ]; then
+    current_epoch="$(iso_to_epoch "$current_remind_at")"
+    now_epoch="$(iso_to_epoch "$now_iso")"
+    if [ -n "$current_epoch" ] && [ -n "$now_epoch" ] && [ "$current_epoch" -gt "$now_epoch" ]; then
+      KEEP_EXISTING=1
+    fi
+  fi
+
+  if [ "$KEEP_EXISTING" -eq 1 ]; then
+    echo "reminder kept (user) at=${current_remind_at}"
+  else
+    REMINDER_BODY="$(jq -cn --arg at "$target_iso" '{reminder: {remindAt: $at}}')"
+    reminder_resp="$(beeper_post "/v1/chats/${ENCODED_CHAT_ID}/reminders" "$REMINDER_BODY")"
+    reminder_rc=$?
+
+    if [ "$reminder_rc" -ne 0 ]; then
+      echo "send-failed chat=${CHAT_ID} reason=reminder-transport-error" >&2
+      exit 5
+    fi
+
+    reminder_error="$(printf '%s' "$reminder_resp" | jq -r '.error // .message // empty' 2>/dev/null)"
+    if [ -n "$reminder_error" ]; then
+      echo "send-failed chat=${CHAT_ID} reason=reminder-${reminder_error}" >&2
+      exit 5
+    fi
+
+    echo "reminder set at=${target_iso}"
+  fi
 fi
 
 exit 0
