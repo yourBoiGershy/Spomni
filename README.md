@@ -1,10 +1,18 @@
 # Relationship Agent
 
-An open-source, **local-first personal assistant for maintaining your
-relationships** — business, friends, family. It remembers who people are,
-what happened with them, and why now might be a good moment to reach out
-(a birthday, a job change, an event you'll both attend) — then nudges you
-with context and an optional draft. **It drafts; you send.** Always.
+**What a friendship is made of, without what it costs to keep.**
+
+A relationship is made of trust, care, intent, and time. None of those are
+what makes it hard to keep — what's hard is what a relationship *costs to
+run*: the coordinating, following up, scheduling, restarting, remembering-to.
+None of that adds a gram of trust. Spomni is an open-source, **local-first
+personal assistant** that carries that running cost — business, friends,
+family — and never touches the ingredients. It notices when a moment is good
+(a birthday, a job change, a lull, a promise you made), hands you the
+context and a draft in your voice, and stops. **It drafts; you send.** Always.
+
+The test for every feature: *does it cut a running cost, or substitute for
+an ingredient?* Only the first is ever built (see `docs/USE-CASES.md`).
 
 The design in one line: connectors feed a capture inbox → a filing engine
 builds a markdown people-store → a signal engine finds reasons to reach out →

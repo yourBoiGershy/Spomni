@@ -12,7 +12,9 @@ nothing.
 ## Provides
 
 - Contracts (semver'd, each with a `schema_version`): `contracts/capture-event.md`,
-  `contracts/person.md`, `contracts/interaction.md`, `contracts/signal-event.md`,
+  `contracts/person.md` (1.1.0 — optional `kind`/`kind_note`/`kind_source`/
+  `kind_expires`/`kind_updated`, per plan 30), `contracts/interaction.md`,
+  `contracts/signal-event.md`,
   `contracts/wakeup.md` (1.2.0 — `kind`/`proposed-event`/`confirmed-on`/
   `created-event-id` event-proposal additions, per plan 21; 1.1.0 added
   `fired-on`/`dismiss-reason`/`acted-on`/`snooze-count`, per plan 11),
@@ -20,7 +22,9 @@ nothing.
   `contracts/derived-index.md` (index.json + stats.json), `contracts/profile.md`
   (`data/store/profile.md`, the stated-preference singleton, per plan 11),
   `contracts/ranking-weights.md` (`data/store/ranking-weights.json`, signal-type
-  and tag calibration weights, per plan 11), `contracts/eval-case.md` (the
+  and tag calibration weights, per plan 11) (1.1.0 — `kinds`/`evidence` prior
+  dimensions + first-write seeding and rescale clamp amendments, per plan 30),
+  `contracts/eval-case.md` (the
   `packages/<pkg>/evals/cases/<name>/` format — prompt.md frontmatter,
   graders/ protocol, xfail discipline, suite manifests — per plan 12),
   `contracts/sync-lanes.md` (`<data-dir>/connectors/sync-scheduler/lanes.tsv`, the
@@ -29,9 +33,11 @@ nothing.
   the user-configurable onboarding-backfill window + self-identity config, per
   plan 24),
   `contracts/import-pipeline.md` (the five-stage fetch/normalize/triage/
-  judgment/file pipeline spanning connectors + ingestion, per plan 26)
+  judgment/file pipeline spanning connectors + ingestion, per plan 26),
+  `contracts/user-model.md` (`data/store/user-model.md`, the user's
+  relationship-investment model — draft→confirmed lifecycle, per plan 30)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
-  `templates/profile.md`, `templates/sync-lanes.tsv`
+  `templates/profile.md`, `templates/sync-lanes.tsv`, `templates/user-model.md`
 - Store scripts: `scripts/build-index.sh` (people/ → index.json),
   `scripts/build-stats.sh` (people/ + interactions/ → stats.json, per
   `contracts/derived-index.md`), `scripts/validate-store.sh`, `scripts/wakeup-add.sh`
@@ -74,3 +80,7 @@ event-proposal creation flags are a later work unit of the same plan.
 (docs/plans/2026-08-29-24-onboarding-backfill-priority-seeding.md).
 `contracts/import-pipeline.md` by plan 26
 (docs/plans/2026-08-29-26-standard-import-pipeline.md).
+The `person.md` 1.1.0 kind fields and `ranking-weights.md` 1.1.0 bump are by
+plan 30 (docs/plans/2026-08-29-30-semantic-scoring-user-model.md).
+`contracts/user-model.md` and `templates/user-model.md` by plan 30
+(docs/plans/2026-08-29-30-semantic-scoring-user-model.md).

@@ -2,6 +2,8 @@
 
 Status: Ready
 
+**Mission test.** Cuts *deciding-who* and *timing* — the queue is only as good as its ranking. Nearest ingredient: **intent** — tiers and kinds are derived-and-confirmed, never silently inferred; the user decides who matters. (Decision `mission-ingredients-vs-running-cost`.)
+
 > **Revision 2 (2026-08-29)** — user review redirected three things.
 > (1) Layer 3 is **model judgment with priors, not a formula**: the draft's
 > `R = base × tier_scale`, `S = W_kind × A × E`, and score bands were rigid
