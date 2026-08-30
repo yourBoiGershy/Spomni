@@ -1,0 +1,132 @@
+{
+  "bram-fiske": {
+    "kind": "transactional",
+    "kind_expires": null,
+    "kind_source": "derived",
+    "last-touch": "2026-08-06",
+    "location": null,
+    "org": "Fiske & Co",
+    "role": null,
+    "tags": []
+  },
+  "dex-morrow": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-18",
+    "location": null,
+    "org": "Morrow Growth Partners",
+    "role": null,
+    "tags": []
+  },
+  "hal-torrance": {
+    "kind": "professional",
+    "kind_expires": null,
+    "kind_source": "derived",
+    "last-touch": "2026-07-19",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": [
+      "work"
+    ]
+  },
+  "ines-castellano": {
+    "kind": "collaborator",
+    "kind_expires": null,
+    "kind_source": "derived",
+    "last-touch": "2026-08-27",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": [
+      "work"
+    ]
+  },
+  "june-abernathy": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-24",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": [
+      "family"
+    ]
+  },
+  "mara-quill": {
+    "kind": "friend",
+    "kind_expires": null,
+    "kind_source": "stated-by-user",
+    "last-touch": "2026-08-12",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": [
+      "climbing"
+    ]
+  },
+  "nell-ashby": {
+    "kind": "community",
+    "kind_expires": null,
+    "kind_source": "derived",
+    "last-touch": "2026-08-01",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": []
+  },
+  "otto-brandvold": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-19",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": []
+  },
+  "pip-larkin": {
+    "kind": "scheduling",
+    "kind_expires": "2026-08-20",
+    "kind_source": "derived",
+    "last-touch": "2026-08-16",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": []
+  },
+  "ravi-sundar": {
+    "kind": "friend",
+    "kind_expires": null,
+    "kind_source": "stated-by-user",
+    "last-touch": "2026-08-20",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": [
+      "university"
+    ]
+  },
+  "sol-abernathy": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-22",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": []
+  },
+  "wren-halloway": {
+    "kind": null,
+    "kind_expires": null,
+    "kind_source": null,
+    "last-touch": "2026-08-10",
+    "location": null,
+    "org": null,
+    "role": null,
+    "tags": []
+  }
+}

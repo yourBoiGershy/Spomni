@@ -1,0 +1,648 @@
+{
+  "generated_at": "2026-08-30T03:58:21Z",
+  "people": {
+    "bram-fiske": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-05-05",
+      "interactions": [
+        {
+          "calendar": false,
+          "date": "2026-08-06",
+          "id": "2026-08-06-bram-fiske",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-05-05",
+          "id": "2026-05-05-bram-fiske",
+          "others": []
+        }
+      ],
+      "last_interaction": "2026-08-06",
+      "median_gap_days": 93,
+      "open_threads": 0,
+      "tier": null,
+      "touchpoints": 2
+    },
+    "dex-morrow": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-07-20",
+      "interactions": [
+        {
+          "calendar": false,
+          "date": "2026-08-18",
+          "id": "2026-08-18-dex-morrow",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-03",
+          "id": "2026-08-03-dex-morrow",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-20",
+          "id": "2026-07-20-dex-morrow",
+          "others": []
+        }
+      ],
+      "last_interaction": "2026-08-18",
+      "median_gap_days": 15,
+      "open_threads": 1,
+      "tier": null,
+      "touchpoints": 3
+    },
+    "hal-torrance": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-04-10",
+      "interactions": [
+        {
+          "calendar": false,
+          "date": "2026-07-19",
+          "id": "2026-07-19-hal-torrance",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-04-10",
+          "id": "2026-04-10-hal-torrance",
+          "others": []
+        }
+      ],
+      "last_interaction": "2026-07-19",
+      "median_gap_days": 100,
+      "open_threads": 0,
+      "tier": null,
+      "touchpoints": 2
+    },
+    "ines-castellano": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-08-01",
+      "interactions": [
+        {
+          "calendar": false,
+          "date": "2026-08-27",
+          "id": "2026-08-27-ines-castellano",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-22",
+          "id": "2026-08-22-ines-castellano",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-18",
+          "id": "2026-08-18-ines-castellano",
+          "others": []
+        },
+        {
+          "calendar": true,
+          "date": "2026-08-15",
+          "id": "2026-08-15-ines-castellano",
+          "others": [
+            "mara-quill",
+            "otto-brandvold"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-11",
+          "id": "2026-08-11-ines-castellano",
+          "others": []
+        },
+        {
+          "calendar": true,
+          "date": "2026-08-08",
+          "id": "2026-08-08-ines-castellano",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-04",
+          "id": "2026-08-04-ines-castellano",
+          "others": []
+        },
+        {
+          "calendar": true,
+          "date": "2026-08-01",
+          "id": "2026-08-01-ines-castellano",
+          "others": []
+        }
+      ],
+      "last_interaction": "2026-08-27",
+      "median_gap_days": 4,
+      "open_threads": 1,
+      "tier": null,
+      "touchpoints": 8
+    },
+    "june-abernathy": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-06-15",
+      "interactions": [
+        {
+          "calendar": false,
+          "date": "2026-08-24",
+          "id": "2026-08-24-june-abernathy",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-20",
+          "id": "2026-07-20-june-abernathy",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-06-15",
+          "id": "2026-06-15-june-abernathy",
+          "others": []
+        }
+      ],
+      "last_interaction": "2026-08-24",
+      "median_gap_days": 35,
+      "open_threads": 0,
+      "tier": null,
+      "touchpoints": 3
+    },
+    "mara-quill": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-03-14",
+      "interactions": [
+        {
+          "calendar": true,
+          "date": "2026-08-15",
+          "id": "2026-08-15-ines-castellano",
+          "others": [
+            "ines-castellano",
+            "otto-brandvold"
+          ]
+        },
+        {
+          "calendar": true,
+          "date": "2026-08-12",
+          "id": "2026-08-12-mara-quill",
+          "others": []
+        },
+        {
+          "calendar": true,
+          "date": "2026-07-12",
+          "id": "2026-07-12-mara-quill",
+          "others": []
+        },
+        {
+          "calendar": true,
+          "date": "2026-06-12",
+          "id": "2026-06-12-mara-quill",
+          "others": []
+        },
+        {
+          "calendar": true,
+          "date": "2026-05-13",
+          "id": "2026-05-13-mara-quill",
+          "others": []
+        },
+        {
+          "calendar": true,
+          "date": "2026-04-13",
+          "id": "2026-04-13-mara-quill",
+          "others": []
+        },
+        {
+          "calendar": true,
+          "date": "2026-03-14",
+          "id": "2026-03-14-mara-quill",
+          "others": []
+        }
+      ],
+      "last_interaction": "2026-08-15",
+      "median_gap_days": 30,
+      "open_threads": 2,
+      "tier": "close",
+      "touchpoints": 7
+    },
+    "nell-ashby": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-07-02",
+      "interactions": [
+        {
+          "calendar": false,
+          "date": "2026-08-19",
+          "id": "2026-08-19-otto-brandvold",
+          "others": [
+            "otto-brandvold",
+            "ravi-sundar"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-01",
+          "id": "2026-08-01-otto-brandvold",
+          "others": [
+            "otto-brandvold",
+            "ravi-sundar"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-01",
+          "id": "2026-08-01-nell-ashby",
+          "others": [
+            "otto-brandvold",
+            "ravi-sundar"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-16",
+          "id": "2026-07-16-otto-brandvold",
+          "others": [
+            "otto-brandvold",
+            "ravi-sundar"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-16",
+          "id": "2026-07-16-nell-ashby",
+          "others": [
+            "otto-brandvold",
+            "ravi-sundar"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-02",
+          "id": "2026-07-02-otto-brandvold",
+          "others": [
+            "otto-brandvold",
+            "ravi-sundar"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-02",
+          "id": "2026-07-02-nell-ashby",
+          "others": [
+            "otto-brandvold",
+            "ravi-sundar"
+          ]
+        }
+      ],
+      "last_interaction": "2026-08-19",
+      "median_gap_days": 7,
+      "open_threads": 0,
+      "tier": null,
+      "touchpoints": 7
+    },
+    "otto-brandvold": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-07-02",
+      "interactions": [
+        {
+          "calendar": false,
+          "date": "2026-08-19",
+          "id": "2026-08-19-otto-brandvold",
+          "others": [
+            "nell-ashby",
+            "ravi-sundar"
+          ]
+        },
+        {
+          "calendar": true,
+          "date": "2026-08-15",
+          "id": "2026-08-15-ines-castellano",
+          "others": [
+            "ines-castellano",
+            "mara-quill"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-01",
+          "id": "2026-08-01-otto-brandvold",
+          "others": [
+            "nell-ashby",
+            "ravi-sundar"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-01",
+          "id": "2026-08-01-nell-ashby",
+          "others": [
+            "nell-ashby",
+            "ravi-sundar"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-16",
+          "id": "2026-07-16-otto-brandvold",
+          "others": [
+            "nell-ashby",
+            "ravi-sundar"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-16",
+          "id": "2026-07-16-nell-ashby",
+          "others": [
+            "nell-ashby",
+            "ravi-sundar"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-02",
+          "id": "2026-07-02-otto-brandvold",
+          "others": [
+            "nell-ashby",
+            "ravi-sundar"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-02",
+          "id": "2026-07-02-nell-ashby",
+          "others": [
+            "nell-ashby",
+            "ravi-sundar"
+          ]
+        }
+      ],
+      "last_interaction": "2026-08-19",
+      "median_gap_days": 4,
+      "open_threads": 1,
+      "tier": null,
+      "touchpoints": 8
+    },
+    "pip-larkin": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-08-05",
+      "interactions": [
+        {
+          "calendar": false,
+          "date": "2026-08-16",
+          "id": "2026-08-16-pip-larkin",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-15",
+          "id": "2026-08-15-pip-larkin",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-14",
+          "id": "2026-08-14-pip-larkin",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-12",
+          "id": "2026-08-12-pip-larkin",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-11",
+          "id": "2026-08-11-pip-larkin",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-10",
+          "id": "2026-08-10-pip-larkin",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-08",
+          "id": "2026-08-08-pip-larkin",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-07",
+          "id": "2026-08-07-pip-larkin",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-06",
+          "id": "2026-08-06-pip-larkin",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-05",
+          "id": "2026-08-05-pip-larkin",
+          "others": []
+        }
+      ],
+      "last_interaction": "2026-08-16",
+      "median_gap_days": 1,
+      "open_threads": 1,
+      "tier": null,
+      "touchpoints": 10
+    },
+    "ravi-sundar": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-06-20",
+      "interactions": [
+        {
+          "calendar": false,
+          "date": "2026-08-20",
+          "id": "2026-08-20-ravi-sundar",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-19",
+          "id": "2026-08-19-otto-brandvold",
+          "others": [
+            "otto-brandvold",
+            "nell-ashby"
+          ]
+        },
+        {
+          "calendar": true,
+          "date": "2026-08-15",
+          "id": "2026-08-15-ravi-sundar",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-01",
+          "id": "2026-08-01-otto-brandvold",
+          "others": [
+            "otto-brandvold",
+            "nell-ashby"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-01",
+          "id": "2026-08-01-nell-ashby",
+          "others": [
+            "nell-ashby",
+            "otto-brandvold"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-16",
+          "id": "2026-07-16-otto-brandvold",
+          "others": [
+            "otto-brandvold",
+            "nell-ashby"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-16",
+          "id": "2026-07-16-nell-ashby",
+          "others": [
+            "nell-ashby",
+            "otto-brandvold"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-10",
+          "id": "2026-07-10-ravi-sundar",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-02",
+          "id": "2026-07-02-otto-brandvold",
+          "others": [
+            "otto-brandvold",
+            "nell-ashby"
+          ]
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-02",
+          "id": "2026-07-02-nell-ashby",
+          "others": [
+            "nell-ashby",
+            "otto-brandvold"
+          ]
+        },
+        {
+          "calendar": true,
+          "date": "2026-06-20",
+          "id": "2026-06-20-ravi-sundar",
+          "others": []
+        }
+      ],
+      "last_interaction": "2026-08-20",
+      "median_gap_days": 5,
+      "open_threads": 1,
+      "tier": "inner-circle",
+      "touchpoints": 11
+    },
+    "sol-abernathy": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-06-30",
+      "interactions": [
+        {
+          "calendar": false,
+          "date": "2026-08-22",
+          "id": "2026-08-22-sol-abernathy",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-08-08",
+          "id": "2026-08-08-sol-abernathy",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-25",
+          "id": "2026-07-25-sol-abernathy",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-12",
+          "id": "2026-07-12-sol-abernathy",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-06-30",
+          "id": "2026-06-30-sol-abernathy",
+          "others": []
+        }
+      ],
+      "last_interaction": "2026-08-22",
+      "median_gap_days": 14,
+      "open_threads": 1,
+      "tier": null,
+      "touchpoints": 5
+    },
+    "wren-halloway": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-08-10",
+      "interactions": [
+        {
+          "calendar": false,
+          "date": "2026-08-10",
+          "id": "2026-08-10-wren-halloway",
+          "others": []
+        }
+      ],
+      "last_interaction": "2026-08-10",
+      "median_gap_days": null,
+      "open_threads": 0,
+      "tier": null,
+      "touchpoints": 1
+    }
+  },
+  "schema_version": "1.0.0"
+}
