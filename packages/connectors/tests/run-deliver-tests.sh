@@ -49,6 +49,7 @@ FILE_OUT_SCRIPT="$REPO_ROOT/packages/connectors/file-out/scripts/file-out.sh"
 RENDER_SCRIPT="$REPO_ROOT/packages/core/scripts/render-nudge-cards.sh"
 FIXTURE_BATCH="$REPO_ROOT/packages/core/fixtures/fired-batch/batch.json"
 BEEPER_OUT_FIXTURES="$REPO_ROOT/packages/connectors/beeper-out/fixtures"
+PROFILE_TEMPLATE="$REPO_ROOT/packages/core/templates/profile.md"
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -85,7 +86,7 @@ call_count() {
   grep -c . "$1" 2>/dev/null
 }
 
-for f in "$DELIVER_SCRIPT" "$FILE_OUT_SCRIPT" "$RENDER_SCRIPT" "$FIXTURE_BATCH"; do
+for f in "$DELIVER_SCRIPT" "$FILE_OUT_SCRIPT" "$RENDER_SCRIPT" "$FIXTURE_BATCH" "$PROFILE_TEMPLATE"; do
   if [ ! -f "$f" ]; then
     echo "SKIP: $f not found — cannot run deliver tests yet."
     echo ""
@@ -517,6 +518,37 @@ t11_outbox="$t11_store/outbox/2026-08-30.md"
 assert_eq "file-out: two ## sections in one outbox file" "$(grep -c '^## ' "$t11_outbox")" "2"
 assert_contains "file-out: section a header present" "$(cat "$t11_outbox")" "## batch-a-batch.json"
 assert_contains "file-out: section b header present" "$(cat "$t11_outbox")" "## batch-b-batch.json"
+
+# =============================================================================
+# 12. Template comment lines must never satisfy notify_get: build profile.md
+#     from the template verbatim (its ## Notify comments include a literal
+#     "beeper_chat_id: <id> (<YYYY-MM-DD>)" line) plus real bullets appended
+#     underneath. Must resolve channel=beeper-self / chat 1, exactly one POST
+#     to /v1/chats/1/messages.
+# =============================================================================
+
+t12_store="$(make_store t12)"
+t12_root="$(cd "$t12_store/../.." && pwd)"
+enable_beeper "$t12_root"
+cp "$PROFILE_TEMPLATE" "$t12_store/profile.md"
+cat >> "$t12_store/profile.md" <<'EOF'
+- **[stated-by-user]** channel: beeper-self (2026-08-30)
+- **[stated-by-user]** beeper_chat_id: 1 (2026-08-30)
+EOF
+place_batch "$t12_store" "2026-08-30T130000Z-batch.json"
+t12_log="$SANDBOX/t12/stub.log"
+mkdir -p "$SANDBOX/t12"
+
+t12_out="$(
+  export BEEPER_HTTP_STUB="$recording_stub"
+  export STUB_LOG="$t12_log"
+  export STUB_SEND_FIXTURE="$BEEPER_OUT_FIXTURES/send-ok.json"
+  "$DELIVER_SCRIPT" "$t12_store" --today 2026-08-30 --now 09:00
+)"
+
+assert_contains "template comment guard: channel=beeper-self" "$t12_out" "deliver: channel=beeper-self"
+assert_eq "template comment guard: exactly one POST" "$(call_count "$t12_log")" "1"
+assert_eq "template comment guard: POST to /v1/chats/1/messages" "$(awk '{print $1, $2}' "$t12_log")" "POST /v1/chats/1/messages"
 
 # =============================================================================
 # summary

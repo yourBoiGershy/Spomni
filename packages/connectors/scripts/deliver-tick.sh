@@ -211,7 +211,7 @@ fi
 
 notify_get() {
   key="$1"
-  line="$(printf '%s\n' "$NOTIFY_SECTION" | grep -m1 "${key}:" || true)"
+  line="$(printf '%s\n' "$NOTIFY_SECTION" | grep -m1 -E "^- \\*\\*\\[stated-by-user\\]\\*\\* ${key}:" || true)"
   [ -z "$line" ] && return 1
   printf '%s\n' "$line" | sed -E "s/.*${key}:[[:space:]]*//; s/[[:space:]]*\([0-9-]+\)[[:space:]]*\$//"
 }

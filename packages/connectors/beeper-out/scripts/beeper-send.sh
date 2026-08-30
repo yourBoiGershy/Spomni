@@ -147,7 +147,7 @@ PROFILE_FILE="${STORE_DIR_ABS}/profile.md"
 RESOLVED_CHAT_ID=""
 if [ -f "$PROFILE_FILE" ]; then
   notify_section="$(awk '/^## Notify$/{flag=1;next} /^## /{flag=0} flag' "$PROFILE_FILE")"
-  notify_line="$(printf '%s\n' "$notify_section" | grep -m1 'beeper_chat_id:' || true)"
+  notify_line="$(printf '%s\n' "$notify_section" | grep -m1 -E '^- \*\*\[stated-by-user\]\*\* beeper_chat_id:' || true)"
   if [ -n "$notify_line" ]; then
     RESOLVED_CHAT_ID="$(printf '%s\n' "$notify_line" | sed -E 's/.*beeper_chat_id:[[:space:]]*//; s/[[:space:]]*\([0-9-]+\)[[:space:]]*$//')"
   fi

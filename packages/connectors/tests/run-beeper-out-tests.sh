@@ -33,6 +33,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 SEND_SCRIPT="$REPO_ROOT/packages/connectors/beeper-out/scripts/beeper-send.sh"
 FIXTURES_DIR="$REPO_ROOT/packages/connectors/beeper-out/fixtures"
+PROFILE_TEMPLATE="$REPO_ROOT/packages/core/templates/profile.md"
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -72,6 +73,13 @@ fi
 
 if [ ! -d "$FIXTURES_DIR" ]; then
   echo "FAIL: fixtures dir missing at $FIXTURES_DIR"
+  echo ""
+  echo "SUMMARY: 0 passed, 1 failed"
+  exit 1
+fi
+
+if [ ! -f "$PROFILE_TEMPLATE" ]; then
+  echo "FAIL: profile template missing at $PROFILE_TEMPLATE"
   echo ""
   echo "SUMMARY: 0 passed, 1 failed"
   exit 1
@@ -342,6 +350,47 @@ assert_eq "reminder: second call is the reminders POST" "$(sed -n '2p' "$t7_log"
 t7_reminder_body="$(sed -n '2p' "$t7_log" | sed 's/^POST \/v1\/chats\/1\/reminders //')"
 t7_remind_at="$(printf '%s' "$t7_reminder_body" | jq -r '.reminder.remindAt')"
 assert_eq "reminder: body .reminder.remindAt set" "$t7_remind_at" "2026-09-13T09:00:00Z"
+
+# =============================================================================
+# 8. Template comment lines must never satisfy the beeper_chat_id match:
+#    build profile.md from the template verbatim (its ## Notify comments
+#    include a literal "beeper_chat_id: <id> (<YYYY-MM-DD>)" line) plus a
+#    real bullet appended underneath. Must resolve chat=1, exactly one POST.
+# =============================================================================
+
+t8_root="$SANDBOX/template-guard"
+t8_store_dir="$t8_root/data/store"
+t8_beeper_in_dir="$t8_root/data/connectors/beeper-in"
+mkdir -p "$t8_store_dir" "$t8_beeper_in_dir"
+cat > "$t8_beeper_in_dir/config.json" <<EOF
+{
+  "base_url": "http://127.0.0.1:23373",
+  "enabled_account_ids": ["matrix"]
+}
+EOF
+printf 'test-token-abc\n' > "$t8_beeper_in_dir/token"
+cp "$PROFILE_TEMPLATE" "$t8_store_dir/profile.md"
+cat >> "$t8_store_dir/profile.md" <<'EOF'
+- **[stated-by-user]** beeper_chat_id: 1 (2026-08-30)
+EOF
+t8_store="$t8_store_dir"
+
+t8_text="$SANDBOX/template-guard/nudge.txt"
+printf 'ping\n' > "$t8_text"
+t8_log="$SANDBOX/template-guard/stub.log"
+
+t8_out="$(
+  export STUB_LOG="$t8_log"
+  export STUB_SEND_FIXTURE="$FIXTURES_DIR/send-ok.json"
+  export STUB_REMINDER_FIXTURE="$FIXTURES_DIR/send-ok.json"
+  BEEPER_HTTP_STUB="$recording_stub" "$SEND_SCRIPT" "$t8_store" --text-file "$t8_text"
+)"
+t8_rc=$?
+
+assert_eq "template comment guard: exit 0" "$t8_rc" "0"
+assert_eq "template comment guard: prints sent chat=1" "$t8_out" "sent chat=1 message_id=msg-123"
+assert_eq "template comment guard: exactly one HTTP call" "$(call_count "$t8_log")" "1"
+assert_eq "template comment guard: POST to /v1/chats/1/messages" "$(awk '{print $1, $2}' "$t8_log")" "POST /v1/chats/1/messages"
 
 # =============================================================================
 # summary
