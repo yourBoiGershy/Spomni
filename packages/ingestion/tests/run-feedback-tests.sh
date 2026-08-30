@@ -870,6 +870,49 @@ else
   fail "feedback-to-evals: regenerated grader does not assert dormant"
 fi
 
+# --- --exclude holds a named case out of the suite, removing its dir ---
+out_evals_excl="$("$FEEDBACK_TO_EVALS" "$STORE_EVALS" --data-dir "$DATA_EVALS" --exclude jane-doe-tier-correction 2>&1)"
+status_evals_excl=$?
+if [ "$status_evals_excl" -eq 0 ] && printf '%s' "$out_evals_excl" | grep -q "cases=0 held=1"; then
+  pass "feedback-to-evals: --exclude jane-doe-tier-correction -> cases=0 held=1"
+else
+  fail "feedback-to-evals: --exclude expected exit 0 and cases=0 held=1, got '$out_evals_excl' (exit $status_evals_excl)"
+fi
+if [ ! -d "$CASE_DIR" ]; then
+  pass "feedback-to-evals: --exclude removes the held case's dir"
+else
+  fail "feedback-to-evals: --exclude left the held case's dir in place"
+fi
+suite_case_lines_excl="$(grep -vc '^#' "$SUITE_EVALS" 2>/dev/null)"
+if [ "$suite_case_lines_excl" = "0" ]; then
+  pass "feedback-to-evals: --exclude leaves suite.txt with 0 non-comment lines"
+else
+  fail "feedback-to-evals: --exclude expected 0 non-comment suite.txt lines, got $suite_case_lines_excl"
+fi
+
+# --- re-run without --exclude: the case comes back ---
+out_evals_reincl="$("$FEEDBACK_TO_EVALS" "$STORE_EVALS" --data-dir "$DATA_EVALS" 2>&1)"
+status_evals_reincl=$?
+if [ "$status_evals_reincl" -eq 0 ] && printf '%s' "$out_evals_reincl" | grep -q "cases=1"; then
+  pass "feedback-to-evals: re-run without --exclude -> cases=1"
+else
+  fail "feedback-to-evals: re-run without --exclude expected exit 0 and cases=1, got '$out_evals_reincl' (exit $status_evals_reincl)"
+fi
+if [ -d "$CASE_DIR" ]; then
+  pass "feedback-to-evals: re-run without --exclude restores the case dir"
+else
+  fail "feedback-to-evals: re-run without --exclude did not restore the case dir"
+fi
+
+# --- --exclude with a non-matching case name is a no-op on output shape ---
+out_evals_noexcl="$("$FEEDBACK_TO_EVALS" "$STORE_EVALS" --data-dir "$DATA_EVALS" --exclude some-other-slug-kind-correction 2>&1)"
+status_evals_noexcl=$?
+if [ "$status_evals_noexcl" -eq 0 ] && printf '%s' "$out_evals_noexcl" | grep -q "cases=1" && ! printf '%s' "$out_evals_noexcl" | grep -q "held="; then
+  pass "feedback-to-evals: --exclude with a non-matching name -> cases=1, no held= in output"
+else
+  fail "feedback-to-evals: --exclude non-matching name mismatch, got '$out_evals_noexcl' (exit $status_evals_noexcl)"
+fi
+
 rm -rf "$EVALS_WORKDIR"
 
 fi # FEEDBACK_TO_EVALS exists
