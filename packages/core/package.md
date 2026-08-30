@@ -33,7 +33,9 @@ nothing.
   `packages/<pkg>/evals/cases/<name>/` format — prompt.md frontmatter,
   graders/ protocol, xfail discipline, suite manifests — per plan 12),
   `contracts/sync-lanes.md` (`<data-dir>/connectors/sync-scheduler/lanes.tsv`, the
-  scheduled-syncs runner's lane config, per plan 19),
+  scheduled-syncs runner's lane config, per plan 19; 1.1.0 —
+  `{{REPO_ROOT}}`/`{{DATA_DIR}}`/`{{PRIVATE_DATA_ROOT}}`/`{{STORE_DIR}}`/
+  `{{CLAUDE_BIN}}` command placeholders, expanded per tick, per chunk 40),
   `contracts/onboarding-backfill.md` (`<data-dir>/config/onboarding-backfill.tsv`,
   the user-configurable onboarding-backfill window + self-identity config, per
   plan 24),

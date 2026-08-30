@@ -1,5 +1,11 @@
 # Plan 38 — Retrieval speed: bounded, measured, per surface
 
+> **Consolidation 2026-08-30 (ROADMAP Goal 3).** In progress in worktree
+> `.claude/worktrees/chunk-38-retrieval-speed` (wave 1). This plan **owns every bench**
+> (plan 09's cold-start measurement is a row in `bench-retrieval.sh`) and the
+> `test-all.sh` perf wiring (plan 39 B1 dropped). `reindex.sh` (D1) is the call plan
+> 09's `store-sync commit` makes.
+
 **Status:** proposed 2026-08-30 (baseline measured) · **Branch:** chunk-38-retrieval-speed
 **Workstream:** 4 (Retrieval speed & answers) · **Depends on:** 35 (done); 36 B only for
 the live dedup'd store, not for any unit here · **Unblocks:** 07 brief (inherits a store

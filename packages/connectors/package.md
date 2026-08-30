@@ -56,7 +56,9 @@ window from `<data-dir>/config/onboarding-backfill.tsv` for all lane backfill mo
 
 ## Consumes
 
-- `capture-event@^1`, `connector-interface@^1`, `sync-lanes@^1`,
+- `capture-event@^1`, `connector-interface@^1`, `sync-lanes@^1.1.0` (adds
+  `{{REPO_ROOT}}`/`{{DATA_DIR}}`/`{{PRIVATE_DATA_ROOT}}`/`{{STORE_DIR}}`/
+  `{{CLAUDE_BIN}}` command placeholders, expanded per-tick by `sync-lib.sh`),
   `import-pipeline@^1`, `profile@^1.1` (`## Notify`, read), `nudge-card@^1`
   (core)
 - First-party MCP servers / Claude connectors only (see DECISIONS.md:

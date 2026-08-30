@@ -306,10 +306,11 @@ async function assertionReadOnly() {
       "list_interactions",
       "search_people",
       "suggest_reachouts",
+      "upcoming_meetings",
     ];
     ok(
       JSON.stringify(toolNames) === JSON.stringify(expectedNames),
-      `tools/list returns exactly the six registered tools (got ${JSON.stringify(toolNames)})`,
+      `tools/list returns exactly the seven registered tools (got ${JSON.stringify(toolNames)})`,
     );
 
     // Exercise every registered tool at least once, including error paths.

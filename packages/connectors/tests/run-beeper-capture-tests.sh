@@ -993,8 +993,13 @@ bf2_window_start="$(printf '%s' "$bf2_window_line" | cut -f1)"
 if [ -z "$bf2_window_start" ]; then
   fail "backfill window bound: could not resolve a window start to pin the test to"
 else
-  bf2_in_ts="$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' -v+1d "$bf2_window_start" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null)"
-  bf2_out_ts="$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' -v-1d "$bf2_window_start" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null)"
+  if date -u -d '@0' +%s >/dev/null 2>&1; then
+    bf2_in_ts="$(TZ=UTC date -u -d "$bf2_window_start + 1 day" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null)"
+    bf2_out_ts="$(TZ=UTC date -u -d "$bf2_window_start - 1 day" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null)"
+  else
+    bf2_in_ts="$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' -v+1d "$bf2_window_start" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null)"
+    bf2_out_ts="$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' -v-1d "$bf2_window_start" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null)"
+  fi
 
   bf2_straddle_fixture="$bf2_root/messages-straddle.json"
   cat > "$bf2_straddle_fixture" <<EOF
@@ -1809,6 +1814,145 @@ else
 fi
 
 fi # D6 SWEEP_SCRIPT / NORMALIZE_SCRIPT / RESOLVE_WINDOW_SCRIPT present
+
+# =============================================================================
+# 9. store_dir precedence (plan 40 dynamic sync routing): when config.json
+#    has no store_dir, the sweep falls back to $SPOMNI_STORE_DIR, then to
+#    <data-dir>/../../store (pwd -P). An explicit config store_dir always
+#    wins over $SPOMNI_STORE_DIR. Same route_stub + fixture harness as
+#    section 7, single-account single-chat single-message fixtures so each
+#    run produces exactly one capture.
+# =============================================================================
+
+if [ ! -x "$SWEEP_SCRIPT" ] || [ ! -x "$NORMALIZE_SCRIPT" ]; then
+  fail "store_dir precedence: beeper-sweep.sh or normalize-capture.sh not found/executable — skipping"
+else
+
+# make_beeper_config_no_store_dir <data_dir> <enabled_ids_space_sep> —
+# same as make_beeper_config but omits store_dir entirely from config.json.
+make_beeper_config_no_store_dir() {
+  data_dir="$1"
+  ids="$2"
+  token="e2e-test-token"
+
+  mkdir -p "$data_dir"
+
+  ids_json="[]"
+  if [ -n "$ids" ]; then
+    ids_json="$(printf '%s\n' $ids | jq -R . | jq -sc .)"
+  fi
+
+  cat > "$data_dir/config.json" <<EOF
+{
+  "base_url": "http://127.0.0.1:23373",
+  "enabled_account_ids": $ids_json,
+  "max_chats_per_run": 50,
+  "max_pages_per_chat": 10
+}
+EOF
+
+  printf '%s\n' "$token" > "$data_dir/token"
+}
+
+SD_ROOT="$SANDBOX/store-dir-precedence"
+mkdir -p "$SD_ROOT"
+
+# --- (a) no config store_dir, no env -> defaults to <data-dir>/../../store
+#     via the <root>/data/connectors/beeper-in + <root>/data/store layout. ---
+sd_a_root="$SD_ROOT/a-default"
+sd_a_data_root="$sd_a_root/data"
+sd_a_data="$sd_a_data_root/connectors/beeper-in"
+sd_a_default_store="$sd_a_data_root/store"
+mkdir -p "$sd_a_default_store" "$sd_a_data"
+make_beeper_config_no_store_dir "$sd_a_data" "matrix"
+
+sd_a_log="$sd_a_root/stub-argv.log"
+(
+  export STUB_LOG="$sd_a_log"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  unset SPOMNI_STORE_DIR
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$sd_a_data"
+) > "$sd_a_root/stdout.log" 2>"$sd_a_root/stderr.log"
+sd_a_rc=$?
+
+assert_eq "store_dir precedence (a) no config, no env: sweep exits 0" "$sd_a_rc" "0"
+
+sd_a_inbox_count="$(find "$sd_a_default_store/inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
+assert_eq "store_dir precedence (a) no config, no env: capture lands in <data-dir>/../../store" "$sd_a_inbox_count" "2"
+
+sd_a_runlog_last="$(tail -n1 "$sd_a_data/runs.log" 2>/dev/null)"
+if printf '%s' "$sd_a_runlog_last" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z ok chats=2 events=2 quarantined=0$'; then
+  pass "store_dir precedence (a) no config, no env: runs.log logs ok"
+else
+  fail "store_dir precedence (a): unexpected runs.log last line: [$sd_a_runlog_last]"
+fi
+
+# --- (b) no config store_dir, SPOMNI_STORE_DIR set to another dir -> that
+#     env dir wins over the default <data-dir>/../../store. ---
+sd_b_root="$SD_ROOT/b-env"
+sd_b_data_root="$sd_b_root/data"
+sd_b_data="$sd_b_data_root/connectors/beeper-in"
+sd_b_default_store="$sd_b_data_root/store"
+sd_b_env_store="$sd_b_root/env-store"
+mkdir -p "$sd_b_default_store" "$sd_b_env_store" "$sd_b_data"
+make_beeper_config_no_store_dir "$sd_b_data" "matrix"
+
+sd_b_log="$sd_b_root/stub-argv.log"
+(
+  export STUB_LOG="$sd_b_log"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  export SPOMNI_STORE_DIR="$sd_b_env_store"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$sd_b_data"
+) > "$sd_b_root/stdout.log" 2>"$sd_b_root/stderr.log"
+sd_b_rc=$?
+
+assert_eq "store_dir precedence (b) SPOMNI_STORE_DIR set: sweep exits 0" "$sd_b_rc" "0"
+
+sd_b_env_inbox_count="$(find "$sd_b_env_store/inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
+assert_eq "store_dir precedence (b) SPOMNI_STORE_DIR set: capture lands in the env store dir" "$sd_b_env_inbox_count" "2"
+
+sd_b_default_inbox_count="$(find "$sd_b_default_store/inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
+assert_eq "store_dir precedence (b) SPOMNI_STORE_DIR set: default <data-dir>/../../store stays empty" "$sd_b_default_inbox_count" "0"
+
+# --- (c) config store_dir set AND SPOMNI_STORE_DIR set -> config wins. ---
+sd_c_root="$SD_ROOT/c-config-wins"
+sd_c_data_root="$sd_c_root/data"
+sd_c_data="$sd_c_data_root/connectors/beeper-in"
+sd_c_config_store="$sd_c_root/config-store"
+sd_c_env_store="$sd_c_root/env-store"
+mkdir -p "$sd_c_config_store" "$sd_c_env_store" "$sd_c_data"
+make_beeper_config "$sd_c_data" "$sd_c_config_store" "matrix"
+
+sd_c_log="$sd_c_root/stub-argv.log"
+(
+  export STUB_LOG="$sd_c_log"
+  export STUB_INFO="$info_body"
+  export STUB_ACCOUNTS="$FIXTURES_DIR/accounts.json"
+  export STUB_CHATS="$FIXTURES_DIR/chats-page.json"
+  export STUB_MSG_FIRST="$FIXTURES_DIR/messages-page.json"
+  export STUB_MSG_CURSOR="$FIXTURES_DIR/messages-empty.json"
+  export SPOMNI_STORE_DIR="$sd_c_env_store"
+  BEEPER_HTTP_STUB="$route_stub" "$SWEEP_SCRIPT" --data-dir "$sd_c_data"
+) > "$sd_c_root/stdout.log" 2>"$sd_c_root/stderr.log"
+sd_c_rc=$?
+
+assert_eq "store_dir precedence (c) config + env both set: sweep exits 0" "$sd_c_rc" "0"
+
+sd_c_config_inbox_count="$(find "$sd_c_config_store/inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
+assert_eq "store_dir precedence (c) config + env both set: capture lands in the config store dir" "$sd_c_config_inbox_count" "2"
+
+sd_c_env_inbox_count="$(find "$sd_c_env_store/inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -c .)"
+assert_eq "store_dir precedence (c) config + env both set: env store dir stays empty (config wins)" "$sd_c_env_inbox_count" "0"
+
+fi # store_dir precedence SWEEP_SCRIPT / NORMALIZE_SCRIPT present
 
 echo ""
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"

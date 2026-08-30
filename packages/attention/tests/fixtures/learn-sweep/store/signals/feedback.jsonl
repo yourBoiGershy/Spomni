@@ -1,0 +1,5 @@
+{"ts":"2026-08-20T14:00:00Z","type":"tier-correction","target":"person:jane-doe","from":"active","to":"close","reason":null,"text":"she's basically family","channel":null,"source":"session"}
+{"ts":"2026-08-20T15:00:00Z","type":"dismiss","target":"wakeup:2026-08-20-jane-doe","from":null,"to":null,"reason":"not-now","text":null,"channel":null,"source":"auto"}
+{"ts":"2026-08-21T09:00:00Z","type":"tier-correction","target":"person:sam-okafor","from":"active","to":"close","reason":null,"text":"getting closer lately","channel":null,"source":"session"}
+{"ts":"2026-08-22T09:00:00Z","type":"tier-correction","target":"person:sam-okafor","from":"active","to":"dormant","reason":null,"text":"actually we drifted apart","channel":null,"source":"session"}
+{"ts":"2026-08-23T09:00:00Z","type":"kind-correction","target":"person:bob-cpa","from":"friend","to":"transactional","reason":null,"text":"purely business","channel":null,"source":"session"}
