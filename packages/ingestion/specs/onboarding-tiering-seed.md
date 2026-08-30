@@ -39,7 +39,11 @@ not a new write path.
    events through its normal path, creating `people/<slug>.md` (new-person
    flow, per `stated-preference-filing.md` (a).4) and `interactions/*.md`
    files. No `tier` is set on any newly-created person file at this stage —
-   creation from a capture event carries no tier opinion.
+   creation from a capture event carries no tier opinion. A backfilled
+   multi-day `chat-message` event files as one interaction per active
+   conversation day, not one interaction total, per the debrief skill's
+   episode-split rule (`packages/ingestion/skills/debrief/SKILL.md` §5b-
+   episodes) — this is what keeps backfilled touchpoint counts genuine.
 3. **`build-stats.sh` runs**, producing `stats.json`
    (`packages/core/contracts/derived-index.md`) with, per slug: `touchpoints`,
    `median_gap_days`, `first_interaction`, `last_interaction`,
