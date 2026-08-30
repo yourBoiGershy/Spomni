@@ -74,7 +74,7 @@ provenance labeling. Ingestion is the sole writer of the people-store.
   `profile.md`'s `## Notify` section — the stated-by-user notification
   channel/beeper-chat-id/gmail-address/quiet-hours bullets, per
   `contracts/profile.md` 1.1.0, plan 33),
-  through, plan 30), `scripts/summarize-thread.sh` (one headless model call
+  `scripts/summarize-thread.sh` (one headless model call
   per `chat-message` capture, emitting `thread-summary` 1.0.0 strict JSON —
   no store writes, per `specs/thread-summary.md`, plan 32),
   `scripts/file-thread.sh` (deterministic writer consuming that JSON —
