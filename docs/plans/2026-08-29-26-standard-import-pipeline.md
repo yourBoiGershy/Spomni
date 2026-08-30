@@ -1,6 +1,6 @@
 # Plan 26: Standard import pipeline
 
-Status: Ready
+Status: Done (2026-08-29 — see Close-out at end of file; one live residual: U12.3 gmail/calendar fetch-to-file live proof awaits a user-driven sweep session)
 Package: core (stage contract) + connectors (gmail/calendar fetch-to-file
 conformance, beeper backfill fixes, manifests) + ingestion (deterministic
 triage tier, debrief hook, tests, eval)
@@ -436,4 +436,39 @@ file the held event flips it to FAIL.
   the first-party-MCP-only constraint; fetch stays an in-session tool call
   — the standardization is that results land on disk.
 
-Status: Ready
+## Close-out (2026-08-29)
+
+All 12 units executed same-session (U1–U11 workers, U12 orchestrator), 4
+commits (de06b08 phase 1, 0ccd52d phase 2, 0db39f7 phase 3, 29ec311 fix
+round). Evidence against Proof of done:
+
+1. **Contract + conformance:** `import-pipeline.md` 1.0.0 in core;
+   conformance declared in gmail-in, calendar-in, beeper-in, connectors
+   root, and ingestion package.md (consumes `import-pipeline@^1` on all).
+2. **Gmail no-transcription:** SKILL.md fully reworked (every Step-2 actor
+   is cp/jq/script; `extract-email-body.sh` byte-verified under bash
+   3.2). **U12.3 live-page proof DEFERRED** to a user-driven sweep session
+   (first-party MCP moves real mail; plan-24 U14.2 precedent).
+3. **Beeper zero duplicate-subsets:** regression-tested (109-green suite)
+   AND live re-run 2026-08-30Z: `backfill-ok chats=50 events=0`, 37×
+   `history-clamped@` WARNs, incremental files md5-identical.
+4. **Triage golden + live calibration:** 20-assertion suite green with
+   sabotage proofs; live-corpus dry-run: 160 scanned, 65 would-holds
+   (63 self-only-calendar, 2 noreply-marketing), **0 false-holds** vs the
+   37 filed ids. otp/linkedin-invitation/cold-pitch had no captured live
+   instances (junk left uncaptured in the onboarding run) — synthetic
+   goldens carry them until live data arrives.
+5. **Suites:** store 10, capture 116, beeper 109, scheduler 64, seed 23,
+   triage 20; full ingestion eval suite 19/19 PASS (incl. new smoke-tagged
+   `triage-held-respected`, PASS×2 + doctored-FAIL proven; $0.79/run).
+
+Checker: /code-review medium over the branch — zero CRITICAL/HIGH; 4
+MEDIUM all fixed in one round (case-insensitive subject sed; legacy-floor
+null-timestamp guard; two manifest consumes rows; spec-authoritative
+pattern note). LOW advisories recorded, deliberately not fixed here:
+duplicate-message-id guard in extract-email-body.sh; frontmatter-parsing
+helpers duplicated across ingestion/core scripts (candidate ingestion-local
+lib); sender_known/per-event ledger lookups O(N·M) at 1000+ events
+(chunk-27 speed territory); `coverage_floor_get` could delegate to
+`cursor_get`. Pattern-source unification (spec-as-data) noted as a deeper
+option if U12-style calibrations recur.
