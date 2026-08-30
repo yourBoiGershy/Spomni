@@ -6,7 +6,7 @@ Two kinds of entries live here:
   work in this repo (planning, dispatching workers). Not user-facing.
 - **Product skills** (symlinks) — what Spomni users actually invoke as slash
   commands: `debrief`, `onboarding-seed`, `gmail-sweep`, `calendar-sweep`,
-  `event-confirm`, `scheduling-intent`, `review-tiers`, and `who-next`. Each symlink
+  `event-confirm`, `scheduling-intent`, `review-tiers`, `who-next`, and `make-skill`. Each symlink
   points at the real skill under `packages/<pkg>/skills/<name>/`, which is
   the source of truth — edit the target, never the link.
 

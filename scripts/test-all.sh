@@ -38,6 +38,7 @@ GROUP_STORE="
 packages/core/tests/run-store-tests.sh
 packages/core/tests/run-render-tests.sh
 packages/core/tests/run-merge-tests.sh
+packages/core/tests/run-user-skills-tests.sh
 "
 GROUP_INGESTION="
 packages/ingestion/tests/run-embeddings-tests.sh

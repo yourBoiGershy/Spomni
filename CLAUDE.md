@@ -118,6 +118,7 @@ touched, evidence — wrapped in `<!-- AGENT_OUTPUT_START/END -->` markers.
   `bash packages/core/tests/run-store-tests.sh`,
   `bash packages/core/tests/run-render-tests.sh`,
   `bash packages/core/tests/run-merge-tests.sh`,
+  `bash packages/core/tests/run-user-skills-tests.sh`,
   `bash packages/connectors/tests/run-capture-tests.sh`,
   `bash packages/connectors/tests/run-beeper-capture-tests.sh`,
   `bash packages/connectors/tests/run-beeper-out-tests.sh`,
