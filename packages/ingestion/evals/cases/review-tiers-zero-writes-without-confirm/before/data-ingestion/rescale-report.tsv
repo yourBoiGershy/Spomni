@@ -1,0 +1,6 @@
+scope	n	mean	median	spread	share_ge_80	share_le_20	skew
+overall	4	48.75	47.5	40	0.00	0.25	no
+friend	1	70.0	70	0	1.00	0.00	n/a (n<4)
+family	1	55.0	55	0	0.00	0.00	n/a (n<4)
+community	1	40.0	40	0	0.00	0.00	n/a (n<4)
+professional	1	30.0	30	0	0.00	0.25	n/a (n<4)
