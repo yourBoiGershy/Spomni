@@ -35,7 +35,11 @@ nothing.
   `contracts/import-pipeline.md` (the five-stage fetch/normalize/triage/
   judgment/file pipeline spanning connectors + ingestion, per plan 26),
   `contracts/user-model.md` (`data/store/user-model.md`, the user's
-  relationship-investment model — draft→confirmed lifecycle, per plan 30)
+  relationship-investment model — draft→confirmed lifecycle, per plan 30),
+  `contracts/relationship-scoring.md` (kind vocabulary, judgment record,
+  priors, breakdown string, drift prefilter, warrant rescale, per plan 30),
+  `contracts/embeddings-index.md` (`<store>/index/embeddings.jsonl`, local
+  optional embeddings, per plan 30)
 - Templates: `templates/person.md`, `templates/interaction.md`, `templates/wakeup.md`,
   `templates/profile.md`, `templates/sync-lanes.tsv`, `templates/user-model.md`
 - Store scripts: `scripts/build-index.sh` (people/ → index.json),
@@ -82,5 +86,6 @@ event-proposal creation flags are a later work unit of the same plan.
 (docs/plans/2026-08-29-26-standard-import-pipeline.md).
 The `person.md` 1.1.0 kind fields and `ranking-weights.md` 1.1.0 bump are by
 plan 30 (docs/plans/2026-08-29-30-semantic-scoring-user-model.md).
-`contracts/user-model.md` and `templates/user-model.md` by plan 30
-(docs/plans/2026-08-29-30-semantic-scoring-user-model.md).
+`contracts/user-model.md`, `templates/user-model.md`,
+`contracts/relationship-scoring.md`, and `contracts/embeddings-index.md`
+by plan 30 (docs/plans/2026-08-29-30-semantic-scoring-user-model.md).
