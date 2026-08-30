@@ -15,6 +15,11 @@ wrapping them is mechanical.
 
 - Skills: `skills/query/` (index-first retrieval, citations, honest "no match"),
   `skills/brief/` (one-page pre-meeting brief)
+- `skills/who-next/` (`/who-next [friends|coffee|all] [--limit N]`) — condensed,
+  action-first "who should I reach out to" answer, hand-judged from each
+  person's facts rather than trusting raw `suggest_reachouts` order; renders
+  per `packages/core/contracts/answer-style.md` 1.0.0; read-only, drafts on
+  request only, never sends.
 - The nudge-card render consumed by output adapters
 - `server/` (`packages/query/server/`): an MCP tool surface, seven read-only tools over
   stdio (streamable HTTP behind `--http`, stubbed): `search_people`, `get_person`,
