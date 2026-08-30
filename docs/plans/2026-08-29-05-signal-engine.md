@@ -1,5 +1,5 @@
 # Plan 05: Signal engine (the scout)
-Status: Ready
+Status: Done (2026-08-29, chunk-05-signal-engine — all 6 units; Wave B checker PASS, 0 findings; scan is a skill verified by hand against fixtures/signals — no deterministic scan script, T3 eval cases flip on with plan 06's sweep)
 Package: attention (detection/ranking half; queue/sweeps are Plan 06, same package)
 Depends-on: 01, 02 (04 soft — co-attendance signals need it)
 

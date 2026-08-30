@@ -1,0 +1,116 @@
+{
+  "generated_at": "2026-08-30T03:25:51Z",
+  "people": {
+    "aiko-tanaka": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-01-15",
+      "interactions": [
+        {
+          "calendar": false,
+          "date": "2026-01-15",
+          "id": "2026-01-15-aiko-tanaka",
+          "others": []
+        }
+      ],
+      "last_interaction": "2026-01-15",
+      "median_gap_days": null,
+      "open_threads": 1,
+      "tier": "dormant",
+      "touchpoints": 1
+    },
+    "ayesha-malik": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-08-31",
+      "interactions": [
+        {
+          "calendar": true,
+          "date": "2026-08-31",
+          "id": "2026-08-31-walter-combs-ayesha-malik",
+          "others": [
+            "walter-combs"
+          ]
+        }
+      ],
+      "last_interaction": "2026-08-31",
+      "median_gap_days": null,
+      "open_threads": 1,
+      "tier": "active",
+      "touchpoints": 1
+    },
+    "ben-whitmore": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-08-15",
+      "interactions": [
+        {
+          "calendar": false,
+          "date": "2026-08-15",
+          "id": "2026-08-15-ben-whitmore",
+          "others": []
+        }
+      ],
+      "last_interaction": "2026-08-15",
+      "median_gap_days": null,
+      "open_threads": 1,
+      "tier": "close",
+      "touchpoints": 1
+    },
+    "marcus-chen": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-07-01",
+      "interactions": [
+        {
+          "calendar": false,
+          "date": "2026-08-15",
+          "id": "2026-08-15-marcus-chen",
+          "others": []
+        },
+        {
+          "calendar": false,
+          "date": "2026-07-01",
+          "id": "2026-07-01-marcus-chen",
+          "others": []
+        }
+      ],
+      "last_interaction": "2026-08-15",
+      "median_gap_days": 45,
+      "open_threads": 1,
+      "tier": "active",
+      "touchpoints": 2
+    },
+    "walter-combs": {
+      "commitments": {
+        "them": 0,
+        "user": 0
+      },
+      "first_interaction": "2026-08-31",
+      "interactions": [
+        {
+          "calendar": true,
+          "date": "2026-08-31",
+          "id": "2026-08-31-walter-combs-ayesha-malik",
+          "others": [
+            "ayesha-malik"
+          ]
+        }
+      ],
+      "last_interaction": "2026-08-31",
+      "median_gap_days": null,
+      "open_threads": 1,
+      "tier": "inner-circle",
+      "touchpoints": 1
+    }
+  },
+  "schema_version": "1.0.0"
+}
