@@ -20,6 +20,14 @@ extraction rules or new-artifact creation listed under "Not in this core"
 at the bottom — those are follow-up units that extend this same skill file
 in place.
 
+**Chat-message captures are NOT filed by this skill during onboarding/
+backfill** — they route through `scripts/summarize-thread.sh` →
+`scripts/file-thread.sh` instead (plan 32, `specs/thread-summary.md`; see
+`skills/onboarding-seed/SKILL.md` step 2(c)). This skill's chat-message
+rules below remain in force for the incremental single-event path (a fresh
+capture handed off by the sync scheduler) and for debrief notes that
+mention a chat.
+
 ## State this skill owns
 
 Per `docs/data-layout.md`'s connector-runtime-state pattern (adapted here
@@ -372,6 +380,13 @@ one UTC calendar day** (by `timestamp`) files as **one interaction per
 active day**, not one interaction total. A single-day chat-message event is
 unaffected — it still files exactly per 5b, zero behavior change for
 incremental sweeps.
+
+Note (plan 32): this rule governs the incremental single-event path and any
+debrief note that mentions a chat. During onboarding/backfill, chat-message
+captures do not reach this skill at all — `scripts/file-thread.sh` derives
+the same active-UTC-day episode split deterministically from message
+timestamps, no model call in the loop (`specs/thread-summary.md`,
+`skills/onboarding-seed/SKILL.md` step 2(c)).
 
 1. **Group into episodes.** Bucket genuine messages by the UTC calendar
    date of `timestamp`. Every date with at least one genuine message is one

@@ -724,6 +724,45 @@ else
     "validate-store.sh flags status: provisional paired with provenance: stated-by-user"
 fi
 
+# ---------------------------------------------------------------------------
+# assertion 10: plan-32 person.md 1.3.0 — third Facts provenance label
+# `inferred-from-thread` validates clean; an untagged bullet still fails.
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "--- plan 32: validate-store.sh Facts provenance (inferred-from-thread) ---"
+
+C_FACTS_THREAD_OK="$PLAN30_TMP_ROOT/case-facts-inferred-from-thread"
+plan30_min_store "$C_FACTS_THREAD_OK"
+cat > "$C_FACTS_THREAD_OK/people/test-person.md" <<'EOF'
+---
+schema_version: 1.3.0
+name: Test Person
+---
+
+## Facts
+
+- **[told-by-user]** placeholder fact (2026-08-01)
+- **[inferred-from-thread]** Mentioned a new job offer in a group chat (2026-08-29)
+EOF
+plan30_assert_finding "$C_FACTS_THREAD_OK" 0 "store clean" \
+  "validate-store.sh accepts a Facts bullet tagged [inferred-from-thread]"
+
+C_FACTS_UNTAGGED="$PLAN30_TMP_ROOT/case-facts-untagged-bullet"
+plan30_min_store "$C_FACTS_UNTAGGED"
+cat > "$C_FACTS_UNTAGGED/people/test-person.md" <<'EOF'
+---
+schema_version: 1.3.0
+name: Test Person
+---
+
+## Facts
+
+- Untagged fact with no provenance label at all
+EOF
+plan30_assert_finding "$C_FACTS_UNTAGGED" 1 "Facts bullet missing provenance tag" \
+  "validate-store.sh still flags a Facts bullet with no provenance tag"
+
 rm -rf "$PLAN30_TMP_ROOT"
 trap - EXIT
 

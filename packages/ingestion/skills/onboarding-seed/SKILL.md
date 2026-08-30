@@ -134,11 +134,13 @@ backfilled and what didn't in the eventual summary.
 
 ## Step 2 — file the backfilled history
 
-Three sub-steps, in order, over whatever new `inbox/` capture events the
+Four sub-steps, in order, over whatever new `inbox/` capture events the
 three backfill sweeps just landed. Expect hundreds of structured
 (calendar/metadata-only-email) events to file deterministically in under
-30 seconds; the model path (sub-step c) only ever sees free text — chat
-episodes, email bodies, and whatever structured events (a)/(b) held.
+30 seconds; chat-message events go through sub-step (c)'s one-call-per-
+thread path (plan 32), never the debrief skill's per-day model pass; the
+debrief path (sub-step d) only ever sees non-chat free text — email
+bodies, voice notes, and whatever structured events (a)/(b) held.
 
 **(a) Triage.**
 
@@ -169,18 +171,54 @@ model call — templated person/interaction writes only, per
 (`file-structured: eligible= filed= people_new= held= skipped=`) as part of
 this run's own summary. Anything it can't resolve deterministically (an
 ambiguous name hint, an email with no name and no existing person) is
-appended to `data/ingestion/structured-held.log` for sub-step (c), never
+appended to `data/ingestion/structured-held.log` for sub-step (d), never
 silently merged.
 
-**(c) Debrief the remainder.**
+**(c) Threads: one model call per chat, deterministic episodes.**
 
-Run the normal filing/debrief path (`packages/ingestion/skills/debrief/
-SKILL.md`, shard mode per `specs/parallel-filing.md` for this backfill
-volume) over what's left — by construction now only free-text events (chat
-episodes, email bodies) plus anything (b) held in
-`structured-held.log`. This produces `people/<slug>.md` (new people as
-needed) and `interactions/*.md` files. No `tier` is set by this step —
-filing carries no tier opinion, per the spec.
+Plan 32: chat-message captures are filed through one model call per thread
+plus a deterministic writer, not through the debrief skill's per-day
+episode-split model pass — a running-cost cut only (one summarize call and
+one script pass replace a per-day agentic filing task per thread).
+
+```sh
+# ids still eligible (not in debrief-filed.log / triage-held.log) whose type is chat-message:
+for f in $(<eligible chat-message capture files>); do
+  bash packages/ingestion/scripts/summarize-thread.sh "$f" --out <data-dir>/ingestion/thread-summaries/$(basename "$f" .md).json
+done   # run with xargs -P 6; ~10–30 s per thread, dominated by CLI startup; RA_THREAD_MODEL=haiku default
+for j in <data-dir>/ingestion/thread-summaries/*.json; do
+  bash packages/ingestion/scripts/file-thread.sh <store-dir> <store-dir>/inbox/$(basename "$j" .json).md "$j" --data-dir <data-dir>
+done
+```
+
+Then one `build-index.sh` + `validate-store.sh` for this sub-step, same as
+any other filing pass.
+
+- `file-thread.sh` unions captures sharing a chatID (D3) so duplicates never
+  double-file — a rerun over the same capture(s) is a true no-op once every
+  contributing id is ledgered.
+- A summary with `skip` set (bots/broadcasts/self-notes/security notices
+  only) ledgers the id with no writes.
+- A stranger's cold pitch is filed as a person with `role_guess: unsolicited`
+  and tag `linkedin-outreach` (D4) — never skipped.
+- No `tier`/`kind` is written by this sub-step — filing carries no tier or
+  kind opinion, same rule as (b) and (d).
+- Exit codes from `summarize-thread.sh`: `3` = model/timeout, `4` = schema
+  failure — retry once, then leave the id pending (it stays eligible for a
+  later pass; it is not added to any ledger on either failure).
+
+Spec of record: `packages/ingestion/specs/thread-summary.md` (the model
+call's contract); `file-thread.sh`'s own header comment (episodes, person
+upsert, ledger) for the deterministic writer's rules.
+
+**(d) Debrief the remainder** — the old (c): only non-chat free text (email
+bodies, voice notes, linkedin-notification, `other`) plus
+`structured-held.log` ids remain for the normal filing/debrief path
+(`packages/ingestion/skills/debrief/SKILL.md`); shard mode per
+`specs/parallel-filing.md` only if more than ~40 events remain. This
+produces `people/<slug>.md` (new people as needed) and `interactions/*.md`
+files. No `tier` is set by this step — filing carries no tier opinion, per
+the spec.
 
 ## Step 3 — build stats
 
@@ -241,7 +279,10 @@ End with a short summary:
   summary").
 - Structured filing (b): the `file-structured.sh` summary line verbatim
   (`eligible= filed= people_new= held= skipped=`).
-- Model filing (c): count of events debrief filed.
+- Thread filing (c): count of chat-message events summarized + filed via
+  `summarize-thread.sh`/`file-thread.sh`, and count left pending on a
+  retried model/schema failure, if any.
+- Debrief filing (d): count of events debrief filed.
 - Totals: people/interactions counts in the store after Step 2.
 - `/review-tiers --all`'s own summary: derived tiers/kinds written,
   provisional user-model adopted (yes/no, revision), corrections applied

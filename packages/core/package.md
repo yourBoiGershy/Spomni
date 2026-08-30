@@ -12,7 +12,10 @@ nothing.
 ## Provides
 
 - Contracts (semver'd, each with a `schema_version`): `contracts/capture-event.md`,
-  `contracts/person.md` (1.2.0 — `tier_source` provenance field alongside
+  `contracts/person.md` (1.3.0 — third Facts provenance label
+  `inferred-from-thread`, for facts the model infers from a chat/email
+  thread the user is party to (neither told-by-user nor inferred-from-
+  public-web), per plan 32; 1.2.0 — `tier_source` provenance field alongside
   `tier`, derived writes never overwrite a stated tier, per plan 31; 1.1.0 —
   optional `kind`/`kind_note`/`kind_source`/`kind_expires`/`kind_updated`,
   per plan 30), `contracts/interaction.md`,
@@ -55,9 +58,10 @@ nothing.
   1.1.0 `kind`/`kind_source`/`kind_expires` columns when present, per plan 30),
   `scripts/build-stats.sh` (people/ + interactions/ → stats.json, per
   `contracts/derived-index.md`), `scripts/validate-store.sh` (also validates
-  person.md 1.1.0 kind fields and 1.2.0 `tier_source`, the optional
+  person.md 1.1.0 kind fields, 1.2.0 `tier_source`, and 1.3.0
+  `inferred-from-thread` Facts provenance, the optional
   `user-model.md` singleton incl. `status: provisional`, and the optional
-  `index/embeddings.jsonl` incl. unit-norm vectors, per plans 30 and 31),
+  `index/embeddings.jsonl` incl. unit-norm vectors, per plans 30, 31, and 32),
   `scripts/init-store.sh` (idempotent store layout creation +
   README.md + index/stats + validate, refuses the code checkout itself),
   `scripts/check-store-location.sh` (flags a store-dir inside the code
@@ -123,3 +127,5 @@ The `person.md` 1.2.0 `tier_source` field, `scripts/person-set-tier.sh`, the
 `user-model.md` 1.1.0 `provisional` status, and the `relationship-scoring.md`
 2.0.0 derived-tier-write rule are by plan 31
 (docs/plans/2026-08-30-31-deterministic-filing-cold-start-priors.md).
+The `person.md` 1.3.0 `inferred-from-thread` Facts provenance label is by
+plan 32.
