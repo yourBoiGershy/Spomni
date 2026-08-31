@@ -25,6 +25,10 @@
 #      none of them.
 #   8. CLI status: one row per configured lane (including disabled and
 #      never-run/not-installed), malformed config -> exit 1.
+#   11. Chunk-43 pre-pull (sync_pre_pull via sync_run_lane): behind a
+#       reachable origin -> pull lands before the lane command; unreachable
+#       origin -> "pre-pull: failed (continuing)" and the lane still runs;
+#       non-git store -> silent skip; SPOMNI_NO_PREPULL=1 -> no pull.
 #
 # No launchctl invocations anywhere in this suite: install/uninstall are only
 # ever exercised with --dry-run, and every lane name used here is a unique,
@@ -731,6 +735,142 @@ if [ -f "$d40_legacy_plist" ]; then
   pass "install --dry-run legacy retire: sandboxed legacy plist untouched (dry-run performs no writes)"
 else
   fail "install --dry-run legacy retire: sandboxed legacy plist was removed despite --dry-run"
+fi
+
+# =============================================================================
+# 11. Chunk-43 forced write path: sync_run_lane pre-pulls the store from
+#     origin before the lane command runs (sync_pre_pull). All git repos here
+#     are throwaway fixtures inside $SANDBOX — never the real data/ store.
+# =============================================================================
+
+pp_root="$SANDBOX/prepull"
+mkdir -p "$pp_root"
+
+# Shared fixture builder: bare origin + a data dir whose store/ is a clone of
+# it, with ONE newer commit landed on origin that the clone does not have.
+# $1 = case dir (created). Sets: pp_case_data, pp_case_store, pp_case_seed.
+pp_make_behind_store() {
+  pp_case="$1"
+  pp_case_remote="$pp_case/origin.git"
+  pp_case_seed="$pp_case/seed"
+  pp_case_data="$pp_case/data"
+  pp_case_store="$pp_case_data/store"
+
+  mkdir -p "$pp_case_seed" "$pp_case_data"
+  git init -q --bare "$pp_case_remote"
+
+  git init -q "$pp_case_seed"
+  echo "base" > "$pp_case_seed/base.txt"
+  git -C "$pp_case_seed" add base.txt
+  git -C "$pp_case_seed" -c user.name=t -c user.email=t@example.com \
+    commit -q -m "base commit"
+  git -C "$pp_case_seed" remote add origin "$pp_case_remote"
+  git -C "$pp_case_seed" push -q origin HEAD:refs/heads/main
+  git -C "$pp_case_remote" symbolic-ref HEAD refs/heads/main
+
+  git clone -q "$pp_case_remote" "$pp_case_store"
+  git -C "$pp_case_store" checkout -q -B main origin/main 2>/dev/null || true
+
+  echo "newer" > "$pp_case_seed/newer.txt"
+  git -C "$pp_case_seed" add newer.txt
+  git -C "$pp_case_seed" -c user.name=t -c user.email=t@example.com \
+    commit -q -m "newer commit from origin"
+  git -C "$pp_case_seed" push -q origin HEAD:refs/heads/main
+}
+
+# --- (a) reachable origin with one newer commit: pre-pull lands it, lane runs ---
+ppa="$pp_root/a"
+pp_make_behind_store "$ppa"
+ppa_data="$pp_case_data"
+ppa_store="$pp_case_store"
+
+ppa_cfg="$pp_root/a-config.tsv"
+ppa_lane="${LANE_NS}-prepull-behind"
+printf '%s\t60\ttrue\t/bin/echo prepull-lane-a-ran\n' "$ppa_lane" > "$ppa_cfg"
+
+sync_run_lane "$ppa_cfg" "$ppa_data" "$ppa_lane"
+ppa_rc=$?
+assert_eq "pre-pull (behind origin): lane exits 0" "$ppa_rc" "0"
+
+ppa_log="$(cat "$(sync_log_file "$ppa_data" "$ppa_lane")" 2>/dev/null)"
+assert_contains "pre-pull (behind origin): log has pre-pull: ff" "$ppa_log" "pre-pull: ff"
+assert_contains "pre-pull (behind origin): lane command still ran" "$ppa_log" "prepull-lane-a-ran"
+
+if [ -f "$ppa_store/newer.txt" ] \
+  && git -C "$ppa_store" log --oneline | grep -qF "newer commit from origin"; then
+  pass "pre-pull (behind origin): store now contains origin's newer commit"
+else
+  fail "pre-pull (behind origin): store missing origin's newer commit after lane run"
+fi
+
+# --- (b) unreachable origin: pre-pull fails, lane still runs ---
+ppb="$pp_root/b"
+ppb_data="$ppb/data"
+ppb_store="$ppb_data/store"
+mkdir -p "$ppb_store"
+git init -q "$ppb_store"
+echo "only-local" > "$ppb_store/local.txt"
+git -C "$ppb_store" add local.txt
+git -C "$ppb_store" -c user.name=t -c user.email=t@example.com \
+  commit -q -m "local commit"
+git -C "$ppb_store" remote add origin "$pp_root/does-not-exist.git"
+
+ppb_cfg="$pp_root/b-config.tsv"
+ppb_lane="${LANE_NS}-prepull-offline"
+printf '%s\t60\ttrue\t/bin/echo prepull-lane-b-ran\n' "$ppb_lane" > "$ppb_cfg"
+
+sync_run_lane "$ppb_cfg" "$ppb_data" "$ppb_lane"
+ppb_rc=$?
+assert_eq "pre-pull (unreachable origin): lane still exits 0" "$ppb_rc" "0"
+
+ppb_log="$(cat "$(sync_log_file "$ppb_data" "$ppb_lane")" 2>/dev/null)"
+assert_contains "pre-pull (unreachable origin): log has failed (continuing)" "$ppb_log" "pre-pull: failed (continuing)"
+assert_contains "pre-pull (unreachable origin): lane command still ran" "$ppb_log" "prepull-lane-b-ran"
+
+# --- (c) non-git store: no pre-pull output at all, lane runs ---
+ppc="$pp_root/c"
+ppc_data="$ppc/data"
+mkdir -p "$ppc_data/store"
+echo "plain file" > "$ppc_data/store/notes.txt"
+
+ppc_cfg="$pp_root/c-config.tsv"
+ppc_lane="${LANE_NS}-prepull-nongit"
+printf '%s\t60\ttrue\t/bin/echo prepull-lane-c-ran\n' "$ppc_lane" > "$ppc_cfg"
+
+sync_run_lane "$ppc_cfg" "$ppc_data" "$ppc_lane"
+ppc_rc=$?
+assert_eq "pre-pull (non-git store): lane exits 0" "$ppc_rc" "0"
+
+ppc_log="$(cat "$(sync_log_file "$ppc_data" "$ppc_lane")" 2>/dev/null)"
+assert_not_contains "pre-pull (non-git store): no pre-pull line in log" "$ppc_log" "pre-pull:"
+assert_contains "pre-pull (non-git store): lane command ran" "$ppc_log" "prepull-lane-c-ran"
+
+# --- (d) SPOMNI_NO_PREPULL=1: reachable origin with a newer commit, no pull ---
+ppd="$pp_root/d"
+pp_make_behind_store "$ppd"
+ppd_data="$pp_case_data"
+ppd_store="$pp_case_store"
+
+ppd_cfg="$pp_root/d-config.tsv"
+ppd_lane="${LANE_NS}-prepull-escape"
+printf '%s\t60\ttrue\t/bin/echo prepull-lane-d-ran\n' "$ppd_lane" > "$ppd_cfg"
+
+(
+  SPOMNI_NO_PREPULL=1
+  export SPOMNI_NO_PREPULL
+  sync_run_lane "$ppd_cfg" "$ppd_data" "$ppd_lane"
+)
+ppd_rc=$?
+assert_eq "pre-pull (SPOMNI_NO_PREPULL=1): lane exits 0" "$ppd_rc" "0"
+
+ppd_log="$(cat "$(sync_log_file "$ppd_data" "$ppd_lane")" 2>/dev/null)"
+assert_not_contains "pre-pull (SPOMNI_NO_PREPULL=1): no pre-pull line in log" "$ppd_log" "pre-pull:"
+assert_contains "pre-pull (SPOMNI_NO_PREPULL=1): lane command ran" "$ppd_log" "prepull-lane-d-ran"
+
+if [ -f "$ppd_store/newer.txt" ]; then
+  fail "pre-pull (SPOMNI_NO_PREPULL=1): store pulled origin's newer commit despite the escape hatch"
+else
+  pass "pre-pull (SPOMNI_NO_PREPULL=1): store untouched (no pull happened)"
 fi
 
 echo ""

@@ -10,8 +10,10 @@
 #   sync_export_env / sync_resolve_command — sync-lanes 1.1.0 {{...}}
 #     placeholder expansion (REPO_ROOT/DATA_DIR/PRIVATE_DATA_ROOT/STORE_DIR/
 #     CLAUDE_BIN) so a lane's command routes to the current checkout/store
+#   sync_pre_pull — best-effort store refresh from origin before a lane runs
+#     (skip with SPOMNI_NO_PREPULL=1)
 #   sync_run_lane — run one lane's command (after placeholder expansion),
-#     recording state + log
+#     recording state + log; pre-pulls the store from origin first
 #
 # Side-effect-free on source: no `set -e`, no top-level work beyond function
 # definitions and readonly constants. `set -u`-safe — callers may run under
@@ -325,9 +327,67 @@ sync_resolve_command() {
 }
 
 # ---------------------------------------------------------------------------
+# sync_pre_pull <data_dir> <log_file> — refresh the store from origin/main
+# before a lane's command runs, so an always-on base machine picks up pushes
+# from cloud/phone sessions before it syncs or writes anything. Resolves the
+# store dir exactly as {{STORE_DIR}} does (via sync_export_env). Skips
+# silently when SPOMNI_NO_PREPULL=1, when the store dir is not itself a git
+# repo (no .git entry), or when it has no origin remote. Otherwise runs
+# store-sync.sh <store> pull, capturing output:
+#   success — appends exactly one line "pre-pull: <ff|merge|none>" to
+#             <log_file> (same classification store-sync's tick prints)
+#   failure — appends the captured pull output plus one line
+#             "pre-pull: failed (continuing)"; the lane still runs — capture
+#             must never be lost to a network blip
+# ALWAYS returns 0 (`set -e`-safe): a failed pre-pull never kills the lane.
+# ---------------------------------------------------------------------------
+sync_pre_pull() {
+  prepull_data_dir="$1"
+  prepull_log_file="$2"
+
+  if [ "${SPOMNI_NO_PREPULL:-0}" = "1" ]; then
+    return 0
+  fi
+
+  sync_export_env "$prepull_data_dir"
+  prepull_store="$SPOMNI_STORE_DIR"
+
+  # The store dir itself must be a repo toplevel (.git dir, or file for a
+  # worktree) with an origin remote — anything else skips silently.
+  [ -e "${prepull_store}/.git" ] || return 0
+  git -C "$prepull_store" remote get-url origin >/dev/null 2>&1 || return 0
+
+  prepull_head_before="$(git -C "$prepull_store" rev-parse HEAD 2>/dev/null || echo "")"
+
+  prepull_rc=0
+  prepull_out="$(bash "${SPOMNI_REPO_ROOT}/packages/core/scripts/store-sync.sh" "$prepull_store" pull 2>&1)" \
+    || prepull_rc=$?
+
+  if [ "$prepull_rc" -ne 0 ]; then
+    {
+      printf '%s\n' "$prepull_out"
+      printf 'pre-pull: failed (continuing)\n'
+    } >> "$prepull_log_file"
+    return 0
+  fi
+
+  prepull_head_after="$(git -C "$prepull_store" rev-parse HEAD 2>/dev/null || echo "")"
+  if [ "$prepull_head_before" = "$prepull_head_after" ]; then
+    prepull_kind="none"
+  elif git -C "$prepull_store" rev-parse -q --verify HEAD^2 >/dev/null 2>&1; then
+    prepull_kind="merge"
+  else
+    prepull_kind="ff"
+  fi
+  printf 'pre-pull: %s\n' "$prepull_kind" >> "$prepull_log_file"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # sync_run_lane <config_file> <data_dir> <lane> — unknown lane: stderr +
 # exit 2. Disabled: sync_log_append "skip-disabled", exit 0. Enabled: log
-# "run-start", record start, run the lane's command via /bin/bash -c
+# "run-start", record start, pre-pull the store (sync_pre_pull, best-effort,
+# never fatal), run the lane's command via /bin/bash -c
 # (caller's cwd unchanged) with combined stdout+stderr appended to the lane
 # log, record end state, log "run-end exit=<code> duration=<s>s", exit with
 # the command's exit code.
@@ -369,6 +429,8 @@ sync_run_lane() {
 
   sync_export_env "$data_dir"
   resolved_command="$(sync_resolve_command "$data_dir" "$command")"
+
+  sync_pre_pull "$data_dir" "$log_file"
 
   /bin/bash -c "$resolved_command" >> "$log_file" 2>&1
   cmd_exit=$?

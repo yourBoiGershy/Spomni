@@ -23,6 +23,15 @@
 #      there are >= 4 such runs and every one reports events=0, the lane is
 #      green but capturing nothing -> one staleness:<lane>-yield wake-up.
 #      Missing runs.log -> skip that lane's yield check silently.
+#   4. Stranded unmerged work branches — if <store-dir> is itself a git
+#      repo (skip silently otherwise; no fetch, ever — already-known refs
+#      only): local branches and refs/remotes/origin/* whose short name
+#      matches claude/* or starts with worktree- (case-sensitive),
+#      excluding the default branch and any branch whose tip is already an
+#      ancestor of the default branch's tip (merged means not stranded).
+#      Stale when the tip's committerdate is older than 24h relative to
+#      now -> one staleness:unmerged-branch-<branch> wake-up (/ in the
+#      branch name sanitized to -). No qualifying branches -> nothing.
 #
 # Usage:
 #   staleness.sh <store-dir> [--sync-data-dir <dir>] [--now <iso-utc>] [--dry-run]
@@ -41,6 +50,7 @@
 # Prints one line per subject checked:
 #   staleness: <name> ok|stale|already-pending|never-run (<detail>)
 #   staleness: <lane>-yield ok|stale|never-run (<detail>)
+#   staleness: unmerged-branch-<name> ok|stale|already-pending (<detail>)
 #
 # Exit 0 always, unless usage error (2) or jq is missing (2).
 
@@ -58,8 +68,10 @@ Usage: ${SCRIPT_NAME} <store-dir> [--sync-data-dir <dir>] [--now <iso-utc>] [--d
 Checks routine heartbeats (<store-dir>/heartbeats/*.json) and connector-lane
 scheduler state (<sync-data-dir>/connectors/sync-scheduler/) for silence
 past 2x their cadence, plus enabled capture lanes' runs.log for 24h of
-green-but-zero-events runs, creating exactly one pending wake-up per stale
-subject (skipping if one is already pending or fired-unresolved).
+green-but-zero-events runs, plus (when <store-dir> is a git repo) stranded
+unmerged claude/* / worktree-* work branches older than 24h, creating
+exactly one pending wake-up per stale subject (skipping if one is already
+pending or fired-unresolved).
 EOF
   exit 2
 }
@@ -374,6 +386,73 @@ if [ -f "${LANES_TSV}" ]; then
       echo "staleness: ${lane}-yield ok (${run_count} runs, ${total_events} events in 24h)"
     fi
   done < "${LANES_TSV}"
+fi
+
+# --- 4. Stranded unmerged work branches ----------------------------------
+
+# Only when the store itself is a git repo (a plain directory store has no
+# branches to strand). The explicit .git check keeps a store that merely
+# sits inside some other repo's working tree from being mistaken for one.
+# No fetch, ever — this is deterministic and offline-safe, inspecting only
+# refs the repo already knows about.
+if [ -e "${STORE_DIR}/.git" ] && git -C "${STORE_DIR}" rev-parse --git-dir >/dev/null 2>&1; then
+  default_branch="$(git -C "${STORE_DIR}" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+  default_branch="${default_branch#origin/}"
+  if [ -z "${default_branch}" ]; then
+    default_branch="$(git -C "${STORE_DIR}" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  fi
+  if [ -z "${default_branch}" ]; then
+    default_branch="main"
+  fi
+
+  default_tip="$(git -C "${STORE_DIR}" rev-parse --verify --quiet "refs/heads/${default_branch}" 2>/dev/null || true)"
+  if [ -z "${default_tip}" ]; then
+    default_tip="$(git -C "${STORE_DIR}" rev-parse --verify --quiet "refs/remotes/origin/${default_branch}" 2>/dev/null || true)"
+  fi
+
+  seen_branches=""
+  git -C "${STORE_DIR}" for-each-ref \
+    --format='%(refname)%09%(objectname)%09%(committerdate:unix)%09%(committerdate:iso8601-strict)' \
+    refs/heads 'refs/remotes/origin' |
+  while IFS="$(printf '\t')" read -r refname tip tip_epoch tip_iso || [ -n "${refname}" ]; do
+    [ -n "${refname}" ] || continue
+    case "${refname}" in
+      refs/heads/*) branch="${refname#refs/heads/}" ;;
+      refs/remotes/origin/*) branch="${refname#refs/remotes/origin/}" ;;
+      *) continue ;;
+    esac
+
+    case "${branch}" in
+      claude/*|worktree-*) ;;
+      *) continue ;;
+    esac
+    [ "${branch}" != "${default_branch}" ] || continue
+
+    # Same short name known both locally and on origin -> one check only.
+    case " ${seen_branches} " in
+      *" ${branch} "*) continue ;;
+    esac
+    seen_branches="${seen_branches} ${branch}"
+
+    # Already merged into the default branch means not stranded.
+    if [ -n "${default_tip}" ] \
+      && git -C "${STORE_DIR}" merge-base --is-ancestor "${tip}" "${default_tip}" 2>/dev/null; then
+      continue
+    fi
+
+    case "${tip_epoch}" in
+      ''|*[!0-9]*) continue ;;
+    esac
+    age=$((NOW_EPOCH - tip_epoch))
+
+    name="unmerged-branch-$(printf '%s' "${branch}" | tr '/' '-')"
+    if [ "${age}" -gt 86400 ]; then
+      create_staleness_wakeup "${name}" \
+        "branch ${branch} in the data repo has unmerged work older than 24h — land it (store-land.sh) or delete it"
+    else
+      echo "staleness: ${name} ok (tip committed ${tip_iso})"
+    fi
+  done
 fi
 
 exit 0

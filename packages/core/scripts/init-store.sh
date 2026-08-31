@@ -8,6 +8,9 @@
 #   - writes <store-dir>/README.md if absent (private-store reminder)
 #   - writes <store-dir>/CLAUDE.md if absent (cold-session bootstrap, from
 #     templates/data-repo-CLAUDE.md)
+#   - if the store is its own git repo, installs the pre-commit validation
+#     hook (templates/store-pre-commit-hook.sh) when .git/hooks/pre-commit
+#     is absent; an existing hook without our marker line is left alone
 #   - runs build-index.sh + build-stats.sh so index.json/stats.json exist
 #     even when the store is empty
 #   - runs validate-store.sh and exits with its status
@@ -57,6 +60,25 @@ fi
 
 if [ ! -e "$abs_store_dir/CLAUDE.md" ]; then
     cp "$SCRIPT_DIR/../templates/data-repo-CLAUDE.md" "$abs_store_dir/CLAUDE.md"
+fi
+
+# Pre-commit validation hook: when the store is its own git repo (the
+# refusal check above already excluded the code checkout), install
+# templates/store-pre-commit-hook.sh as .git/hooks/pre-commit. Idempotent:
+# our hook carries the marker line "# spomni-store-validate-hook v1"; an
+# existing hook without that marker is not ours and is left alone.
+HOOK_TEMPLATE="$SCRIPT_DIR/../templates/store-pre-commit-hook.sh"
+HOOK_MARKER="# spomni-store-validate-hook v1"
+if [ -d "$abs_store_dir/.git" ] && [ -f "$HOOK_TEMPLATE" ]; then
+    hook_path="$abs_store_dir/.git/hooks/pre-commit"
+    if [ ! -e "$hook_path" ]; then
+        mkdir -p "$abs_store_dir/.git/hooks"
+        cp "$HOOK_TEMPLATE" "$hook_path"
+        chmod +x "$hook_path"
+        echo "OK: installed pre-commit validation hook"
+    elif ! grep -qF "$HOOK_MARKER" "$hook_path"; then
+        echo "SKIP: existing pre-commit hook is not spomni's — left untouched"
+    fi
 fi
 
 "$SCRIPT_DIR/build-index.sh" "$abs_store_dir"

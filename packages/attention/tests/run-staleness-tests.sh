@@ -26,6 +26,10 @@
 #      backfill-*/non-ok outcomes are ignored; --dry-run creates nothing;
 #      the ordinary lane-staleness check (section 2) for the same lane
 #      still runs alongside it
+#  10. stranded unmerged work branches (check 4) — delegated to the
+#      dedicated suite run-staleness-branch-tests.sh (temp git-repo
+#      fixtures live there); its PASS/FAIL lines are folded into this
+#      suite's summary
 #
 # bash 3.2 portable (no associative arrays, no mapfile) — must run under
 # macOS's stock /bin/bash, invocable from anywhere.
@@ -701,6 +705,24 @@ if [ "$S9G_FILES_BEFORE" = "$S9G_FILES_AFTER" ]; then
 else
   fail "zero-yield dry-run: wakeups/ file listing changed:"
   diff <(printf '%s\n' "$S9G_FILES_BEFORE") <(printf '%s\n' "$S9G_FILES_AFTER")
+fi
+
+# =============================================================================
+# Scenario 10: stranded unmerged work branches (check 4) — delegated to the
+# dedicated suite so its temp git-repo scaffolding stays in one place
+# =============================================================================
+
+s10_out="$(bash "$SCRIPT_DIR/run-staleness-branch-tests.sh" 2>&1)"
+s10_status=$?
+
+printf '%s\n' "$s10_out" | grep -E '^(PASS|FAIL|SKIP): '
+S10_PASS="$(printf '%s\n' "$s10_out" | grep -c '^PASS: ')"
+S10_FAIL="$(printf '%s\n' "$s10_out" | grep -c '^FAIL: ')"
+PASS_COUNT=$((PASS_COUNT + S10_PASS))
+FAIL_COUNT=$((FAIL_COUNT + S10_FAIL))
+
+if [ "$s10_status" -ne 0 ] && [ "$S10_FAIL" -eq 0 ]; then
+  fail "branch suite exited $s10_status without any FAIL lines: $s10_out"
 fi
 
 summary_and_exit

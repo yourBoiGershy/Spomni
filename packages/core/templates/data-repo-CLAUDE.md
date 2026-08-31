@@ -11,6 +11,9 @@ code; nothing in the machinery repo is your data.
 Do NOT run `npm ci` or start the `spomni-query` MCP server — that costs ~90 s
 and is unnecessary for read-only answers. Use the zero-setup path:
 
+0. Step 0, before reading anything: pick up what other machines pushed —
+   `bash machinery/packages/core/scripts/store-sync.sh . pull`
+   (clone the machinery first if it isn't there yet, step 1 below).
 1. Clone the machinery next to this checkout (shallow):
    `git clone --depth 1 https://github.com/<your-github-user>/Spomni.git machinery`
 2. Run the direct reader against THIS directory:
@@ -27,6 +30,9 @@ machinery/
 
 ## Debriefing from a cold session
 
+0. Step 0, before writing anything: pick up what other machines pushed —
+   `bash machinery/packages/core/scripts/store-sync.sh . pull`
+   (clone the machinery first if it isn't there yet, step 1 below).
 1. Clone the machinery next to this checkout (shallow), same as above:
    `git clone --depth 1 https://github.com/<your-github-user>/Spomni.git machinery`
 2. Run the debrief skill against the capture event(s), with this directory as
@@ -35,6 +41,10 @@ machinery/
 3. Commit and push with zero typed git commands:
    `bash machinery/packages/core/scripts/store-sync.sh . commit -m "debrief: <one line>"`
    `bash machinery/packages/core/scripts/store-sync.sh . push`
+4. End the session by landing: if the work happened on a branch, run
+   `bash machinery/packages/core/scripts/store-land.sh .` (validates, merges
+   the branch into the default branch — never rebases — and pushes); on the
+   default branch the push above (or `store-sync.sh . tick`) is all there is.
 
 `store-sync.sh commit` reindexes and runs `validate-store.sh` before staging
 anything — it refuses to commit a store that fails validation. If it prints
