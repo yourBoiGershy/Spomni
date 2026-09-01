@@ -1274,6 +1274,38 @@ else
   STORE_TESTS_STATUS=1
 fi
 
+# --- delegate to the person-add.sh golden test, tallying its exit status
+#     alongside this script's own ---
+PERSON_ADD_TEST="$SCRIPT_DIR/test-person-add.sh"
+echo ""
+echo "--- test-person-add.sh ---"
+if [ -x "$PERSON_ADD_TEST" ]; then
+  "$PERSON_ADD_TEST"
+  person_add_status=$?
+  if [ "$person_add_status" -ne 0 ]; then
+    STORE_TESTS_STATUS=1
+  fi
+else
+  echo "FAIL: $PERSON_ADD_TEST not found or not executable"
+  STORE_TESTS_STATUS=1
+fi
+
+# --- delegate to the store-land.sh / pre-commit-hook golden test, tallying
+#     its exit status alongside this script's own ---
+STORE_LAND_TEST="$SCRIPT_DIR/test-store-land.sh"
+echo ""
+echo "--- test-store-land.sh ---"
+if [ -x "$STORE_LAND_TEST" ]; then
+  "$STORE_LAND_TEST"
+  store_land_status=$?
+  if [ "$store_land_status" -ne 0 ]; then
+    STORE_TESTS_STATUS=1
+  fi
+else
+  echo "FAIL: $STORE_LAND_TEST not found or not executable"
+  STORE_TESTS_STATUS=1
+fi
+
 # --- delegate to the heartbeat-stamp.sh golden test, tallying its exit
 #     status alongside this script's own ---
 HEARTBEAT_STAMP_TEST="$SCRIPT_DIR/test-heartbeat-stamp.sh"

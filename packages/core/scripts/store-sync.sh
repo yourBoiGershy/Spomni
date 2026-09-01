@@ -29,6 +29,10 @@
 #             "store-sync: tick pulled=<ff|merge|none|skipped>
 #             committed=<sha|none> pushed=<yes|no|skipped>". Does not accept
 #             -m — the commit message is a fixed "store: sync tick <UTC iso>".
+#             At tick start, idempotently installs the store's pre-commit
+#             validation hook (../templates/store-pre-commit-hook.sh) when
+#             .git/hooks/pre-commit is absent; silent when already installed,
+#             and a foreign hook (no marker line) is never touched.
 #
 # Git identity: every git invocation that can create a commit (commit
 # itself, and pull's merges) falls back to -c user.name/-c user.email
@@ -318,7 +322,29 @@ do_push() {
     return 1
 }
 
+# install_hook_if_missing — idempotent install of the store pre-commit
+# validation hook (templates/store-pre-commit-hook.sh, marker line
+# "# spomni-store-validate-hook v1"). Silent when already installed; an
+# existing hook without the marker is not ours and is left alone silently
+# (init-store.sh prints the SKIP line — tick stays quiet).
+install_hook_if_missing() {
+    hook_template="$SCRIPT_DIR/../templates/store-pre-commit-hook.sh"
+    hook_marker="# spomni-store-validate-hook v1"
+    [ -d "$abs_store_dir/.git" ] || return 0
+    [ -f "$hook_template" ] || return 0
+    hook_path="$abs_store_dir/.git/hooks/pre-commit"
+    if [ ! -e "$hook_path" ]; then
+        mkdir -p "$abs_store_dir/.git/hooks"
+        cp "$hook_template" "$hook_path"
+        chmod +x "$hook_path"
+        echo "store-sync: installed pre-commit validation hook"
+    fi
+    return 0
+}
+
 do_tick() {
+    install_hook_if_missing
+
     commit_msg="store: sync tick $(date -u +%Y-%m-%dT%H:%M:%SZ) UTC"
 
     pulled="skipped"
