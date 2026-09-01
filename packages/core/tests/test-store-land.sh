@@ -21,6 +21,10 @@
 #      file (validator output surfaced) and allows a valid commit, with
 #      SPOMNI_MACHINERY pointing at this checkout.
 #   8. with no machinery discoverable the hook warns but ALLOWS the commit.
+#   9. base-machine layout (store at <machinery>/data/store, no
+#      SPOMNI_MACHINERY, no ./machinery) — the hook discovers the machinery
+#      by walking up to the grandparent and validates (blocks invalid,
+#      allows valid).
 #
 # bash 3.2 portable (no associative arrays, no mapfile). Self-contained
 # temp dirs; local bare git remotes (same pattern as test-store-sync.sh).
@@ -389,6 +393,75 @@ then
 else
   fail "hook did not warn-and-allow without machinery (exit=$commit_status8)"
   echo "$commit_out8"
+fi
+
+# ---------------------------------------------------------------------------
+# assertion 9: base-machine layout — store at <machinery>/data/store, no
+# SPOMNI_MACHINERY and no ./machinery; hook finds the machinery by walking
+# up to the grandparent and still validates.
+# ---------------------------------------------------------------------------
+
+scratch9="$(new_scratch_dir)"
+mach9="$scratch9/machinery-copy"
+mkdir -p "$mach9/data"
+# Minimal machinery skeleton: point packages/ at the real checkout so
+# <mach9>/packages/core/scripts/validate-store.sh resolves.
+ln -s "$REPO_ROOT/packages" "$mach9/packages"
+
+store9="$mach9/data/store"
+mkdir -p "$store9"
+cp -R "$FIXTURE_STORE/." "$store9"
+git -C "$store9" init -q -b main
+"$INIT_STORE" "$store9" > /dev/null 2>&1
+
+# Invalid file: the hook must discover the machinery via the grandparent
+# walk and block the commit.
+cat > "$store9/people/hand-written.md" <<'EOF'
+---
+schema_version: 1.4.0
+name: Hand Written
+---
+
+## Facts
+
+- an untagged fact with no provenance label
+EOF
+
+git -C "$store9" add -A
+commit_out9a="$(cd "$store9" && env -u SPOMNI_MACHINERY git -c user.name=t -c user.email=t@example.com commit -m "invalid" 2>&1)"
+commit_status9a=$?
+
+if [ "$commit_status9a" -ne 0 ] \
+  && printf '%s' "$commit_out9a" | grep -qF "commit blocked" \
+  && printf '%s' "$commit_out9a" | grep -qF "hand-written.md"
+then
+  pass "hook discovers machinery via grandparent walk (store at <machinery>/data/store) and blocks an invalid commit"
+else
+  fail "hook did not block the invalid commit via grandparent discovery (exit=$commit_status9a)"
+  echo "$commit_out9a"
+fi
+
+# Fix the file; the commit must now pass with the same discovery path.
+cat > "$store9/people/hand-written.md" <<'EOF'
+---
+schema_version: 1.4.0
+name: Hand Written
+---
+
+## Facts
+
+- **[told-by-user]** a properly tagged fact (2026-08-31)
+EOF
+
+git -C "$store9" add -A
+commit_out9b="$(cd "$store9" && env -u SPOMNI_MACHINERY git -c user.name=t -c user.email=t@example.com commit -m "valid" 2>&1)"
+commit_status9b=$?
+
+if [ "$commit_status9b" -eq 0 ]; then
+  pass "hook allows a valid commit via grandparent discovery"
+else
+  fail "hook blocked a valid commit via grandparent discovery (exit=$commit_status9b)"
+  echo "$commit_out9b"
 fi
 
 echo ""

@@ -12,7 +12,11 @@
 # Machinery discovery order:
 #   1. $SPOMNI_MACHINERY (path to the Spomni code checkout)
 #   2. <repo-root>/machinery/ (the cloud-session clone convention)
-#   3. give up: print a one-line warning and ALLOW the commit (exit 0) —
+#   3. walk up from the store's repo root: parent then grandparent, taking
+#      the first ancestor that contains packages/core/scripts/validate-store.sh
+#      (the base-machine layout keeps the store at <machinery>/data/store,
+#      so the grandparent hits)
+#   4. give up: print a one-line warning and ALLOW the commit (exit 0) —
 #      never brick the user's repo over a missing code checkout.
 #
 # Dependency-light: bash + whatever validate-store.sh itself needs.
@@ -27,6 +31,19 @@ if [ -n "${SPOMNI_MACHINERY:-}" ] && [ -d "${SPOMNI_MACHINERY}" ]; then
     machinery="${SPOMNI_MACHINERY}"
 elif [ -d "${repo_root}/machinery" ]; then
     machinery="${repo_root}/machinery"
+else
+    # Base-machine layout: the store lives INSIDE the machinery checkout
+    # (e.g. <machinery>/data/store). Walk up from the store's repo root —
+    # parent, then grandparent — and take the first ancestor that really
+    # contains the validator.
+    candidate="$repo_root"
+    for _ in 1 2; do
+        candidate="$(dirname "$candidate")"
+        if [ -f "${candidate}/packages/core/scripts/validate-store.sh" ]; then
+            machinery="$candidate"
+            break
+        fi
+    done
 fi
 
 if [ -z "$machinery" ]; then
