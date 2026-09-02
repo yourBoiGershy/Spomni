@@ -65,10 +65,38 @@
 #
 # Portable to bash 3.2 (macOS default): no associative arrays, no mapfile,
 # no ${var,,}. jq is used for JSON construction/output.
+#
+# jq resolution: launchd's PATH is the minimal /usr/bin:/bin:/usr/sbin:/sbin,
+# which usually has no jq. Resolve it via command -v, then the two common
+# Homebrew locations, then export PATH with jq's directory appended (same
+# approach as packages/connectors/scripts/deliver-tick.sh).
 
 set -eu
 
 SCRIPT_NAME="$(basename "$0")"
+
+# ---------------------------------------------------------------------------
+# jq resolution for launchd's minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin has
+# no jq). Same approach as packages/connectors/scripts/deliver-tick.sh.
+# ---------------------------------------------------------------------------
+JQ_BIN=""
+if command -v jq >/dev/null 2>&1; then
+  JQ_BIN="$(command -v jq)"
+elif [ -x /opt/homebrew/bin/jq ]; then
+  JQ_BIN=/opt/homebrew/bin/jq
+elif [ -x /usr/local/bin/jq ]; then
+  JQ_BIN=/usr/local/bin/jq
+fi
+if [ -z "$JQ_BIN" ]; then
+  echo "${SCRIPT_NAME}: jq not found (checked PATH, /opt/homebrew/bin, /usr/local/bin)" >&2
+  exit 2
+fi
+JQ_DIR="$(dirname "$JQ_BIN")"
+case ":${PATH}:" in
+  *":${JQ_DIR}:"*) ;;
+  *) PATH="${PATH}:${JQ_DIR}" ;;
+esac
+export PATH
 
 usage() {
   cat >&2 <<EOF

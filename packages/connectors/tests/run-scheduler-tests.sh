@@ -543,7 +543,7 @@ EOF
   template_rc=$?
   assert_eq "core template sync-lanes.tsv: parses cleanly under sync_lanes_list" "$template_rc" "0"
   template_row_count="$(printf '%s\n' "$template_rows" | grep -c .)"
-  assert_eq "core template sync-lanes.tsv: exactly 8 rows" "$template_row_count" "8"
+  assert_eq "core template sync-lanes.tsv: exactly 10 rows" "$template_row_count" "10"
   assert_contains "core template sync-lanes.tsv: feedback lane row present" "$template_rows" "feedback"
   template_learn_row="$(printf '%s\n' "$template_rows" | grep -E "^learn	900	true	")"
   template_learn_cmd="$(printf '%s' "$template_learn_row" | awk -F'\t' '{
@@ -595,6 +595,32 @@ EOF
       ;;
   esac
 
+  # --- plan 44: attention-fire lane (hourly, packages/attention/scripts/wakeup-queue.sh fire) ---
+  assert_contains "core template sync-lanes.tsv: attention-fire lane row present" "$template_rows" "attention-fire"
+  template_attention_fire_row="$(printf '%s\n' "$template_rows" | grep -E "^attention-fire	3600	true	")"
+  if [ -n "$template_attention_fire_row" ]; then
+    pass "core template sync-lanes.tsv: attention-fire lane enabled with interval 3600"
+  else
+    fail "core template sync-lanes.tsv: attention-fire lane row missing/malformed (expected attention-fire<TAB>3600<TAB>true<TAB>...)"
+  fi
+  template_attention_fire_cmd="$(printf '%s' "$template_attention_fire_row" | awk -F'\t' '{
+    out = $4
+    for (i = 5; i <= NF; i++) out = out "\t" $i
+    print out
+  }')"
+  template_attention_fire_resolved="$(SYNC_REPO_ROOT="$REPO_ROOT" sync_resolve_command "$template_data_dir" "$template_attention_fire_cmd")"
+  assert_contains "core template sync-lanes.tsv: attention-fire lane command resolves to wakeup-queue.sh" "$template_attention_fire_resolved" "wakeup-queue.sh"
+  assert_contains "core template sync-lanes.tsv: attention-fire lane command records acted-on" "$template_attention_fire_resolved" "acted-on"
+
+  # --- plan 44: attention-sweep lane (daily, mcp-lane-tick.sh tick, disabled by default) ---
+  assert_contains "core template sync-lanes.tsv: attention-sweep lane row present" "$template_rows" "attention-sweep"
+  template_attention_sweep_row="$(printf '%s\n' "$template_rows" | grep -E "^attention-sweep	86400	false	")"
+  if [ -n "$template_attention_sweep_row" ]; then
+    pass "core template sync-lanes.tsv: attention-sweep lane disabled with interval 86400"
+  else
+    fail "core template sync-lanes.tsv: attention-sweep lane row missing/malformed (expected attention-sweep<TAB>86400<TAB>false<TAB>...)"
+  fi
+
   # --- (ix) tick/subcommand argument errors ---
   "$MCP_TICK" tick --claude-bin "$STUB_CLAUDE" --allowed-tools "Bash" >/dev/null 2>/dev/null
   tick_missing_flag_rc=$?
@@ -630,6 +656,23 @@ d40_resolved="$(
 )"
 d40_expected="X /r/root $d40_data $d40_root $d40_expected_store /c/claude {{NOPE}}"
 assert_eq "sync_resolve_command: expands all known placeholders, leaves {{NOPE}} untouched" "$d40_resolved" "$d40_expected"
+
+# --- sync_resolve_command: {{CLAUDE_BIN}} falls back to $HOME/.local/bin/claude
+#     under launchd's minimal PATH (no SPOMNI_CLAUDE_BIN, no `claude` on PATH) ---
+d40_binfallback_home="$SANDBOX/d40-binfallback-home"
+mkdir -p "$d40_binfallback_home/.local/bin"
+cat > "$d40_binfallback_home/.local/bin/claude" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+chmod +x "$d40_binfallback_home/.local/bin/claude"
+
+d40_binfallback_resolved="$(
+  unset SPOMNI_CLAUDE_BIN
+  HOME="$d40_binfallback_home" PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+  sync_resolve_command "$d40_data" '{{CLAUDE_BIN}}'
+)"
+assert_contains "sync_resolve_command: {{CLAUDE_BIN}} falls back to \$HOME/.local/bin/claude under minimal PATH" "$d40_binfallback_resolved" "$d40_binfallback_home/.local/bin/claude"
 
 # --- sync_run_lane: exports SPOMNI_STORE_DIR / {{DATA_DIR}} into the command env ---
 d40_run_data_root="$SANDBOX/d40-run"

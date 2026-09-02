@@ -58,6 +58,30 @@ staleness	3600	true	/bin/bash {{REPO_ROOT}}/packages/attention/scripts/staleness
 # no-op.
 store-commit	900	true	/bin/bash {{REPO_ROOT}}/packages/core/scripts/store-sync.sh {{STORE_DIR}} tick
 
+# Attention-fire lane (plan 44) — hourly deterministic run of
+# wakeup-queue.sh fire (defaults --today to the current UTC date) followed by
+# acted-on; writes wakeups/fired/<ts>-batch.json, which the notify lane above
+# delivers. No model session. user-ask entries are budget-exempt so ad-hoc
+# reminders fire on their due date; signal/standing entries stay gated by
+# signals/week-plan.json's budget. Conceptually this must run before notify,
+# but each lane is an independent launchd job — the next notify tick
+# (<=15 min) picks up whatever batch this tick produced.
+attention-fire	3600	true	/bin/bash {{REPO_ROOT}}/packages/attention/scripts/wakeup-queue.sh {{STORE_DIR}} fire && /bin/bash {{REPO_ROOT}}/packages/attention/scripts/wakeup-queue.sh {{STORE_DIR}} acted-on
+
+# Attention-sweep lane (plan 44) — one headless model session per tick
+# running the full daily-attention sweep skill
+# (packages/attention/skills/sweep/SKILL.md): inbox filing -> signal-scan ->
+# staleness -> fire -> acted-on -> calibrate -> deliver -> heartbeat. This is
+# the lane that produces signal-derived suggestions (birthday, tier-drift,
+# scheduling-intent...) rather than only user-asked reminders. Disabled by
+# default because (a) it is a model session (cost), (b) before enabling,
+# data/ingestion/debrief-filed.log must reflect what is already filed or step
+# 1 re-files the whole inbox — run one /debrief batch in a live session
+# first. Enable with the same three steps as the MCP lanes below (preflight,
+# flip, re-install). The sweep skill is not exposed as a slash command, hence
+# the prompt reads the SKILL file directly.
+attention-sweep	86400	false	/bin/bash {{REPO_ROOT}}/packages/connectors/scripts/mcp-lane-tick.sh tick --claude-bin {{CLAUDE_BIN}} --prompt "Read {{REPO_ROOT}}/packages/attention/skills/sweep/SKILL.md and execute every step in order against store-dir {{STORE_DIR}} with today's date; print each step= log line" --allowed-tools "Bash,Read,Write,Edit,Skill,mcp__claude_ai_Google_Calendar__*,mcp__claude_ai_Gmail__*" --max-turns 120 --timeout-seconds 1800 --expect "step=heartbeat status=ok"
+
 # MCP lanes (plan 28) — gmail/calendar sync runs as a headless Claude
 # session per tick, via packages/connectors/scripts/mcp-lane-tick.sh. These
 # rows are disabled by default; before enabling:

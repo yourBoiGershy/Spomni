@@ -6,10 +6,17 @@ description: The `daily-attention` routine's entry skill — runs the sub-steps 
 # sweep
 
 The `daily-attention` routine from `docs/runtime-cloud.md`'s cadence map
-(default: each morning, after that day's first `sync-sweep`). This skill is
-the single scheduled caller of `wakeup-queue.sh fire` (per `docs/
-runtime-cloud.md`'s "Queue runtime model" — on-demand chat sessions may also
-call it directly, see "On-demand use" below). It ships today even though one
+(default: each morning, after that day's first `sync-sweep`). This skill and
+the sync scheduler's deterministic `attention-fire` lane
+(`packages/core/templates/sync-lanes.tsv`, plan 44: hourly `wakeup-queue.sh
+fire` + `acted-on`, no model session) are the two scheduled callers of
+`wakeup-queue.sh fire` (per `docs/runtime-cloud.md`'s "Queue runtime model" —
+on-demand chat sessions may also call it directly, see "On-demand use"
+below). The lane guarantees `user-ask` reminders fire on their due date even
+when no sweep session runs that day; this skill remains the only scheduled
+*producer* of signal-derived wake-ups (steps 1–3 below — inbox filing,
+calendar reconcile, signal scan — which the lane never runs). It ships today
+even though one
 neighbouring step (calendar-reconcile) hasn't landed yet — every step below
 either does its job or logs a one-line skip and moves on, so this skill is
 never blocked waiting on a sibling plan.
@@ -89,8 +96,9 @@ from this checkout's default. Log each `staleness: <name> ...` output line.
 bash packages/attention/scripts/wakeup-queue.sh <store-dir> fire --today <today> --now <now>
 ```
 
-This is the only *scheduled* caller of `fire` (`docs/runtime-cloud.md`'s
-"Who writes what"). Exemption (`user-ask` always fires), budget
+This is one of the two *scheduled* callers of `fire` (alongside the sync
+scheduler's `attention-fire` lane — see the skill header above) (`docs/
+runtime-cloud.md`'s "Who writes what"). Exemption (`user-ask` always fires), budget
 (`signal`/`standing` gated on `week-plan.json`'s `budget.max`),
 meeting-adjacency (a `--now` within `ADJACENCY_MINUTES` of a same-day timed
 calendar event holds the whole run), and idempotency (an already-fired
