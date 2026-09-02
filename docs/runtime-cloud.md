@@ -87,10 +87,14 @@ single shared creation path, per the single-writer rule on artifact
 *creation*). Lifecycle transitions — `list-due`, `fire`, `snooze`,
 `dismiss`, `confirm`, `decline` — go through exactly one script,
 `packages/attention/scripts/wakeup-queue.sh`, and nowhere else; entries are
-never hand-edited for status changes. The sweep
+never hand-edited for status changes. `fire` has exactly two *scheduled*
+callers: the sync scheduler's deterministic `attention-fire` lane
+(`packages/core/templates/sync-lanes.tsv`, plan 44 — hourly `fire` +
+`acted-on`, no model session, so `user-ask` reminders fire on their due
+date even when no sweep runs) and the sweep
 (`packages/attention/skills/sweep/`, the `daily-attention` routine's entry
-skill) is the only *scheduled* caller of `fire` — on-demand chat sessions may
-also call it directly (see below).
+skill, which stays the only scheduled *producer* of signal-derived
+wake-ups). On-demand chat sessions may also call it directly (see below).
 
 **Firing rules.**
 

@@ -9,7 +9,11 @@
 #   sync_log_file / sync_log_append — per-lane log with rotation at 512000B
 #   sync_export_env / sync_resolve_command — sync-lanes 1.1.0 {{...}}
 #     placeholder expansion (REPO_ROOT/DATA_DIR/PRIVATE_DATA_ROOT/STORE_DIR/
-#     CLAUDE_BIN) so a lane's command routes to the current checkout/store
+#     CLAUDE_BIN) so a lane's command routes to the current checkout/store.
+#     CLAUDE_BIN resolves under launchd's minimal PATH by checking, in order:
+#     SPOMNI_CLAUDE_BIN env, `command -v claude`, $HOME/.local/bin/claude,
+#     $HOME/.claude/local/claude, /opt/homebrew/bin/claude,
+#     /usr/local/bin/claude, falling back to the literal "claude"
 #   sync_pre_pull — best-effort store refresh from origin before a lane runs
 #     (skip with SPOMNI_NO_PREPULL=1)
 #   sync_run_lane — run one lane's command (after placeholder expansion),
@@ -296,8 +300,14 @@ sync_export_env() {
     :
   elif command -v claude >/dev/null 2>&1; then
     SPOMNI_CLAUDE_BIN="$(command -v claude)"
+  elif [ -x "$HOME/.local/bin/claude" ]; then
+    SPOMNI_CLAUDE_BIN="$HOME/.local/bin/claude"
   elif [ -x "$HOME/.claude/local/claude" ]; then
     SPOMNI_CLAUDE_BIN="$HOME/.claude/local/claude"
+  elif [ -x "/opt/homebrew/bin/claude" ]; then
+    SPOMNI_CLAUDE_BIN="/opt/homebrew/bin/claude"
+  elif [ -x "/usr/local/bin/claude" ]; then
+    SPOMNI_CLAUDE_BIN="/usr/local/bin/claude"
   else
     SPOMNI_CLAUDE_BIN="claude"
   fi
