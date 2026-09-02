@@ -132,12 +132,38 @@ sanctioned calendar write is the first-party claude.ai connector
   replies keep flowing through the existing beeper reply parser (plan 34)
   when beeper-in is on; without it, the event is read-only and the user
   acts from the store — no reply path is invented here.
+- **D4b Checklist semantics, not a static event (user ask, 2026-09-02).**
+  The user wants the calendar to read like a check-in list: an item per
+  reach-out that visibly flips to done. Google Tasks would be the native
+  fit, but no first-party Tasks connector exists and `composio-retired`
+  rules out the alternative, so the checklist is emulated on calendar
+  events and driven by the store's own outcome fields, never by the user
+  editing the calendar:
+  - create: title `☐ <who> — <why-short>`, `availability: FREE`,
+    `colorId` = the "todo" colour; description carries the next action,
+    the numbered reply grammar, and `wakeup: <id>`.
+  - done: when `acted-on: true` is written (acted-on detection) or the user
+    replies `<n> done` (plan 34 parser → `dismiss --reason already-handled`
+    …), the drain skill calls `update_event`: title `☑ <who> — <why-short>`,
+    `colorId` = the "done" colour. Never deleted — the ticked item is the
+    visible result the user asked for.
+  - snooze: `snooze` moves the event (`update_event` start/end to the new
+    due date), title unchanged. Dismiss for any other reason: title
+    `☒ …`, done colour.
+  - The mapping event-id ↔ wakeup-id lives in `outbox/delivered.log`
+    column 4 (`calendar-self`), so the drain skill is stateless and
+    idempotent: it reconciles every wake-up whose lifecycle changed since
+    its event was created (a `outbox/calendar-reconciled.log` cursor).
+  - Still self-only: one calendar, no attendees, title/description contain
+    the person's slug and the next action only — no facts about the person
+    beyond what the nudge card already carries.
 - **D5 Defaults the user may override** (routine judgment; stated in
   profile via `profile-set-notify.sh --channel calendar-self --calendar-id
   <id> --notify-time HH:MM`): dedicated calendar "Spomni"; one event per
-  card (not one per batch — each reach-out is a separately snoozable
+  card (not one per batch — each reach-out is a separately ticked-off
   object in the calendar UI); 09:00 local, 30 min, popup at start; cards
-  fired during quiet hours land on the next `notify_time`.
+  fired during quiet hours land on the next `notify_time`; done/dismissed
+  items stay on the calendar as `☑`/`☒` (never deleted).
 - **D6 "Who I should *not* reach out to" is a view, not a nudge.** The
   suppression machinery already exists (14-day cooldown, `## Signal
   opt-outs`, non-relational kinds, expired kinds, declined proposals) and
@@ -157,7 +183,7 @@ sanctioned calendar write is the first-party claude.ai connector
 | B2 | ingestion | `profile-set-notify.sh`: `--calendar-id`, `--notify-time`, open channel vocabulary (validated against the registry lookup) + tests |
 | B3 | connectors | `deliver-tick.sh` generic dispatch (D2) + `beeper-out/channel.tsv`, `gmail-out/channel.tsv` |
 | B4 | connectors | deliver tests: every existing fixture unchanged + manifest lookup, unknown-channel fallback, user-dir plugin, self-only refusal |
-| B5 | connectors | `calendar-out/` sub-package: `package.md`, `channel.tsv`, `skills/calendar-self-notify/SKILL.md` (D4) + `.claude/skills` symlink |
+| B5 | connectors | `calendar-out/` sub-package: `package.md`, `channel.tsv`, `skills/calendar-self-notify/SKILL.md` (D4 create + D4b reconcile) + `.claude/skills` symlink |
 | B6 | connectors | `mcp-lane-tick.sh preflight --lane calendar-out` (requires `create_event`, `list_calendars`) + `notify-session` template row (D3) |
 | B7 | attention | sweep step 8 reads the manifest's `skill` instead of hard-coding gmail |
 | B8 | query | `who-next-direct.sh --holds` + `/who-next --holds` (D6) + tests |
